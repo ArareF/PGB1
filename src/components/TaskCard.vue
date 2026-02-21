@@ -30,8 +30,10 @@ const statusInfo = computed(() => {
     return { label: `未开始 0/${p.total}`, cls: 'status-pending' }
   }
   // 无子任务：3态，不显示数字（分母只有子任务才有意义）
-  const { material_total: total, material_uploaded: uploaded } = props.task
-  if (total > 0 && uploaded >= total) {
+  const { material_total: total, material_uploaded: uploaded, video_total: vTotal, video_uploaded: vUploaded } = props.task
+  const allMaterialsUploaded = total > 0 && uploaded >= total
+  const allVideosUploaded = vTotal === 0 || vUploaded >= vTotal
+  if (allMaterialsUploaded && allVideosUploaded) {
     return { label: '已完成', cls: 'status-completed' }
   }
   if (total > 0) {

@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
 import type { FileEntry } from '../composables/useDirectoryFiles'
+import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import ImageViewer from './ImageViewer.vue'
 
 // ─── 视频播放控制 ─────────────────────────────────────
@@ -109,6 +110,16 @@ const emit = defineEmits<{
   'update:widthPercent': [value: number]
   'select-version': [file: FileEntry]
 }>()
+
+const { openInExplorer } = useDirectoryFiles()
+
+/** 从文件完整路径提取所在目录 */
+function getFolderPath(filePath: string): string {
+  const sep = filePath.lastIndexOf('/')
+  const bsep = filePath.lastIndexOf('\\')
+  const idx = Math.max(sep, bsep)
+  return idx > 0 ? filePath.substring(0, idx) : filePath
+}
 
 // ─── 文件类型判断 ────────────────────────────────────
 
@@ -361,18 +372,33 @@ function startResize(e: MouseEvent) {
           <div v-if="versions && versions.length > 0" class="sidebar-section">
             <p class="section-title">版本历史</p>
             <div class="version-list">
-              <button
+              <div
                 v-for="(v, i) in versions"
                 :key="v.path"
-                class="pv-version-btn"
+                class="version-card"
                 :class="{ active: v.path === file.path }"
+                :title="v.path"
                 @click="emit('select-version', v)"
               >
-                <span class="pv-version-label">
-                  {{ i === versions.length - 1 ? '最新版本' : `版本 ${i + 1}` }}
-                </span>
-                <span class="pv-version-name">{{ v.name }}</span>
-              </button>
+                <div class="version-card-left">
+                  <span class="version-name">
+                    {{ i === versions.length - 1 ? '最新版本' : `版本 ${i + 1}` }}
+                  </span>
+                  <span class="version-meta">{{ formatSize(v.size_bytes) }}</span>
+                </div>
+                <div class="version-card-right">
+                  <span class="version-ext">{{ v.extension.toUpperCase() }}</span>
+                  <button
+                    class="version-folder-btn"
+                    title="打开所在文件夹"
+                    @click.stop="openInExplorer(getFolderPath(v.path))"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -710,50 +736,83 @@ function startResize(e: MouseEvent) {
 .file-detail-sidebar .version-list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-1);
+  gap: var(--spacing-2);
 }
 
-.pv-version-btn {
+.file-detail-sidebar .version-card {
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-3);
+  justify-content: space-between;
+  padding: var(--spacing-3);
   border-radius: var(--radius-md);
-  border: 1px solid transparent;
+  border: 1px solid var(--border-light);
   background: transparent;
   cursor: pointer;
-  text-align: left;
   transition: all var(--transition-fast);
-  width: 100%;
 }
 
-.pv-version-btn:hover {
+.file-detail-sidebar .version-card:hover {
   background: var(--bg-hover);
+  border-color: var(--border-medium);
 }
 
-.pv-version-btn.active {
-  background: rgba(59, 130, 246, 0.1);
+.file-detail-sidebar .version-card.active {
+  background: var(--bg-selected);
   border-color: var(--color-primary);
 }
 
-.pv-version-label {
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-  min-width: 52px;
+.file-detail-sidebar .version-card-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
 }
 
-.pv-version-btn.active .pv-version-label {
+.file-detail-sidebar .version-name {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-heading);
+  color: var(--text-primary);
+}
+
+.file-detail-sidebar .version-card.active .version-name {
   color: var(--color-primary);
 }
 
-.pv-version-name {
+.file-detail-sidebar .version-meta {
   font-size: var(--text-sm);
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
+  color: var(--text-tertiary);
+}
+
+.file-detail-sidebar .version-card-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-shrink: 0;
+}
+
+.file-detail-sidebar .version-ext {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+}
+
+.file-detail-sidebar .version-folder-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border-medium);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.file-detail-sidebar .version-folder-btn:hover {
+  background: var(--color-primary);
+  color: var(--color-neutral-0);
+  border-color: var(--color-primary);
 }
 </style>

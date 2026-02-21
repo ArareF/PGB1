@@ -8,7 +8,7 @@ export interface NavAction {
   label: string
   icon?: string      /* 预留：SVG 图标名，Phase 3+ 实现图标系统 */
   handler: () => void
-  onLongPress?: () => void  /* 长按 500ms 触发，有此字段时单击取最新，长按弹选择 */
+  onLongPress?: (btnRect: DOMRect) => void  /* 长按 500ms 触发，btnRect = 按钮位置 */
   active?: boolean          /* 按钮强调状态（如已设默认时的「打开AE」） */
   disabled?: boolean
 }

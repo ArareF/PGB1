@@ -78,10 +78,11 @@ let longPressTriggered = false
 
 function onActionPointerDown(e: PointerEvent, action: NavAction) {
   if (!action.onLongPress || e.button !== 0) return
+  const btnEl = e.currentTarget as HTMLElement
   longPressTriggered = false
   longPressTimer = setTimeout(() => {
     longPressTriggered = true
-    action.onLongPress!()
+    action.onLongPress!(btnEl.getBoundingClientRect())
   }, LONG_PRESS_MS)
 }
 
@@ -118,7 +119,7 @@ function onActionsWheel(e: WheelEvent) {
           title="返回"
           @click="goBack"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
@@ -229,6 +230,8 @@ function onActionsWheel(e: WheelEvent) {
   margin-left: auto;
   height: var(--floating-navbar-center-height);
   margin-top: var(--spacing-3);
+  /* glass-medium 的 overflow:hidden 会裁切 action-btn hover 时的 translateY(-2px)，覆盖为 visible */
+  overflow: visible;
 }
 
 .title-bar-actions {
@@ -238,6 +241,10 @@ function onActionsWheel(e: WheelEvent) {
   overflow-x: auto;
   flex-shrink: 1;
   min-width: 0;
+  /* overflow-x:auto 强制 overflow-y:auto，会裁切 translateY(-2px) 的绘制区域。
+     padding-block 在 border edge 和内容之间建立缓冲区，hover 上浮后仍在 padding 内不被裁切。
+     顶底对称确保按钮视觉居中不变。 */
+  padding-block: 4px;
 }
 
 .title-bar-actions::-webkit-scrollbar {
@@ -316,7 +323,14 @@ function onActionsWheel(e: WheelEvent) {
   gap: var(--spacing-3);
   min-width: 0;
   flex-shrink: 1;
-  overflow: hidden;
+}
+
+/* 返回按钮 leave 时保持原始尺寸/位置，
+   防止 absolute 脱离 flex 后 align-self:stretch 失效导致向上跳动 */
+.nav-back-leave-active.back-btn,
+.nav-forward-leave-active.back-btn {
+  top: 0;
+  bottom: 0;
 }
 
 /* 导航动画 — 前进：从右滑入 */

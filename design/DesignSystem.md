@@ -140,19 +140,19 @@
   --bg-app:               #F0F2F5;   /* 浅灰色背景 */
 
   /* 毛玻璃背景（白色基底） */
-  --bg-glass-subtle:      rgba(255, 255, 255, 0.05);
-  --bg-glass-medium:      rgba(255, 255, 255, 0.10);
-  --bg-glass-strong:      rgba(255, 255, 255, 0.15);
+  --bg-glass-subtle:      rgba(255, 255, 255, 0.50);
+  --bg-glass-medium:      rgba(255, 255, 255, 0.65);
+  --bg-glass-strong:      rgba(255, 255, 255, 0.78);
 
   /* 内容背景 */
   --bg-primary:           rgba(255, 255, 255, 0.9);    /* 主要内容区 */
   --bg-secondary:         rgba(255, 255, 255, 0.6);    /* 次要内容区 */
   --bg-tertiary:          rgba(255, 255, 255, 0.3);    /* 三级内容区 */
 
-  /* 悬停/激活状态 */
-  --bg-hover:             rgba(33, 150, 243, 0.08);    /* 悬停背景 */
-  --bg-active:            rgba(33, 150, 243, 0.16);    /* 激活背景 */
-  --bg-selected:          rgba(33, 150, 243, 0.12);    /* 选中背景 */
+  /* 悬停/激活状态 — 统一用 primary-500 基色 */
+  --bg-hover:             rgba(74, 158, 245, 0.08);    /* 悬停背景 */
+  --bg-active:            rgba(74, 158, 245, 0.14);    /* 激活背景 */
+  --bg-selected:          rgba(74, 158, 245, 0.10);    /* 选中背景 */
 }
 ```
 
@@ -214,9 +214,9 @@
 **亮色模式**：
 ```css
 :root[data-theme="light"] {
-  --border-light:         rgba(0, 0, 0, 0.08);         /* 轻边框 */
-  --border-medium:        rgba(0, 0, 0, 0.12);         /* 中边框 */
-  --border-heavy:         rgba(0, 0, 0, 0.20);         /* 重边框 */
+  --border-light:         rgba(0, 0, 0, 0.10);         /* 轻边框 */
+  --border-medium:        rgba(0, 0, 0, 0.15);         /* 中边框 */
+  --border-heavy:         rgba(0, 0, 0, 0.22);         /* 重边框 */
 
   --border-focus:         var(--color-primary-500);    /* 聚焦边框 */
   --border-error:         var(--color-danger);         /* 错误边框 */
@@ -611,9 +611,19 @@
 ```
 
 ### 6.2 悬停阴影增强
+
+**暗色模式**（蓝色边缘光）：
 ```css
 --shadow-card-hover:     0 4px 12px rgba(0, 0, 0, 0.30),
                          0 0 1px rgba(100, 180, 255, 0.15);  /* 微弱蓝色边缘光 */
+```
+
+**亮色模式**（纯黑柔和阴影，无蓝色辉光）：
+```css
+--shadow-card-hover:     0 6px 16px rgba(0, 0, 0, 0.12),
+                         0 0 0 1px rgba(0, 0, 0, 0.08);
+--shadow-modal:          0 0 20px rgba(0, 0, 0, 0.06),
+                         0 8px 24px rgba(0, 0, 0, 0.12);
 ```
 
 ---
@@ -739,6 +749,12 @@
 --button-secondary-bg-hover:    rgba(100, 180, 255, 0.12);
 --button-secondary-border:      var(--border-medium);
 --button-secondary-text:        var(--text-primary);
+
+/* Secondary Button（亮色主题） */
+--button-secondary-bg:          var(--glass-medium-bg);
+--button-secondary-bg-hover:    rgba(0, 0, 0, 0.04);    /* 微微加深 */
+--button-secondary-border:      var(--border-medium);
+--button-secondary-text:        var(--text-primary);
 ```
 
 **幽灵按钮（透明背景）**
@@ -751,10 +767,13 @@
 
 **禁用状态**
 ```css
-/* Disabled（暗色适配） */
+/* Disabled（暗色主题） */
 --button-disabled-bg:           rgba(42, 47, 62, 0.60);  /* 暗蓝灰 */
 --button-disabled-text:         var(--text-tertiary);
 --button-disabled-opacity:      0.6;
+
+/* Disabled（亮色主题） */
+--button-disabled-bg:           rgba(0, 0, 0, 0.06);
 ```
 
 **使用指南**：
@@ -986,8 +1005,10 @@
 --window-control-gap:       var(--spacing-2);    /* 按钮间距 */
 --window-control-radius:    var(--radius-full);
 
-/* 颜色 — 冷蓝色悬停 */
+/* 颜色 — 暗色：冷蓝色悬停 */
 --window-control-bg:        rgba(22, 23, 28, 0.55);
+/* 亮色主题覆盖 */
+/* --window-control-bg:     rgba(0, 0, 0, 0.06); */
 --window-close-bg:          rgba(224, 90, 90, 0.7);
 --window-minimize-hover:    rgba(100, 180, 255, 0.12);
 --window-maximize-hover:    rgba(100, 180, 255, 0.12);
@@ -1296,11 +1317,13 @@ async function toggleTheme() {
 
 ### 12.2 CSS变量定义
 ```css
-/* ===== 亮色主题 ===== */
+/* ===== 亮色主题（柔和工业风） ===== */
 :root[data-theme="light"] {
   /* 背景色 */
   --bg-app: #F0F2F5;
-  --bg-glass-medium: rgba(255, 255, 255, 0.70);
+  --bg-glass-medium: rgba(255, 255, 255, 0.65);
+  --bg-hover: rgba(74, 158, 245, 0.08);
+  --border-medium: rgba(0, 0, 0, 0.15);
   /* ... 其他亮色变量 */
 }
 

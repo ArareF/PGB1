@@ -501,9 +501,9 @@
   --bg-app:               #F0F2F5;
 
   /* 毛玻璃背景 */
-  --bg-glass-subtle:      rgba(255, 255, 255, 0.05);
-  --bg-glass-medium:      rgba(255, 255, 255, 0.10);
-  --bg-glass-strong:      rgba(255, 255, 255, 0.15);
+  --bg-glass-subtle:      rgba(255, 255, 255, 0.50);
+  --bg-glass-medium:      rgba(255, 255, 255, 0.65);
+  --bg-glass-strong:      rgba(255, 255, 255, 0.78);
 
   /* 内容背景 */
   --bg-primary:           rgba(255, 255, 255, 0.9);
@@ -511,9 +511,9 @@
   --bg-tertiary:          rgba(255, 255, 255, 0.3);
 
   /* 悬停/激活状态 */
-  --bg-hover:             rgba(33, 150, 243, 0.08);
-  --bg-active:            rgba(33, 150, 243, 0.16);
-  --bg-selected:          rgba(33, 150, 243, 0.12);
+  --bg-hover:             rgba(74, 158, 245, 0.08);
+  --bg-active:            rgba(74, 158, 245, 0.14);
+  --bg-selected:          rgba(74, 158, 245, 0.10);
 
   /* 文字颜色 */
   --text-primary:         rgba(0, 0, 0, 0.87);
@@ -524,9 +524,9 @@
   --text-link-hover:      var(--color-primary-700);
 
   /* 边框颜色 */
-  --border-light:         rgba(0, 0, 0, 0.08);
-  --border-medium:        rgba(0, 0, 0, 0.12);
-  --border-heavy:         rgba(0, 0, 0, 0.20);
+  --border-light:         rgba(0, 0, 0, 0.10);
+  --border-medium:        rgba(0, 0, 0, 0.15);
+  --border-heavy:         rgba(0, 0, 0, 0.22);
   --border-focus:         var(--color-primary-500);
   --border-error:         var(--color-danger);
 
@@ -570,7 +570,7 @@
 
   /* 按钮变体 — 次要（毛玻璃） */
   --button-secondary-bg:          var(--glass-medium-bg);
-  --button-secondary-bg-hover:    rgba(255, 255, 255, 0.15);
+  --button-secondary-bg-hover:    rgba(0, 0, 0, 0.04);
   --button-secondary-border:      var(--border-medium);
   --button-secondary-text:        var(--text-primary);
 
@@ -593,6 +593,21 @@
   --tag-format-bg:            var(--glass-subtle-bg);
   --tag-format-text:          var(--text-secondary);
   --tag-format-border:        var(--border-light);
+
+  /* 阴影 — 浅色版（无蓝色辉光） */
+  --shadow-card-hover:    0 6px 16px rgba(0, 0, 0, 0.12),
+                          0 0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-modal:         0 0 20px rgba(0, 0, 0, 0.06),
+                          0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* 窗口控制 — 浅色版 */
+  --window-control-bg:    rgba(0, 0, 0, 0.06);
+
+  /* 按钮禁用 — 浅色版 */
+  --button-disabled-bg:   rgba(0, 0, 0, 0.06);
+
+  /* Canvas 背景 — 浅色版 */
+  --canvas-bg:            #E8E9EC;
 }
 
 /* =============================================================================

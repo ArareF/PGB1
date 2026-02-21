@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { useNavigation } from '../composables/useNavigation'
@@ -46,7 +46,7 @@ function buildNavActions() {
   return [
     { id: 'game-intro', label: '游戏介绍', handler: () => router.push({ name: 'gameIntro', params: { projectId } }) },
     { id: 'materials', label: '项目素材', handler: () => router.push({ name: 'materials', params: { projectId } }) },
-    { id: 'ae-project', label: '打开AE', handler: () => openAeProject(), onLongPress: () => openAeProjectPicker(), active: !!defaultAeFile.value },
+    { id: 'ae-project', label: '打开AE', handler: () => openAeProject(), onLongPress: (rect: DOMRect) => openAeProjectPicker(rect), active: !!defaultAeFile.value },
     {
       id: 'task-list',
       label: '任务列表',
@@ -100,6 +100,7 @@ interface FileEntry { name: string; path: string; is_dir: boolean }
 
 const aepPickerVisible = ref(false)
 const aepFiles = ref<FileEntry[]>([])
+const aepPanelStyle = ref({ top: '0px', right: '0px' })
 
 function getAeDir() {
   return projectPath.replace(/\\/g, '/') + '/03_Render_VFX/VFX/AE'
@@ -130,7 +131,7 @@ async function openAeProject() {
   await invoke('open_file', { path: target.path })
 }
 
-async function openAeProjectPicker() {
+async function openAeProjectPicker(btnRect: DOMRect) {
   if (!projectPath) return
   const files = await scanAepFiles()
   if (files.length === 0) {
@@ -138,7 +139,18 @@ async function openAeProjectPicker() {
     return
   }
   aepFiles.value = files
+  aepPanelStyle.value = {
+    top: `${btnRect.bottom + 8}px`,
+    right: `${window.innerWidth - btnRect.right}px`,
+  }
   aepPickerVisible.value = true
+}
+
+function onAepOutsideClick() {
+  // 面板内的点击由 @click.stop 阻止冒泡，到达这里说明点在外部
+  if (aepPickerVisible.value) {
+    aepPickerVisible.value = false
+  }
 }
 
 async function pickAepFile(file: FileEntry) {
@@ -149,6 +161,14 @@ async function pickAepFile(file: FileEntry) {
   await invoke('set_default_ae_file', { projectPath, fileName: file.name })
   await invoke('open_file', { path: file.path })
 }
+
+onMounted(() => {
+  document.addEventListener('click', onAepOutsideClick)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', onAepOutsideClick)
+})
 
 </script>
 
@@ -175,17 +195,22 @@ async function pickAepFile(file: FileEntry) {
       </TransitionGroup>
     </div>
 
-    <!-- AE 工程文件选择弹窗 -->
+    <!-- AE 工程文件选择下拉面板 -->
     <Teleport to="body">
-      <div v-if="aepPickerVisible" class="aep-overlay" @click.self="aepPickerVisible = false">
-        <div class="aep-picker glass-strong">
-          <p class="aep-picker-title">选择 AE 工程文件</p>
-          <p class="aep-picker-hint">点击设为默认并打开</p>
-          <div class="aep-picker-list">
+      <Transition name="aep-panel">
+        <div
+          v-if="aepPickerVisible"
+          class="aep-dropdown-panel"
+          :style="aepPanelStyle"
+          @click.stop
+        >
+          <div class="aep-dropdown-title">选择 AE 工程文件</div>
+          <div class="aep-dropdown-hint">点击设为默认并打开</div>
+          <div class="aep-dropdown-list">
             <button
               v-for="file in aepFiles"
               :key="file.path"
-              class="aep-picker-item"
+              class="aep-dropdown-item"
               :class="{ 'is-default': file.name === defaultAeFile }"
               @click="pickAepFile(file)"
             >
@@ -193,9 +218,8 @@ async function pickAepFile(file: FileEntry) {
               <span v-if="file.name === defaultAeFile" class="aep-item-badge">默认</span>
             </button>
           </div>
-          <button class="aep-picker-cancel" @click="aepPickerVisible = false">取消</button>
         </div>
-      </div>
+      </Transition>
     </Teleport>
 
   </div>
@@ -229,78 +253,78 @@ async function pickAepFile(file: FileEntry) {
   gap: var(--gap-card);
 }
 
-/* AE 工程选择弹窗（Teleport to body，需要用 :deep 或非 scoped，此处用 :global） */
+/* AE 工程选择下拉面板（Teleport to body，需要全局样式） */
 </style>
 
 <style>
-.aep-overlay {
+.aep-dropdown-panel {
   position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--overlay-backdrop);
-  backdrop-filter: blur(var(--glass-light-blur));
-  -webkit-backdrop-filter: blur(var(--glass-light-blur));
-}
-
-.aep-picker {
-  min-width: 320px;
-  max-width: 480px;
-  border-radius: var(--radius-xl);
-  padding: var(--spacing-5);
+  z-index: var(--z-dropdown);
+  min-width: 240px;
+  max-width: 400px;
+  padding: var(--padding-sm);
+  border-radius: var(--radius-md);
+  background: var(--glass-medium-bg);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(var(--panel-blur));
+  -webkit-backdrop-filter: blur(var(--panel-blur));
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-3);
+  gap: var(--spacing-1);
 }
 
-.aep-picker-title {
-  font-size: var(--text-xl);
-  font-weight: var(--font-weight-heading);
-  color: var(--text-primary);
-  margin: 0;
+.aep-dropdown-title {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  padding: var(--padding-xs);
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: var(--spacing-1);
 }
 
-.aep-picker-hint {
-  font-size: var(--text-sm);
+.aep-dropdown-hint {
+  font-size: var(--text-xs);
   color: var(--text-tertiary);
-  margin: 0;
+  padding: 0 var(--padding-xs);
 }
 
-.aep-picker-list {
+.aep-dropdown-list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-2);
-  max-height: 320px;
+  gap: var(--spacing-1);
+  max-height: 280px;
   overflow-y: auto;
 }
 
-.aep-picker-item {
+.aep-dropdown-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-3);
+  gap: var(--spacing-2);
   text-align: left;
-  padding: var(--spacing-3) var(--spacing-4);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  background: var(--bg-hover);
+  padding: var(--padding-xs) var(--padding-xs);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-primary);
-  font-size: var(--text-base);
+  font-size: var(--text-xs);
   font-family: inherit;
   cursor: pointer;
-  transition: var(--transition-bg);
+  transition: background 0.15s ease;
 }
 
-.aep-picker-item:hover {
-  background: var(--glass-subtle-bg);
-  border-color: var(--border-medium);
+.aep-dropdown-item:hover {
+  background: var(--bg-hover);
 }
 
-.aep-picker-item.is-default {
-  border-color: color-mix(in srgb, var(--color-primary-500) 40%, transparent);
-  background: color-mix(in srgb, var(--color-primary-500) 8%, transparent);
+.aep-dropdown-item.is-default {
+  background: color-mix(in srgb, var(--color-primary-500) 10%, transparent);
+  color: var(--color-primary-500);
+}
+
+.aep-dropdown-item.is-default:hover {
+  background: color-mix(in srgb, var(--color-primary-500) 18%, transparent);
 }
 
 .aep-item-name {
@@ -317,21 +341,18 @@ async function pickAepFile(file: FileEntry) {
   color: var(--color-primary-500);
 }
 
-.aep-picker-cancel {
-  align-self: flex-end;
-  padding: var(--spacing-2) var(--spacing-5);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-button);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--text-base);
-  font-family: inherit;
-  cursor: pointer;
-  transition: var(--transition-bg);
+/* 下拉面板进出场动画 */
+.aep-panel-enter-active,
+.aep-panel-leave-active {
+  transition: var(--transition-dropdown);
+  transform-origin: top right;
 }
-
-.aep-picker-cancel:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+.aep-panel-enter-from {
+  transform: translateY(-6px) scale(0.95);
+  opacity: 0;
+}
+.aep-panel-leave-to {
+  transform: translateY(-6px) scale(0.95);
+  opacity: 0;
 }
 </style>

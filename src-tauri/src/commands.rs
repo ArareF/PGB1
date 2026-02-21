@@ -72,7 +72,12 @@ pub fn scan_projects(root_dir: String) -> Result<Vec<ProjectInfo>, String> {
                 let nc_task_dir = nextcloud_dir.join(parent);
                 let is_prototype = parent.to_lowercase() == "prototype";
                 let (total, uploaded) = count_upload_progress(&original_dir, &nc_task_dir, is_prototype);
-                total > 0 && uploaded >= total
+                if total == 0 || uploaded < total { return false; }
+                // 同时要求预览视频也全部上传
+                let preview_dir = export_path.join(parent).join("03_preview");
+                let nc_preview_dir = nextcloud_dir.join("preview");
+                let (video_total, video_uploaded) = count_preview_progress(&preview_dir, &nc_preview_dir);
+                video_total == 0 || video_uploaded >= video_total
             })
             .cloned()
             .collect();
@@ -146,6 +151,11 @@ pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
         let is_prototype = task_name.to_lowercase() == "prototype";
         let (material_total, material_uploaded) = count_upload_progress(&original_dir, &nc_task_dir, is_prototype);
 
+        // 统计预览视频上传进度
+        let preview_dir = path.join("03_preview");
+        let nc_preview_dir = nextcloud_dir.join("preview");
+        let (video_total, video_uploaded) = count_preview_progress(&preview_dir, &nc_preview_dir);
+
         // 任务卡片大小：显示已上传到 nextcloud 的文件大小
         let size_bytes = calc_dir_size(&nc_task_dir);
 
@@ -156,6 +166,8 @@ pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
             has_subtasks,
             material_total,
             material_uploaded,
+            video_total,
+            video_uploaded,
         });
     }
 
@@ -189,6 +201,71 @@ fn count_upload_progress(original_dir: &Path, nc_dir: &Path, is_prototype: bool)
     let nc_names = collect_base_names(nc_dir);
 
     let uploaded = original_names.iter().filter(|name| nc_names.contains(*name)).count() as u32;
+    (total, uploaded)
+}
+
+/// 统计预览视频上传进度：(总数, 已上传数)
+/// 扫描 03_preview/ 中的视频文件，对比 nextcloud/preview/（及其 breakdown 子目录）
+fn count_preview_progress(preview_dir: &Path, nc_preview_dir: &Path) -> (u32, u32) {
+    if !preview_dir.exists() {
+        return (0, 0);
+    }
+
+    let video_exts: &[&str] = &["mp4", "mov", "avi", "mkv", "webm", "flv"];
+
+    // 收集 03_preview/ 第一层视频文件名（小写，含扩展名），并标记是否为 breakdown
+    let mut video_names: Vec<(String, bool)> = Vec::new();
+    if let Ok(entries) = fs::read_dir(preview_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() { continue; }
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if !video_exts.contains(&ext.as_str()) { continue; }
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                let name_lower = name.to_lowercase();
+                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                let is_breakdown = stem.contains("_breakdown");
+                video_names.push((name_lower, is_breakdown));
+            }
+        }
+    }
+
+    let total = video_names.len() as u32;
+    if total == 0 { return (0, 0); }
+
+    // 收集 nextcloud/preview/ 中的文件名（小写）
+    let nc_files: std::collections::HashSet<String> = if nc_preview_dir.exists() {
+        fs::read_dir(nc_preview_dir)
+            .map(|entries| entries.flatten()
+                .filter_map(|e| {
+                    let p = e.path();
+                    if p.is_file() { p.file_name()?.to_str().map(|n| n.to_lowercase()) } else { None }
+                })
+                .collect())
+            .unwrap_or_default()
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    // 收集 nextcloud/preview/breakdown/ 中的文件名（小写）
+    let nc_breakdown = nc_preview_dir.join("breakdown");
+    let nc_breakdown_files: std::collections::HashSet<String> = if nc_breakdown.exists() {
+        fs::read_dir(&nc_breakdown)
+            .map(|entries| entries.flatten()
+                .filter_map(|e| {
+                    let p = e.path();
+                    if p.is_file() { p.file_name()?.to_str().map(|n| n.to_lowercase()) } else { None }
+                })
+                .collect())
+            .unwrap_or_default()
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    let uploaded = video_names.iter().filter(|(name, is_bd)| {
+        if *is_bd { nc_breakdown_files.contains(name) } else { nc_files.contains(name) }
+    }).count() as u32;
+
     (total, uploaded)
 }
 

@@ -78,18 +78,21 @@ function onProjectCreated(projectName: string) {
       <button class="add-btn" title="新建项目" @click="showCreateDialog = true">+</button>
     </div>
 
-    <p v-if="loading" class="loading-text">扫描中...</p>
+    <!-- 可滚动内容区 -->
+    <div class="scroll-content">
+      <p v-if="loading" class="loading-text">扫描中...</p>
 
-    <TransitionGroup v-else name="card" tag="div" class="card-grid">
-      <ProjectCard
-        v-for="(project, i) in projects"
-        :key="project.name"
-        :style="{ '--delay': i * 40 + 'ms' }"
-        :project="project"
-        @click="openProject"
-        @action="onProjectAction"
-      />
-    </TransitionGroup>
+      <TransitionGroup v-else name="card" tag="div" class="card-grid">
+        <ProjectCard
+          v-for="(project, i) in projects"
+          :key="project.name"
+          :style="{ '--delay': i * 40 + 'ms' }"
+          :project="project"
+          @click="openProject"
+          @action="onProjectAction"
+        />
+      </TransitionGroup>
+    </div>
 
     <CreateProjectDialog
       :show="showCreateDialog"
@@ -114,7 +117,15 @@ function onProjectCreated(projectName: string) {
 .home-page {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-6);
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 可滚动区 */
+.scroll-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-top: var(--spacing-4);
 }
 
 .page-header {

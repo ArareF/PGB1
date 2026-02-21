@@ -917,9 +917,12 @@ onMounted(async () => {
         subtaskCompleted.value = enabledSubtasks.value.filter(k => completedSubtasks.value.has(k)).length
         updateNavigation()
 
-        // 自动检测：所有素材已上传 + 有未完成的子任务 + 未提醒过 → 弹窗
-        const allUploaded = materials.value.length > 0
+        // 自动检测：所有素材已上传 + 所有预览视频已上传 + 有未完成的子任务 + 未提醒过 → 弹窗
+        const allMaterialsUploaded = materials.value.length > 0
           && materials.value.every(m => m.progress === 'uploaded')
+        const allVideosUploaded = previewGroups.value.length === 0
+          || previewGroups.value.every(g => g.uploadStatus === 'uploaded')
+        const allUploaded = allMaterialsUploaded && allVideosUploaded
         const hasIncomplete = enabledSubtasks.value.some(k => !completedSubtasks.value.has(k))
         const alreadyPrompted = project.upload_prompted_tasks.includes(taskId.toLowerCase())
         if (allUploaded && hasIncomplete && !alreadyPrompted) {

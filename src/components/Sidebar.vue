@@ -471,7 +471,7 @@ function startDrag(shortcut: Shortcut) {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #ff3b30;
+  background: var(--color-danger);
   border: none;
   display: flex;
   align-items: center;

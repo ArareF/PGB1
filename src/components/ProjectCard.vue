@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch, nextTick } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
 import type { ProjectInfo } from '../composables/useProjects'
@@ -9,6 +9,22 @@ const props = defineProps<{
 }>()
 
 const showMenu = ref(false)
+const menuBtnRef = ref<HTMLElement | null>(null)
+const menuStyle = ref({ top: '0px', right: '0px' })
+
+async function toggleMenu() {
+  showMenu.value = !showMenu.value
+  if (showMenu.value) {
+    await nextTick()
+    if (menuBtnRef.value) {
+      const rect = menuBtnRef.value.getBoundingClientRect()
+      menuStyle.value = {
+        top: `${rect.bottom + 4}px`,
+        right: `${window.innerWidth - rect.right}px`,
+      }
+    }
+  }
+}
 
 defineEmits<{
   click: [project: ProjectInfo]
@@ -124,28 +140,31 @@ watch(() => props.project.app_icon, loadIcon)
 
     <!-- ··· 菜单按钮（hover 时显示） -->
     <button
+      ref="menuBtnRef"
       class="card-menu-btn"
       :class="{ visible: showMenu }"
-      @click.stop="showMenu = !showMenu"
+      @click.stop="toggleMenu"
       @blur="showMenu = false"
     >
       ···
     </button>
 
-    <!-- 下拉菜单 -->
-    <Transition name="card-menu">
-      <div v-if="showMenu" class="card-menu" @click.stop>
-        <button class="menu-item" @mousedown.prevent="$emit('action', project, 'rename')">
-          重命名
-        </button>
-        <button class="menu-item" @mousedown.prevent="$emit('action', project, 'deadline')">
-          修改截止日期
-        </button>
-        <button class="menu-item menu-item--danger" @mousedown.prevent="$emit('action', project, 'delete')">
-          删除项目
-        </button>
-      </div>
-    </Transition>
+    <!-- 下拉菜单 — Teleport 到 body 避免父级 backdrop-filter 干扰毛玻璃 -->
+    <Teleport to="body">
+      <Transition name="card-menu">
+        <div v-if="showMenu" class="card-menu glass-medium" :style="menuStyle" @click.stop>
+          <button class="menu-item" @mousedown.prevent="$emit('action', project, 'rename')">
+            重命名
+          </button>
+          <button class="menu-item" @mousedown.prevent="$emit('action', project, 'deadline')">
+            修改截止日期
+          </button>
+          <button class="menu-item menu-item--danger" @mousedown.prevent="$emit('action', project, 'delete')">
+            删除项目
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -303,22 +322,19 @@ watch(() => props.project.app_icon, loadIcon)
   color: var(--text-primary);
 }
 
+
+</style>
+
+<!-- 菜单样式 — Teleport 到 body，需全局作用域 -->
+<style>
 .card-menu {
-  position: absolute;
-  top: calc(var(--spacing-2) + 28px + 4px);
-  right: var(--spacing-2);
+  position: fixed;
   min-width: 140px;
-  background: var(--glass-medium-bg);
-  backdrop-filter: blur(var(--glass-medium-blur));
-  -webkit-backdrop-filter: blur(var(--glass-medium-blur));
-  border: var(--glass-medium-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--glass-medium-shadow);
-  overflow: hidden;
-  z-index: 10;
+  z-index: var(--z-dropdown);
 }
 
-.menu-item {
+.card-menu .menu-item {
   display: block;
   width: 100%;
   padding: var(--spacing-2) var(--spacing-4);
@@ -331,15 +347,15 @@ watch(() => props.project.app_icon, loadIcon)
   transition: background var(--transition-fast);
 }
 
-.menu-item:hover {
+.card-menu .menu-item:hover {
   background: var(--bg-hover);
 }
 
-.menu-item--danger {
+.card-menu .menu-item--danger {
   color: var(--color-danger);
 }
 
-.menu-item--danger:hover {
+.card-menu .menu-item--danger:hover {
   background: var(--color-danger-light);
   opacity: 0.8;
 }
@@ -352,7 +368,7 @@ watch(() => props.project.app_icon, loadIcon)
 }
 .card-menu-enter-from {
   transform: translateY(-6px) scale(0.95);
-  opacity: 0.8;
+  opacity: 0;
 }
 .card-menu-leave-to {
   transform: translateY(-6px) scale(0.95);

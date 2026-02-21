@@ -64,6 +64,10 @@ pub struct TaskInfo {
     pub material_total: u32,
     /// 已上传素材数（存在于 nextcloud 中）
     pub material_uploaded: u32,
+    /// 预览视频总数（03_preview 中）
+    pub video_total: u32,
+    /// 已上传预览视频数（存在于 nextcloud/preview/ 中）
+    pub video_uploaded: u32,
 }
 
 /// 通用文件/目录条目（普通卡片用）

@@ -8,6 +8,8 @@ export interface TaskInfo {
   has_subtasks: boolean
   material_total: number
   material_uploaded: number
+  video_total: number
+  video_uploaded: number
 }
 
 export function useTasks() {

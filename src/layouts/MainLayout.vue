@@ -26,7 +26,7 @@ router.beforeEach((to, from) => {
       <div class="top-right-column">
         <WindowControls class="window-controls-area" />
         <div class="more-menu-wrapper">
-          <button class="more-menu-btn glass-medium" title="更多" @click="showMoreMenu = !showMoreMenu">
+          <button class="more-menu-btn" title="更多" @click="showMoreMenu = !showMoreMenu">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <circle cx="3" cy="8" r="1.5" />
               <circle cx="8" cy="8" r="1.5" />
@@ -131,7 +131,12 @@ router.beforeEach((to, from) => {
   width: 100%;
   height: var(--floating-action-height);
   padding: 0 var(--floating-action-padding-x);
-  border: none;
+  /* 手动复刻 glass-medium 视觉，但不用 backdrop-filter：
+     在 Tauri + Windows Acrylic 下 backdrop-filter 会向周围扩散渲染层，
+     覆盖到侧边栏和标题区域，产生有边界的灰色溢出。 */
+  background: var(--glass-medium-bg);
+  border: var(--glass-medium-border);
+  box-shadow: var(--glass-medium-shadow);
   border-radius: var(--floating-action-radius);
   color: var(--text-secondary);
   cursor: pointer;
@@ -213,13 +218,13 @@ router.beforeEach((to, from) => {
   padding: var(--floating-main-padding);
   position: relative;
   overflow-x: clip;
-  overflow-y: auto;
+  overflow-y: hidden;
 }
 
-/* 路由包装层 — 透明填满 main-content，不影响页面布局 */
+/* 路由包装层 — 固定高度填满 main-content，各页面自己处理内部滚动 */
 .page-wrapper {
   width: 100%;
-  min-height: 100%;
+  height: 100%;
 }
 
 /* 下拉菜单进出动画 */

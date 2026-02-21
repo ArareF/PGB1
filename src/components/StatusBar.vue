@@ -183,6 +183,7 @@ onUnmounted(() => {
 
     <!-- 配置面板 — Teleport 到 body 避免被父层 overflow 裁剪 -->
     <Teleport to="body">
+      <Transition name="config-panel">
       <div
         v-if="showConfigPanel"
         class="status-bar__config-panel"
@@ -241,6 +242,7 @@ onUnmounted(() => {
           </select>
         </label>
       </div>
+      </Transition>
     </Teleport>
   </div>
 </template>
@@ -550,5 +552,20 @@ onUnmounted(() => {
 
 .status-bar__config-select:focus {
   border-color: var(--color-primary-500);
+}
+
+/* 配置面板进出场动画 */
+.config-panel-enter-active,
+.config-panel-leave-active {
+  transition: var(--transition-dropdown);
+  transform-origin: top right;
+}
+.config-panel-enter-from {
+  transform: translateY(-6px) scale(0.95);
+  opacity: 0;
+}
+.config-panel-leave-to {
+  transform: translateY(-6px) scale(0.95);
+  opacity: 0;
 }
 </style>

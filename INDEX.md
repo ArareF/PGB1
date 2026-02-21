@@ -202,7 +202,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | `sessions/session_2026-02-15.md` | 任务系统深化、卡片规范、文档模块化 |
 | `sessions/session_2026-02-16.md` | 转换功能、DesignSystem、自定义字体 |
 | `sessions/session_2026-02-17.md` | 日报打卡、翻译功能、快捷方式栏、悬浮窗精简 |
-| `sessions/session_2026-02-21.md` | 全局框选多选：useRubberBandSelect composable、五页面接入、GameIntro/Materials补齐多选按钮、TDZ Bug修复 |
+| `sessions/session_2026-02-21.md` | 全局框选多选：useRubberBandSelect composable、五页面接入、GameIntro/Materials补齐多选按钮、TDZ Bug修复；UI hover Bug修复；任务完成判定加入预览视频上传状态（video_total/video_uploaded）：scan_tasks/scan_projects/TaskCard/TaskPage/子任务弹窗全链路更新；**副标题行固定滚动架构**：MainLayout page-wrapper height:100% + main-content overflow-y:hidden；HomePage 补齐 scroll-content 包装 |
 
 ---
 
@@ -217,7 +217,12 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 **最后更新**：2026-02-21
 
-本次会话（打包发布阶段）：
+本次会话（UI 修复）：
+- **TitleBar 返回按钮**：箭头 SVG 从 20→40px；leave 动画 `position:absolute` 导致 `align-self:stretch` 失效向上跳动，加 `top:0; bottom:0` 修复
+- **ProjectCard 菜单**：`<Teleport to="body">` 脱离父级 `glass-subtle` 合成层，使 `glass-medium` 毛玻璃生效；`position: fixed` + 动态坐标；`z-index: var(--z-dropdown)`；菜单样式移至全局 `<style>` 块
+- **StatusBar 配置面板**：加 `<Transition name="config-panel">` 进出场动画（`translateY(-6px) scale(0.95)` + opacity）
+
+之前会话（打包发布阶段）：
 - 软件名改为「PG素材管理系统」V2.0.0，开发者 Fuchikami；新增 `src/config/app.ts` 集中管理；设置页加「关于」tab
 - Git 初始化，初始提交 + tag v2.0.0
 - 系统托盘：关闭按钮改为隐藏到后台，托盘左键恢复，右键菜单（显示窗口/退出）
@@ -228,4 +233,4 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 - 移除 UI 自动缩放模式，默认固定 100%
 - 新增 `docs/打包发布指南.md`
 
-之前会话（2026-02-21）：Sidebar 视觉优化；ShortcutDialog 图标预览；useRubberBandSelect 全局框选；TitleBar flipWidth Bug 修复；Prototype Bug 修复；游戏介绍页「启动原型」功能
+之前会话（2026-02-21）：Sidebar 视觉优化；ShortcutDialog 图标预览；useRubberBandSelect 全局框选；TitleBar flipWidth Bug 修复；Prototype Bug 修复；游戏介绍页「启动原型」功能；**副标题行固定滚动架构修复**：MainLayout `.page-wrapper { height:100% }` + `.main-content { overflow-y:hidden }`（原 min-height:100% + overflow-y:auto 导致玻璃面板自滚，页面内部 flex 滚动分区失效）；HomePage 补齐 `.scroll-content` 包装

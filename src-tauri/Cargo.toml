@@ -1,8 +1,8 @@
 [package]
 name = "pgb1"
-version = "0.1.0"
-description = "PGB1 - 2D游戏特效师文件整理工具"
-authors = ["pgsoft"]
+version = "2.0.0"
+description = "PG素材管理系统 - 2D游戏特效师文件整理工具"
+authors = ["Fuchikami"]
 edition = "2021"
 
 [lib]
@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset"] }
+tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-drag = "2"
 tauri-plugin-dialog = "2"

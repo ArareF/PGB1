@@ -1,0 +1,34 @@
+[package]
+name = "pgb1"
+version = "0.1.0"
+description = "PGB1 - 2D游戏特效师文件整理工具"
+authors = ["pgsoft"]
+edition = "2021"
+
+[lib]
+name = "pgb1_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-drag = "2"
+tauri-plugin-dialog = "2"
+window-vibrancy = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+keyring = { version = "3", features = ["windows-native"] }
+tokio = { version = "1", features = ["rt", "time", "sync"] }
+image = "0.25"
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Threading", "Win32_UI_Shell", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_Storage_FileSystem", "Win32_Graphics_Gdi", "Win32_UI_Controls"] }
+notify = "6.1"
+reqwest = { version = "0.12", features = ["json"] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-notification = "2"
+base64 = "0.22"
+psd = "0.3"
+tauri-plugin-autostart = "2"

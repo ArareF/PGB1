@@ -1,0 +1,45 @@
+/* PGB1 全局重置样式 */
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* 透明背景 — 让系统级 Acrylic/Mica 效果透出来 */
+  background: transparent;
+  /* 桌面应用：禁止默认文本选择 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+/* 需要选择文本的元素（输入框等）单独开启 */
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 隐藏滚动条，保留滚动功能 */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 禁止拖拽图片（桌面应用行为） */
+img {
+  -webkit-user-drag: none;
+}

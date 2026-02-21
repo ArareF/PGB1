@@ -1,0 +1,842 @@
+/* =============================================================================
+   PGB1 设计系统 (Design System)
+   SSOT — 所有 UI 参数的唯一数据来源
+   数据来源: design/DesignSystem.md v1.2
+   ============================================================================= */
+
+/* 自定义字体 — URW DIN (西文) + 更纱黑体 Term SC (中文/等宽) */
+@font-face {
+  font-family: 'URWDINRegular';
+  src: url('/fonts/urw-din-regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SarasaTermSC';
+  src: url('/fonts/SarasaTermSCNerd-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* =============================================================================
+   通用变量（不区分主题）
+   ============================================================================= */
+:root {
+  /* ----- 一、基础色板（原子级） ----- */
+
+  /* 主题色 Primary — 冷科技蓝 */
+  --color-primary-50:  #E8F4FD;
+  --color-primary-100: #C5E3FA;
+  --color-primary-200: #9DD0F7;
+  --color-primary-300: #6BB8FF;
+  --color-primary-400: #5AACF8;
+  --color-primary-500: #4A9EF5;
+  --color-primary-600: #3D8AE0;
+  --color-primary-700: #2D5A8A;
+  --color-primary-800: #1E3F66;
+  --color-primary-900: #102A4C;
+
+  /* 中性色 Neutral — 去蓝化中性灰 */
+  --color-neutral-0:    #F0F1F3;
+  --color-neutral-50:   #E2E4E8;
+  --color-neutral-100:  #CACED2;
+  --color-neutral-200:  #B2B4BA;
+  --color-neutral-300:  #9A9DA4;
+  --color-neutral-400:  #8A8D96;
+  --color-neutral-500:  #6A6D76;
+  --color-neutral-600:  #2E3036;
+  --color-neutral-700:  #24262A;
+  --color-neutral-800:  #18191E;
+  --color-neutral-900:  #0C0D10;
+  --color-neutral-1000: #060708;
+
+  /* 功能色 Functional */
+  --color-success-light:  #6DD8B5;
+  --color-success:        #4ECBA0;
+  --color-success-dark:   #3AA882;
+
+  --color-warning-light:  #F0D060;
+  --color-warning:        #D4B040;
+  --color-warning-dark:   #B89830;
+
+  --color-danger-light:   #F07070;
+  --color-danger:         #E05A5A;
+  --color-danger-dark:    #C04444;
+
+  --color-info-light:     #64B5F6;
+  --color-info:           #2196F3;
+  --color-info-dark:      #1976D2;
+
+  --color-epic-light:     #BA68C8;
+  --color-epic:           #9C27B0;
+  --color-epic-dark:      #7B1FA2;
+
+  --color-orange-light:   #FFB74D;
+  --color-orange:         #FF9800;
+  --color-orange-dark:    #F57C00;
+
+  /* ----- 透明度层级 ----- */
+  --opacity-0:    0;
+  --opacity-5:    0.05;
+  --opacity-10:   0.10;
+  --opacity-15:   0.15;
+  --opacity-20:   0.20;
+  --opacity-30:   0.30;
+  --opacity-40:   0.40;
+  --opacity-50:   0.50;
+  --opacity-60:   0.60;
+  --opacity-70:   0.70;
+  --opacity-80:   0.80;
+  --opacity-90:   0.90;
+  --opacity-100:  1.0;
+
+  /* ----- 二、间距系统（8px基准） ----- */
+  --spacing-0:    0px;
+  --spacing-1:    4px;
+  --spacing-2:    8px;
+  --spacing-3:    12px;
+  --spacing-4:    16px;
+  --spacing-5:    20px;
+  --spacing-6:    24px;
+  --spacing-8:    32px;
+  --spacing-10:   40px;
+  --spacing-12:   48px;
+  --spacing-16:   64px;
+  --spacing-20:   80px;
+  --spacing-24:   96px;
+
+  /* 语义化间距 */
+  --padding-xs:   var(--spacing-1);
+  --padding-sm:   var(--spacing-2);
+  --padding-md:   var(--spacing-4);
+  --padding-lg:   var(--spacing-6);
+  --padding-xl:   var(--spacing-8);
+
+  --margin-xs:    var(--spacing-1);
+  --margin-sm:    var(--spacing-2);
+  --margin-md:    var(--spacing-4);
+  --margin-lg:    var(--spacing-6);
+  --margin-xl:    var(--spacing-8);
+
+  --gap-card:     var(--spacing-4);
+  --padding-page: var(--spacing-6);
+
+  /* ----- 三、圆角系统 ----- */
+  --radius-none:  0px;
+  --radius-sm:    4px;
+  --radius-md:    8px;
+  --radius-lg:    12px;
+  --radius-xl:    16px;
+  --radius-2xl:   20px;
+  --radius-3xl:   24px;
+  --radius-full:  9999px;
+
+  /* 语义化圆角 — 工业风硬边 */
+  --radius-button:          var(--radius-sm);
+  --radius-card:            var(--radius-md);
+  --radius-floating-island: var(--radius-md);
+  --radius-tag:             var(--radius-full);
+  --radius-input:           var(--radius-sm);
+
+  /* ----- 五、排版系统 ----- */
+
+  /* 字体家族 */
+  --font-sans: "URWDINRegular", "SarasaTermSC", "Microsoft YaHei", sans-serif;
+  --font-mono: "SarasaTermSC", "Consolas", monospace;
+  --font-family-base: var(--font-sans);
+
+  /* 字号 */
+  --text-2xs:     10px;
+  --text-xs:      12px;
+  --text-sm:      14px;
+  --text-base:    16px;
+  --text-lg:      18px;
+  --text-xl:      20px;
+  --text-2xl:     24px;
+  --text-3xl:     30px;
+  --text-4xl:     36px;
+  --text-5xl:     48px;
+
+  /* 语义化字号 */
+  --text-caption:     var(--text-xs);
+  --text-body:        var(--text-base);
+  --text-title:       var(--text-2xl);
+  --text-heading:     var(--text-3xl);
+
+  /* 行高 */
+  --leading-none:     1;
+  --leading-tight:    1.25;
+  --leading-snug:     1.375;
+  --leading-normal:   1.5;
+  --leading-relaxed:  1.625;
+  --leading-loose:    2;
+  --leading-body:     var(--leading-normal);
+  --leading-title:    var(--leading-tight);
+
+  /* 字重 */
+  --font-light:       300;
+  --font-normal:      400;
+  --font-medium:      500;
+  --font-semibold:    600;
+  --font-bold:        700;
+  --font-extrabold:   800;
+  --font-weight-body:     var(--font-normal);
+  --font-weight-title:    var(--font-semibold);
+  --font-weight-emphasis: var(--font-bold);
+
+  /* 字间距 */
+  --tracking-tighter:  -0.05em;
+  --tracking-tight:    -0.025em;
+  --tracking-normal:   0;
+  --tracking-wide:     0.025em;
+  --tracking-wider:    0.05em;
+  --tracking-widest:   0.1em;
+
+  /* ----- 六、阴影系统 ----- */
+  --shadow-none:   none;
+  --shadow-xs:     0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm:     0 2px 4px 0 rgba(0, 0, 0, 0.06);
+  --shadow-md:     0 4px 6px -1px rgba(0, 0, 0, 0.1),
+                   0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg:     0 10px 15px -3px rgba(0, 0, 0, 0.1),
+                   0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl:     0 20px 25px -5px rgba(0, 0, 0, 0.1),
+                   0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-2xl:    0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  --shadow-inner:  inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+
+  /* 语义化阴影 — 弱化 Material 阴影，层级靠透明度/边框拉开 */
+  --shadow-card:           0 2px 6px rgba(0, 0, 0, 0.25);
+  --shadow-floating:       0 4px 12px rgba(0, 0, 0, 0.30);
+  --shadow-modal:          0 0 20px rgba(74, 158, 245, 0.08),
+                           0 8px 24px rgba(0, 0, 0, 0.40);
+  --shadow-dropdown:       var(--shadow-floating);
+  --shadow-card-hover:     0 6px 16px rgba(0, 0, 0, 0.35),
+                           0 0 0 1px rgba(100, 180, 255, 0.30);
+
+  /* ----- 七、动画系统 ----- */
+
+  /* 过渡时长 */
+  --duration-instant:  0ms;
+  --duration-fast:     150ms;
+  --duration-normal:   300ms;
+  --duration-slow:     500ms;
+  --duration-slower:   700ms;
+
+  --duration-dialog:      200ms;
+
+  --duration-hover:       var(--duration-fast);
+  --duration-slide:       var(--duration-normal);
+  --duration-fade:        var(--duration-normal);
+  --duration-modal:       var(--duration-slow);
+
+  /* 缓动函数 */
+  --ease-linear:      cubic-bezier(0, 0, 1, 1);
+  --ease-in:          cubic-bezier(0.4, 0, 1, 1);
+  --ease-out:         cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out:      cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce:      cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --ease-smooth:      cubic-bezier(0.25, 0.1, 0.25, 1);
+
+  --ease-hover:       var(--ease-out);
+  --ease-slide-in:    var(--ease-out);
+  --ease-slide-out:   var(--ease-in);
+  --ease-modal:       var(--ease-in-out);
+
+  /* 常用过渡组合 */
+  --transition-all:       all var(--duration-normal) var(--ease-in-out);
+  --transition-color:     color var(--duration-fast) var(--ease-out);
+  --transition-bg:        background-color var(--duration-fast) var(--ease-out);
+  --transition-transform: transform var(--duration-normal) var(--ease-out);
+  --transition-opacity:   opacity var(--duration-normal) var(--ease-in-out);
+  --transition-card-hover:
+    transform var(--duration-hover) var(--ease-hover),
+    box-shadow var(--duration-hover) var(--ease-hover);
+
+  /* 弹窗动画 */
+  --transition-dialog-in:
+    transform var(--duration-normal) var(--ease-out),
+    opacity var(--duration-normal) var(--ease-out);
+  --transition-dialog-out:
+    transform var(--duration-normal) var(--ease-in),
+    opacity var(--duration-normal) var(--ease-in);
+
+  /* 下拉菜单动画 */
+  --transition-dropdown:
+    transform var(--duration-fast) var(--ease-out),
+    opacity var(--duration-fast) var(--ease-out);
+
+  /* 路由切换动画 */
+  --transition-route-in:
+    transform var(--duration-dialog) var(--ease-out),
+    opacity var(--duration-dialog) var(--ease-out);
+  --transition-route-out:
+    transform var(--duration-fast) var(--ease-in),
+    opacity var(--duration-fast) var(--ease-in);
+
+  /* ----- 八、组件规范 ----- */
+
+  /* 面板模糊（不随主题变化的组件级 blur 值） */
+  --panel-blur:               12px;
+
+  /* 按钮尺寸 */
+  --button-sm-height:     32px;
+  --button-sm-padding-x:  var(--spacing-3);
+  --button-sm-font-size:  var(--text-sm);
+
+  --button-md-height:     40px;
+  --button-md-padding-x:  var(--spacing-4);
+  --button-md-font-size:  var(--text-base);
+
+  --button-lg-height:     48px;
+  --button-lg-padding-x:  var(--spacing-6);
+  --button-lg-font-size:  var(--text-lg);
+
+  --button-border-radius: var(--radius-button);
+  --button-font-weight:   var(--font-medium);
+
+  /* 按钮变体 — 功能类（蓝色） */
+  --button-primary-bg:            var(--color-primary-500);
+  --button-primary-bg-hover:      var(--color-primary-600);
+  --button-primary-bg-active:     var(--color-primary-700);
+  --button-primary-text:          var(--color-neutral-0);
+
+  /* 按钮变体 — 确认类（绿色） */
+  --button-success-bg:            var(--color-success);
+  --button-success-bg-hover:      var(--color-success-dark);
+  --button-success-bg-active:     #2E7D32;
+  --button-success-text:          var(--color-neutral-0);
+
+  /* 按钮变体 — 警戒类（黄色） */
+  --button-warning-bg:            var(--color-warning);
+  --button-warning-bg-hover:      var(--color-warning-dark);
+  --button-warning-bg-active:     #F57C00;
+  --button-warning-text:          rgba(0, 0, 0, 0.87);
+
+  /* 按钮变体 — 危险类（红色） */
+  --button-danger-bg:             var(--color-danger);
+  --button-danger-bg-hover:       var(--color-danger-dark);
+  --button-danger-bg-active:      #C62828;
+  --button-danger-text:           var(--color-neutral-0);
+
+  /* 按钮变体 — 禁用（适配深色背景） */
+  --button-disabled-bg:           rgba(36, 38, 42, 0.60);
+  --button-disabled-text:         var(--text-tertiary);
+  --button-disabled-opacity:      0.6;
+
+  /* 卡片通用 */
+  --card-border-radius:       var(--radius-card);
+  --card-padding:             var(--spacing-4);
+  --card-shadow:              var(--shadow-card);
+  --card-shadow-hover:        var(--shadow-card-hover);
+  --card-transition:          var(--transition-card-hover);
+
+  /* 卡片悬停效果 — 工业风：不放大，轻微上浮 */
+  --card-hover-scale:         1.0;
+  --card-hover-lift:          -3px;
+
+  /* 项目卡片 */
+  --card-project-width:       320px;
+  --card-project-height:      140px;
+  --card-project-icon-size:   80px;
+  --card-project-padding:     var(--spacing-5);
+  --card-project-gap:         var(--spacing-3);
+
+  /* 任务卡片 */
+  --card-task-width:          280px;
+  --card-task-height:         110px;
+  --card-task-padding:        var(--spacing-4);
+  --card-task-gap:            var(--spacing-3);
+
+  /* 素材卡片 */
+  --card-material-width:      200px;
+  --card-material-padding:    var(--spacing-3);
+  --card-material-gap:        var(--spacing-2);
+
+  /* 普通卡片 */
+  --card-normal-width:        200px;
+  --card-normal-height:       240px;
+  --card-normal-padding:      var(--spacing-3);
+  --card-normal-gap:          var(--spacing-2);
+  --card-normal-preview-height: 150px;
+
+  /* 卡片网格 */
+  --card-grid-gap:            var(--spacing-4);
+  --card-grid-gap-large:      var(--spacing-6);
+
+  /* 标签 Tag */
+  --tag-height:               24px;
+  --tag-padding-x:            var(--spacing-3);
+  --tag-font-size:            var(--text-xs);
+  --tag-font-weight:          var(--font-medium);
+  --tag-border-radius:        var(--radius-tag);
+
+  /* 输入框 */
+  --input-height-sm:          32px;
+  --input-height-md:          40px;
+  --input-height-lg:          48px;
+  --input-padding-x:          var(--spacing-3);
+  --input-border-radius:      var(--radius-input);
+
+  /* 悬浮岛 */
+  --floating-navbar-height:       100px;
+  --floating-navbar-center-height: 88px;
+  --floating-navbar-padding-x:    var(--spacing-4);
+  --floating-navbar-padding-y:    var(--spacing-2);
+  --floating-navbar-radius:       var(--radius-floating-island);
+  --floating-navbar-gap:          var(--spacing-4);
+
+  --floating-sidebar-width:       100px;
+  --floating-sidebar-padding:     var(--spacing-3);
+  --floating-sidebar-item-size:   60px;
+  --floating-sidebar-gap:         var(--spacing-2);
+
+  --floating-main-padding:        var(--spacing-6);
+  --floating-main-radius:         var(--radius-floating-island);
+
+  /* 侧边栏详情 */
+  --sidebar-width-min:        20%;
+  --sidebar-width-default:    30%;
+  --sidebar-width-max:        60%;
+  --sidebar-slide-in-duration:  var(--duration-normal);
+  --sidebar-slide-out-duration: 200ms;
+  --sidebar-slide-in-ease:      var(--ease-slide-in);
+  --sidebar-slide-out-ease:     var(--ease-slide-out);
+
+  /* 悬浮操作按钮（导航栏独立小悬浮岛按钮，如「更多」） */
+  --floating-action-height:       var(--button-lg-height);
+  --floating-action-padding-x:    var(--spacing-5);
+  --floating-action-radius:       var(--floating-navbar-radius);
+  --floating-action-icon-size:    16px;
+
+  /* 窗口控制按钮 */
+  --window-control-size:      32px;
+  --window-control-gap:       var(--spacing-2);
+  --window-control-radius:    var(--radius-full);
+  --window-control-bg:        rgba(22, 23, 28, 0.55);
+  --window-close-bg:          rgba(224, 90, 90, 0.7);
+  --window-minimize-hover:    rgba(100, 180, 255, 0.12);
+  --window-maximize-hover:    rgba(100, 180, 255, 0.12);
+  --window-close-hover:       var(--color-danger);
+  --window-close-text:        var(--color-neutral-0);
+
+  /* ----- 九、响应式断点 ----- */
+  --breakpoint-sm:    640px;
+  --breakpoint-md:    768px;
+  --breakpoint-lg:    1024px;
+  --breakpoint-xl:    1280px;
+  --breakpoint-2xl:   1536px;
+  --window-min-width:     1280px;
+  --window-min-height:    720px;
+
+  /* ----- 十、Z-Index 层级 ----- */
+  --z-base:           0;
+  --z-dropdown:       1000;
+  --z-sticky:         1020;
+  --z-fixed:          1030;
+  --z-modal-backdrop: 1040;
+  --z-modal:          1050;
+  --z-popover:        1060;
+  --z-tooltip:        1070;
+  --z-notification:   1080;
+  --z-max:            9999;
+
+  --z-sidebar:        var(--z-fixed);
+  --z-navbar:         var(--z-fixed);
+  --z-floating-window: var(--z-modal);
+
+  /* 状态色（不区分主题） */
+  --status-pending:       var(--color-neutral-400);
+  --status-in-progress:   var(--color-warning);
+  --status-completed:     var(--color-success);
+
+  --progress-none:        var(--color-neutral-500);
+  --progress-original:    var(--color-neutral-300);
+  --progress-scaled:      var(--color-info);
+  --progress-done:        var(--color-epic);
+  --progress-uploaded:    var(--color-success);
+
+  /* 标签状态色 */
+  --tag-status-pending-bg:    var(--color-neutral-400);
+  --tag-status-wip-bg:        var(--color-primary-500);
+  --tag-status-progress-bg:   var(--color-warning);
+  --tag-status-completed-bg:  var(--color-success);
+  --tag-status-text:          var(--color-neutral-0);
+
+  --tag-progress-none-bg:     var(--progress-none);
+  --tag-progress-original-bg: var(--progress-original);
+  --tag-progress-scaled-bg:   var(--progress-scaled);
+  --tag-progress-done-bg:     var(--progress-done);
+  --tag-progress-uploaded-bg: var(--progress-uploaded);
+
+  /* 功能色语义应用 */
+  --action-primary:       var(--color-primary-500);
+  --action-primary-hover: var(--color-primary-600);
+  --action-primary-active: var(--color-primary-700);
+
+  --action-confirm:       var(--color-success);
+  --action-confirm-hover: var(--color-success-dark);
+
+  --action-warning:       var(--color-warning);
+  --action-warning-hover: var(--color-warning-dark);
+
+  --action-danger:        var(--color-danger);
+  --action-danger-hover:  var(--color-danger-dark);
+
+  /* 遮罩层 — 弹窗背景遮罩 */
+  --overlay-backdrop:     rgba(0, 0, 0, 0.4);
+
+  /* Canvas 背景色（序列帧预览等） */
+  --canvas-bg:            #0C0D10;
+}
+
+/* =============================================================================
+   亮色主题
+   ============================================================================= */
+:root[data-theme="light"] {
+  /* 应用背景 */
+  --bg-app:               #F0F2F5;
+
+  /* 毛玻璃背景 */
+  --bg-glass-subtle:      rgba(255, 255, 255, 0.05);
+  --bg-glass-medium:      rgba(255, 255, 255, 0.10);
+  --bg-glass-strong:      rgba(255, 255, 255, 0.15);
+
+  /* 内容背景 */
+  --bg-primary:           rgba(255, 255, 255, 0.9);
+  --bg-secondary:         rgba(255, 255, 255, 0.6);
+  --bg-tertiary:          rgba(255, 255, 255, 0.3);
+
+  /* 悬停/激活状态 */
+  --bg-hover:             rgba(33, 150, 243, 0.08);
+  --bg-active:            rgba(33, 150, 243, 0.16);
+  --bg-selected:          rgba(33, 150, 243, 0.12);
+
+  /* 文字颜色 */
+  --text-primary:         rgba(0, 0, 0, 0.87);
+  --text-secondary:       rgba(0, 0, 0, 0.60);
+  --text-tertiary:        rgba(0, 0, 0, 0.38);
+  --text-inverse:         rgba(255, 255, 255, 0.95);
+  --text-link:            var(--color-primary-600);
+  --text-link-hover:      var(--color-primary-700);
+
+  /* 边框颜色 */
+  --border-light:         rgba(0, 0, 0, 0.08);
+  --border-medium:        rgba(0, 0, 0, 0.12);
+  --border-heavy:         rgba(0, 0, 0, 0.20);
+  --border-focus:         var(--color-primary-500);
+  --border-error:         var(--color-danger);
+
+  /* 毛玻璃效果 — 极轻（下拉菜单/浮层遮罩） */
+  --glass-light-blur:         4px;
+
+  /* 毛玻璃效果 — 轻微 */
+  --glass-subtle-bg:          rgba(255, 255, 255, 0.60);
+  --glass-subtle-blur:        8px;
+  --glass-subtle-border:      1px solid rgba(0, 0, 0, 0.08);
+  --glass-subtle-shadow:      0 4px 6px rgba(0, 0, 0, 0.05);
+
+  /* 毛玻璃效果 — 中等 */
+  --glass-medium-bg:          rgba(255, 255, 255, 0.70);
+  --glass-medium-blur:        16px;
+  --glass-medium-border:      1px solid rgba(0, 0, 0, 0.12);
+  --glass-medium-shadow:      0 8px 16px rgba(0, 0, 0, 0.10);
+
+  /* 毛玻璃效果 — 强 */
+  --glass-strong-bg:          rgba(255, 255, 255, 0.80);
+  --glass-strong-blur:        24px;
+  --glass-strong-border:      1px solid rgba(0, 0, 0, 0.15);
+  --glass-strong-shadow:      0 12px 24px rgba(0, 0, 0, 0.15);
+
+  /* 卡片毛玻璃 */
+  --card-glass-bg:            var(--glass-medium-bg);
+  --card-glass-border:        var(--glass-medium-border);
+  --card-glass-backdrop:      blur(var(--glass-medium-blur));
+
+  /* 悬浮岛 */
+  --floating-navbar-bg:       var(--glass-medium-bg);
+  --floating-navbar-border:   var(--glass-medium-border);
+  --floating-navbar-shadow:   var(--shadow-floating);
+  --floating-main-bg:         var(--glass-medium-bg);
+
+  /* 侧边栏 */
+  --sidebar-bg:               var(--glass-strong-bg);
+  --sidebar-backdrop:         blur(var(--glass-strong-blur));
+  --sidebar-border:           var(--glass-strong-border);
+  --sidebar-shadow:           var(--shadow-xl);
+
+  /* 按钮变体 — 次要（毛玻璃） */
+  --button-secondary-bg:          var(--glass-medium-bg);
+  --button-secondary-bg-hover:    rgba(255, 255, 255, 0.15);
+  --button-secondary-border:      var(--border-medium);
+  --button-secondary-text:        var(--text-primary);
+
+  /* 按钮变体 — 幽灵 */
+  --button-ghost-bg:              transparent;
+  --button-ghost-bg-hover:        var(--bg-hover);
+  --button-ghost-text:            var(--color-primary-600);
+
+  /* 输入框 */
+  --input-bg:                 rgba(255, 255, 255, 0.8);
+  --input-bg-disabled:        var(--color-neutral-100);
+  --input-text:               var(--text-primary);
+  --input-placeholder:        var(--text-tertiary);
+  --input-border:             1px solid var(--border-heavy);
+  --input-border-focus:       2px solid var(--border-focus);
+  --input-border-error:       2px solid var(--border-error);
+  --input-transition:         border-color var(--duration-fast) var(--ease-out);
+
+  /* 标签格式 */
+  --tag-format-bg:            var(--glass-subtle-bg);
+  --tag-format-text:          var(--text-secondary);
+  --tag-format-border:        var(--border-light);
+}
+
+/* =============================================================================
+   暗色主题
+   ============================================================================= */
+:root[data-theme="dark"] {
+  /* 应用背景 — 纯净深灰黑 */
+  --bg-app:               #0C0D10;
+
+  /* 毛玻璃背景 — 中性深灰黑底 */
+  --bg-glass-subtle:      rgba(14, 15, 18, 0.30);
+  --bg-glass-medium:      rgba(14, 15, 18, 0.45);
+  --bg-glass-strong:      rgba(14, 15, 18, 0.60);
+
+  /* 内容背景 */
+  --bg-primary:           rgba(22, 23, 28, 0.85);
+  --bg-secondary:         rgba(22, 23, 28, 0.55);
+  --bg-tertiary:          rgba(22, 23, 28, 0.30);
+
+  /* 悬停/激活状态 — 蓝色 wash（仅小面积交互反馈） */
+  --bg-hover:             rgba(74, 158, 245, 0.10);
+  --bg-active:            rgba(74, 158, 245, 0.18);
+  --bg-selected:          rgba(74, 158, 245, 0.14);
+
+  /* 文字颜色 — 高对比近白 */
+  --text-primary:         #E2E4E8;
+  --text-secondary:       #8A8D96;
+  --text-tertiary:        #4A4D54;
+  --text-inverse:         #0C0D10;
+  --text-link:            var(--color-primary-300);
+  --text-link-hover:      #8ECFFF;
+
+  /* 边框颜色 — 冷蓝色亮线（蓝色的主要载体） */
+  --border-light:         rgba(100, 180, 255, 0.10);
+  --border-medium:        rgba(100, 180, 255, 0.14);
+  --border-heavy:         rgba(100, 180, 255, 0.22);
+  --border-focus:         #6BB8FF;
+  --border-error:         var(--color-danger);
+
+  /* 毛玻璃效果 — 极轻（下拉菜单/浮层遮罩） */
+  --glass-light-blur:         4px;
+
+  /* 毛玻璃效果 — 轻微（根层/次要） */
+  --glass-subtle-bg:          rgba(22, 23, 28, 0.45);
+  --glass-subtle-blur:        12px;
+  --glass-subtle-border:      1px solid rgba(100, 180, 255, 0.10);
+  --glass-subtle-shadow:      0 2px 8px rgba(0, 0, 0, 0.35);
+
+  /* 毛玻璃效果 — 中等（一层面板/主功能区） */
+  --glass-medium-bg:          rgba(22, 23, 28, 0.60);
+  --glass-medium-blur:        24px;
+  --glass-medium-border:      1px solid rgba(100, 180, 255, 0.12);
+  --glass-medium-shadow:      0 4px 12px rgba(0, 0, 0, 0.40);
+
+  /* 毛玻璃效果 — 强（二层面板/弹窗） */
+  --glass-strong-bg:          rgba(14, 15, 18, 0.75);
+  --glass-strong-blur:        18px;
+  --glass-strong-border:      1px solid rgba(100, 180, 255, 0.18);
+  --glass-strong-shadow:      0 0 24px rgba(74, 158, 245, 0.10);
+
+  /* 卡片毛玻璃 */
+  --card-glass-bg:            var(--glass-medium-bg);
+  --card-glass-border:        var(--glass-medium-border);
+  --card-glass-backdrop:      blur(var(--glass-medium-blur));
+
+  /* 悬浮岛 */
+  --floating-navbar-bg:       var(--glass-medium-bg);
+  --floating-navbar-border:   var(--glass-medium-border);
+  --floating-navbar-shadow:   var(--shadow-floating);
+  --floating-main-bg:         var(--glass-medium-bg);
+
+  /* 侧边栏 */
+  --sidebar-bg:               var(--glass-strong-bg);
+  --sidebar-backdrop:         blur(var(--glass-strong-blur));
+  --sidebar-border:           var(--glass-strong-border);
+  --sidebar-shadow:           var(--shadow-xl);
+
+  /* 按钮变体 — 次要（毛玻璃） */
+  --button-secondary-bg:          var(--glass-subtle-bg);
+  --button-secondary-bg-hover:    rgba(100, 180, 255, 0.12);
+  --button-secondary-border:      var(--border-medium);
+  --button-secondary-text:        var(--text-primary);
+
+  /* 按钮变体 — 幽灵 */
+  --button-ghost-bg:              transparent;
+  --button-ghost-bg-hover:        rgba(74, 158, 245, 0.10);
+  --button-ghost-text:            var(--color-primary-300);
+
+  /* 输入框 */
+  --input-bg:                 rgba(14, 15, 18, 0.60);
+  --input-bg-disabled:        rgba(22, 23, 28, 0.40);
+  --input-text:               var(--text-primary);
+  --input-placeholder:        var(--text-tertiary);
+  --input-border:             1px solid var(--border-heavy);
+  --input-border-focus:       2px solid var(--border-focus);
+  --input-border-error:       2px solid var(--border-error);
+  --input-transition:         border-color var(--duration-fast) var(--ease-out);
+
+  /* 标签格式 */
+  --tag-format-bg:            var(--glass-subtle-bg);
+  --tag-format-text:          var(--text-secondary);
+  --tag-format-border:        var(--border-light);
+}
+
+/* =============================================================================
+   基础排版应用
+   ============================================================================= */
+html {
+  font-family: var(--font-family-base);
+  font-size: var(--text-base);
+  line-height: var(--leading-body);
+  font-weight: var(--font-weight-body);
+  letter-spacing: var(--tracking-normal);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* =============================================================================
+   公共组件类
+   ============================================================================= */
+
+/** 主功能区小标题栏（各页面共用） */
+.sub-title-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  padding-bottom: var(--spacing-3);
+  border-bottom: 1px solid var(--border-medium);
+  flex-shrink: 0;
+}
+
+.sub-title {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-weight-heading);
+  color: var(--text-primary);
+}
+
+/** 内容区一级分区标题（静帧/序列帧等类型标题） */
+.section-label {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-weight-heading);
+  color: var(--text-primary);
+  margin-top: var(--spacing-4);
+}
+
+/** 内容区二级分组标题（比例分组：原始/[100]/[70]） */
+.group-label {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-heading);
+  color: var(--text-secondary);
+}
+
+/* ===== 全局动画关键帧 ===== */
+
+/* 弹窗内容：从下方轻微缩小滑入 */
+@keyframes dialog-enter {
+  from {
+    transform: translateY(16px) scale(0.97);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* 弹窗内容：退出向下轻微缩小滑出 */
+@keyframes dialog-leave {
+  from {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(8px) scale(0.97);
+    opacity: 0.8;
+  }
+}
+
+/* 下拉菜单：从正上方轻微缩放弹出 */
+@keyframes dropdown-enter {
+  from {
+    transform: translateY(-6px) scale(0.95);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* ===== 卡片网格出入场动画 ===== */
+/* 配合 <TransitionGroup name="card"> 使用 */
+/* 交错延迟通过 --delay CSS 变量控制（父组件通过 :style 传入） */
+
+.card-enter-active {
+  transition: opacity var(--duration-normal) var(--ease-out),
+              transform var(--duration-normal) var(--ease-out);
+  transition-delay: var(--delay, 0ms);
+}
+.card-leave-active {
+  transition: opacity var(--duration-fast) var(--ease-in),
+              transform var(--duration-fast) var(--ease-in);
+}
+.card-enter-from {
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
+}
+.card-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+/* ─── 框选覆盖层 ────────────────────────────────────────── */
+.rubber-band-overlay {
+  position: fixed;
+  pointer-events: none;
+  border: 1px solid var(--color-primary-400);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border-radius: var(--radius-sm);
+  z-index: 300;
+}
+
+/* ─── 通用多选复选框（MaterialCard / NormalCard 共用） ──── */
+.card-checkbox-shared {
+  position: absolute;
+  top: var(--spacing-2);
+  left: var(--spacing-2);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border-medium);
+  background: var(--glass-subtle-bg);
+  backdrop-filter: blur(var(--glass-subtle-blur));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition: all var(--transition-fast);
+}
+
+.card-checkbox-shared.checked {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-neutral-0);
+}

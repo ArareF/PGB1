@@ -1,0 +1,72 @@
+/* =============================================================================
+   毛玻璃效果工具类
+   对应: design/DesignSystem.md 四、毛玻璃效果系统
+   ============================================================================= */
+
+.glass-subtle {
+  background: var(--glass-subtle-bg);
+  backdrop-filter: blur(var(--glass-subtle-blur));
+  -webkit-backdrop-filter: blur(var(--glass-subtle-blur));
+  border: var(--glass-subtle-border);
+  box-shadow: var(--glass-subtle-shadow);
+}
+
+.glass-medium {
+  background: var(--glass-medium-bg);
+  backdrop-filter: blur(var(--glass-medium-blur));
+  -webkit-backdrop-filter: blur(var(--glass-medium-blur));
+  border: var(--glass-medium-border);
+  box-shadow: var(--glass-medium-shadow);
+}
+
+.glass-strong {
+  background: var(--glass-strong-bg);
+  backdrop-filter: blur(var(--glass-strong-blur));
+  -webkit-backdrop-filter: blur(var(--glass-strong-blur));
+  border: var(--glass-strong-border);
+  box-shadow: var(--glass-strong-shadow);
+}
+
+/* =============================================================================
+   噪点纹理叠加 — 工业磨砂金属质感
+   暗色模式下自动启用，通过 ::after 伪元素叠加 SVG feTurbulence 噪点
+   ============================================================================= */
+
+:root {
+  --noise-opacity: 0;
+}
+
+:root[data-theme="dark"] {
+  --noise-opacity: 0.03;
+}
+
+.glass-subtle,
+.glass-medium,
+.glass-strong {
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-subtle::after,
+.glass-medium::after,
+.glass-strong::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  opacity: var(--noise-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+  mix-blend-mode: overlay;
+}
+
+/* 确保 glass 面板内的内容在噪点层之上 */
+.glass-subtle > *,
+.glass-medium > *,
+.glass-strong > * {
+  position: relative;
+  z-index: 1;
+}

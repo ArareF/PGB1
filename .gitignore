@@ -1,0 +1,43 @@
+# 依赖
+node_modules/
+
+# 构建输出
+dist/
+dist-ssr/
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+
+# 编辑器
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# 环境
+*.local
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Windows 临时文件
+nul
+Thumbs.db
+
+# Claude Code 本机配置（权限记录，不共享）
+.claude/settings.local.json
+
+# 调试/开发临时文件
+debug-screenshots/
+psd_test/
+debug-clock.mjs
+psd_debug.pdb
+*.pdb

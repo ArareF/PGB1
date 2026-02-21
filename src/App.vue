@@ -13,11 +13,10 @@ const { loadSettings } = useSettings()
 
 onMounted(async () => {
   initTheme()
-  initScale(0)
   const settings = await loadSettings()
-  if (settings?.general?.uiScale && settings.general.uiScale > 0) {
-    initScale(settings.general.uiScale)
-  }
+  // uiScale: 旧用户可能存了 0（自动模式），统一降级为 100%
+  const scale = (settings?.general?.uiScale ?? 0) > 0 ? settings!.general.uiScale : 1
+  initScale(scale)
 })
 
 // 提醒弹窗和加班设置页面不需要主布局

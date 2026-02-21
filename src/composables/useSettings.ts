@@ -19,7 +19,7 @@ export interface TranslationSettings {
 
 export interface GeneralSettings {
   projectRootDir: string
-  uiScale: number  // 0 = 自动；> 0 = 手动固定值
+  uiScale: number  // UI 缩放比例（1.0 = 100%，默认 1.0）
   autoStart: boolean
 }
 

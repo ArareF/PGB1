@@ -447,7 +447,6 @@ async function onScaleChange(e: Event) {
               :value="editSettings.general.uiScale"
               @change="onScaleChange"
             >
-              <option :value="0">自动（跟随窗口）</option>
               <option :value="0.75">75%</option>
               <option :value="0.80">80%</option>
               <option :value="0.90">90%</option>

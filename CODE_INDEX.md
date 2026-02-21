@@ -1,7 +1,7 @@
 # PGB1 代码索引
 
 > 全量源代码文件职责说明，按目录分组。新会话快速了解代码现状用。
-> 最后更新: 2026-02-21（Sidebar hover 改模糊光晕；编辑模式抖动优化；拖拽排序 FLIP 动画；ShortcutDialog 图标预览+自定义上传+缓存；新增 copy_icon_to_cache 命令；Prototype Bug修复：TaskPage 树形分组改为子分类→大小两级、新增 collect_scales_for_proto_sequence；apply_task_changes 不再为 Prototype 的 01_scale 预建子分类目录；conversion.rs handle_file_event 新增 Prototype 双层路径支持，修复 webp 不识别不转移问题；**游戏介绍页「启动原型」**：新增 find_unity_game_exe 命令（递归以 UnityCrashHandler64.exe 为指纹定位 Unity exe，不依赖文件夹名），GameIntroPage 检测到 Unity 构建时顶部导航动态插入启动按钮）
+> 最后更新: 2026-02-21（打包发布阶段：config/app.ts 新增 APP_NAME/VERSION/DEVELOPER；App.vue 改为加载 settings 后再 initScale；useScale.ts 移除自动缩放逻辑；SettingsPage.vue 加「关于」tab、移除自动缩放选项；lib.rs 新增系统托盘+关闭拦截；hotkey.rs 修复 release 模式翻译窗口 URL；tauri.conf.json 改 NSIS 打包+CSP 补全 media-src+data:）
 
 ---
 
@@ -10,7 +10,7 @@
 | 目录 | 文件数 | 总行数 | 备注 |
 |------|--------|--------|------|
 | src/components/ | 18 | ~4520 | UI 组件（删除 TaskListDialog.vue 死代码） |
-| src/composables/ | 9 | ~720 | 逻辑组件（useStatusBar ~420 行，新增 useScale ~60 行） |
+| src/composables/ | 9 | ~700 | 逻辑组件（useStatusBar ~430 行，useScale 简化为 ~25 行） |
 | src/views/ | 9 | ~4200 | 页面 |
 | src/styles/ | 3 | ~790 | CSS 设计系统（新增 --text-2xs / --glass-light-blur / --panel-blur token） |
 | src/其他 | 7 | ~130 | 入口、路由、配置、布局 |
@@ -24,8 +24,8 @@
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `src/main.ts` | 10 | 应用入口，初始化 Vue 3 + Router，加载样式 |
-| `src/App.vue` | 12 | 根组件，initTheme()，渲染 MainLayout |
-| `src/config/app.ts` | 8 | 全局配置，projectRootDir（Phase 6 改为用户设置） |
+| `src/App.vue` | 12 | 根组件，initTheme()，加载 settings 后 initScale(uiScale \|\| 1)，渲染 MainLayout |
+| `src/config/app.ts` | 8 | 软件元信息 SSOT：`APP_NAME`、`APP_VERSION`、`APP_DEVELOPER` |
 | `src/router/index.ts` | 52 | 9 条路由：`/` → HomePage, `/project/:id` → ProjectPage, `/project/:id/task/:taskId` → TaskPage, game-intro, materials, **`/project/:id/task-list` → TaskListPage**, `/reminder/:type` → ReminderPage, `/overtime` → OvertimePage, `/translator` → TranslatorPage |
 | `src/vite-env.d.ts` | 1 | Vite 类型声明 |
 

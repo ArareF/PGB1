@@ -9,7 +9,7 @@
 
 - **产品**：PGB1 — 2D游戏特效师文件整理工具
 - **技术栈**：Tauri 2.x（Rust + HTML/CSS/JS），目标 Windows
-- **状态**：正式开发阶段（Phase 1~7 ✅，多分辨率响应式缩放 ✅，**全功能完成**）
+- **状态**：✅ **已打包发布 v2.0.0**（Windows NSIS 安装包，系统托盘，自定义图标）
 - **角色**：产品总监（决策）+ Tech Lead / Agent（实现）
 
 ---
@@ -125,6 +125,21 @@ UI 规范的 SSOT，所有视觉参数在这里定义。
 | **识别规则** | 文件类型判定、目录结构解析 | 中段 |
 | **异常处理** | 不合规文件、缺失目录 | 末段 |
 
+### 打包发布 → `docs/打包发布指南.md`
+
+给 Agent 的完整打包手册，**打包前必读**。
+
+| 主题 | 内容 |
+|------|------|
+| **打包命令** | `npm run tauri build`，输出 NSIS `.exe` |
+| **版本号更新** | 三处同步：`package.json` / `tauri.conf.json` / `Cargo.toml` |
+| **图标管理** | `npx tauri icon icon.ico` 重新生成 |
+| **安装程序图片** | BMP 格式，header 150×57，sidebar 164×314 |
+| **CSP 配置** | media-src 必须单独声明；img-src 需含 data:；不要用 WiX（中文名会崩） |
+| **覆盖安装** | 直接运行新版 .exe，用户数据不丢 |
+
+---
+
 ### Prototype 特例 → `design/Prototype特例规则.md`（347行）
 
 Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
@@ -141,6 +156,11 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 | 决策 | 结论 | 背景 |
 |------|------|------|
+| **打包格式** | NSIS only（`"targets": "nsis"`） | WiX 3 不支持中文 productName，会直接报错 |
+| **关闭行为** | 最小化到系统托盘，不退出 | lib.rs CloseRequested 拦截 + hide() |
+| **UI 缩放** | 固定值，默认 100%，无自动模式 | 自动模式（按窗口宽度缩放）效果差，已移除 |
+| **软件名称** | PG素材管理系统，V2.0.0，开发者 Fuchikami | `src/config/app.ts` 为 SSOT |
+| **CSP media-src** | 必须单独声明，含 asset:／blob:／data: | `<video>` 不继承 img-src，缺失打包后视频全灭 |
 | 技术栈 | Tauri 2.x（不用 Electron） | Electron 不支持拖拽文件到外部浏览器 |
 | UI 风格 | 毛玻璃（Glassmorphism），明暗双主题 | — |
 | 自定义字体 | 猫啃网糖圆体 | `design/DesignSystem.md` L456 |
@@ -195,4 +215,17 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 ---
 
-**最后更新**：2026-02-21（Sidebar 视觉优化：hover 改模糊光晕、编辑抖动优化、拖拽 FLIP 动画；ShortcutDialog 新增图标预览+自定义上传+弹窗内预取；新增 Rust 命令 copy_icon_to_cache；全局框选多选：新增 useRubberBandSelect composable，TaskPage/GameIntroPage/MaterialsPage/ScalePage/ConvertPage 五页面接入，GameIntroPage/MaterialsPage 同步补齐多选/全选按钮；TitleBar flipWidth Bug 修复：快速切换页面时标题岛/功能岛宽度卡死问题；Prototype Bug 修复：TaskPage 树形分组改为子分类→大小两级，新增 collect_scales_for_proto_sequence 修复序列帧 scales 不收集问题；apply_task_changes 移除 Prototype 01_scale 预建子分类目录；conversion.rs handle_file_event 支持 Prototype 双层路径，修复静帧转换后 webp 不识别不转移问题；游戏介绍页「启动原型」：新增 find_unity_game_exe Rust 命令以 UnityCrashHandler64.exe 为指纹递归定位 Unity exe，GameIntroPage 检测到构建时顶部导航动态插入启动按钮）
+**最后更新**：2026-02-21
+
+本次会话（打包发布阶段）：
+- 软件名改为「PG素材管理系统」V2.0.0，开发者 Fuchikami；新增 `src/config/app.ts` 集中管理；设置页加「关于」tab
+- Git 初始化，初始提交 + tag v2.0.0
+- 系统托盘：关闭按钮改为隐藏到后台，托盘左键恢复，右键菜单（显示窗口/退出）
+- 图标：从 `icon.ico` 生成全平台尺寸
+- 打包：NSIS 目标，中文界面，免 UAC，自定义 header/sidebar BMP 图片
+- 修复：hotkey.rs release 模式翻译窗口 URL 指向 index.html（应为 /translator）
+- 修复：CSP 缺少 media-src 导致打包后视频/视频缩略图全部失效
+- 移除 UI 自动缩放模式，默认固定 100%
+- 新增 `docs/打包发布指南.md`
+
+之前会话（2026-02-21）：Sidebar 视觉优化；ShortcutDialog 图标预览；useRubberBandSelect 全局框选；TitleBar flipWidth Bug 修复；Prototype Bug 修复；游戏介绍页「启动原型」功能

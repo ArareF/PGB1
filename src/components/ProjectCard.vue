@@ -10,7 +10,7 @@ const props = defineProps<{
 
 const showMenu = ref(false)
 
-const emit = defineEmits<{
+defineEmits<{
   click: [project: ProjectInfo]
   action: [project: ProjectInfo, action: 'rename' | 'deadline' | 'delete']
 }>()

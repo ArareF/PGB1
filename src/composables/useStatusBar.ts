@@ -321,15 +321,6 @@ export function useStatusBar() {
     return Math.floor(diff / 60_000)
   })
 
-  const isOffWork = computed(() => countdownMinutes.value === 0)
-
-  /** 是否还没到上班时间（当前时间 < clock_in） */
-  const isBeforeWork = computed(() => {
-    if (!clockInTime.value) return false
-    const start = parseTimeToday(clockInTime.value)
-    return now.value < start
-  })
-
   function formatMinutes(mins: number): string {
     const h = Math.floor(mins / 60)
     const m = mins % 60

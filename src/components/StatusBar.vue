@@ -55,7 +55,6 @@ const panelStyle = ref({ top: '0px', right: '0px' })
 
 const LONG_PRESS_MS = 500
 let longPressTimer: ReturnType<typeof setTimeout> | null = null
-let longPressTriggered = false
 
 function onOutsideClick(event: MouseEvent) {
   if (rootEl.value && !rootEl.value.contains(event.target as Node)) {
@@ -65,9 +64,7 @@ function onOutsideClick(event: MouseEvent) {
 
 function onBodyPointerDown(e: PointerEvent) {
   if (e.button !== 0) return
-  longPressTriggered = false
   longPressTimer = setTimeout(async () => {
-    longPressTriggered = true
     showConfigPanel.value = true
     await nextTick()
     if (rootEl.value) {

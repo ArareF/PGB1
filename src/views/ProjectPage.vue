@@ -150,16 +150,6 @@ async function pickAepFile(file: FileEntry) {
   await invoke('open_file', { path: file.path })
 }
 
-async function onTasksSaved() {
-  // 重新加载项目信息以更新 enabledTasks
-  await loadProjects()
-  const project = projects.value.find(p => p.name === projectId)
-  if (project) {
-    enabledTasks.value = project.enabled_tasks
-    completedSubtasks.value = project.completed_subtasks
-    await loadTasks(project.path)
-  }
-}
 </script>
 
 <template>

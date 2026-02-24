@@ -39,6 +39,11 @@ impl AttendanceScheduler {
 
     /// 根据配置启动所有常驻定时任务
     pub fn start(&mut self, app: AppHandle, config: &AttendanceConfig) {
+        // 关闭模式：不启动任何定时任务
+        if config.mode == "off" {
+            return;
+        }
+
         // 出勤提醒
         if !config.attendance.clock_in_time.is_empty() {
             let app_clone = app.clone();
@@ -57,8 +62,8 @@ impl AttendanceScheduler {
             }));
         }
 
-        // 日报提醒
-        if !config.daily_report.time.is_empty() {
+        // 日报提醒（独立开关）
+        if config.daily_report.enabled && !config.daily_report.time.is_empty() {
             let app_clone = app.clone();
             let time_str = config.daily_report.time.clone();
             self.daily_report_handle = Some(tauri::async_runtime::spawn(async move {

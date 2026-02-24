@@ -636,9 +636,8 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
                 scales,
                 fps,
             });
-        } else {
+        } else if let Some(path) = files.into_iter().next() {
             // 单文件（如 _01 的静帧）→ 移入独立文件列表
-            let path = files.into_iter().next().unwrap();
             let fname = path
                 .file_name()
                 .and_then(|n| n.to_str())

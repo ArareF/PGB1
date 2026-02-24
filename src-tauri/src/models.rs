@@ -225,9 +225,21 @@ pub struct ApplyTaskResult {
 
 // ─── 日报打卡系统 ─────────────────────────────────────────────
 
+
+fn default_attendance_mode() -> String {
+    "auto".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
 /// 日报打卡配置（持久化到 attendance_config.json）
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AttendanceConfig {
+    /// 打卡模式：“off” 关闭 / “auto” 自动打卡 / “record_only” 仅记录时间
+    #[serde(default = "default_attendance_mode")]
+    pub mode: String,
     pub attendance: AttendanceSettings,
     pub daily_report: DailyReportSettings,
     /// 账号（明文存储，密码不在这里）
@@ -252,6 +264,9 @@ pub struct AttendanceSettings {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DailyReportSettings {
+    /// 日报提醒开关（默认开启）
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     /// 日报提醒时间 "HH:mm"
     pub time: String,
     /// 日报网站 URL
@@ -261,6 +276,7 @@ pub struct DailyReportSettings {
 impl Default for AttendanceConfig {
     fn default() -> Self {
         Self {
+            mode: "auto".to_string(),
             attendance: AttendanceSettings {
                 clock_in_time: "09:50".to_string(),
                 clock_out_time: "19:00".to_string(),
@@ -269,6 +285,7 @@ impl Default for AttendanceConfig {
                 lunch_end_time: None,
             },
             daily_report: DailyReportSettings {
+                enabled: true,
                 time: "18:30".to_string(),
                 url: String::new(),
             },
@@ -286,6 +303,12 @@ pub struct AttendanceRecord {
     pub last_clock_out: Option<String>,
     /// 用户主动关闭出勤提醒的日期 "YYYY-MM-DD"（每天只弹一次用）
     pub dismissed_clock_in_date: Option<String>,
+    /// 实际出勤打卡时间 "HH:MM"（打卡成功时写入，状态栏用真实时间算工时）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_clock_in_time: Option<String>,
+    /// 实际退勤打卡时间 "HH:MM"
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_clock_out_time: Option<String>,
 }
 
 /// 归档版本信息（时光机用）
@@ -413,7 +436,12 @@ pub struct GeneralSettings {
     /// 开机自启动
     #[serde(default)]
     pub auto_start: bool,
+    /// 界面语言（"zh-CN" | "en"）
+    #[serde(default = "default_language")]
+    pub language: String,
 }
+
+fn default_language() -> String { "zh-CN".to_string() }
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -435,6 +463,7 @@ impl Default for AppSettings {
                 project_root_dir: String::new(),
                 ui_scale: 1.0,
                 auto_start: false,
+                language: "zh-CN".to_string(),
             },
             preview: PreviewSettings::default(),
         }

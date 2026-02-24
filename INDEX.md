@@ -9,7 +9,7 @@
 
 - **产品**：PGB1 — 2D游戏特效师文件整理工具
 - **技术栈**：Tauri 2.x（Rust + HTML/CSS/JS），目标 Windows
-- **状态**：✅ **已打包发布 v2.0.0**（Windows NSIS 安装包，系统托盘，自定义图标）
+- **状态**：✅ **已打包发布 v2.2.0**（Windows NSIS 安装包，系统托盘，自定义图标）
 - **角色**：产品总监（决策）+ Tech Lead / Agent（实现）
 
 ---
@@ -175,7 +175,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | 撤销功能 | 不需要 | — |
 | 预览视频版本 | 标记最新版本，不做历史管理 | `design/文件命名与组织规则.md` L1389 |
 | 素材重命名 | 改基础名，所有版本同步改名 | `design/界面设计.md` - 侧边栏底部操作按钮 |
-| 打卡逻辑 | 不做工作日/假期判断，所有弹窗有跳过按钮 | `design/界面设计.md` L874 |
+| 打卡逻辑 | 不做工作日/假期判断，所有弹窗有跳过按钮；三档 mode（off/auto/record_only）+ 日报独立 enabled | `design/界面设计.md` L874 |
 | 翻译模式 | 只有双语自动检测，固定"简洁阳光亲切"风格 | `design/界面设计.md` L1261 |
 | 翻译快捷键 | 支持计算器键（Calculator key） | — |
 
@@ -203,6 +203,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | `sessions/session_2026-02-16.md` | 转换功能、DesignSystem、自定义字体 |
 | `sessions/session_2026-02-17.md` | 日报打卡、翻译功能、快捷方式栏、悬浮窗精简 |
 | `sessions/session_2026-02-21.md` | 全局框选多选：useRubberBandSelect composable、五页面接入、GameIntro/Materials补齐多选按钮、TDZ Bug修复；UI hover Bug修复；任务完成判定加入预览视频上传状态（video_total/video_uploaded）：scan_tasks/scan_projects/TaskCard/TaskPage/子任务弹窗全链路更新；**副标题行固定滚动架构**：MainLayout page-wrapper height:100% + main-content overflow-y:hidden；HomePage 补齐 scroll-content 包装 |
+| `sessions/session_2026-02-22.md` | **v2.2.0** — 视频版本管理修复：子版本号 `_7.1` 支持（regex_strip_version/extract_version_number 元组化）；前端 groupPreviewVideos 数字排序修复 `_9>_10`；outdated 橙色"需更新"标签（design-system 语义变量）；NC 上传旧版本自动清理；子任务弹窗时机修复（confirmPreviewUpload/toggleSubtaskCompletion 补检测、mark_upload_prompted 内存同步、visibilitychange 窗口回焦刷新） |
 
 ---
 
@@ -215,9 +216,16 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 ---
 
-**最后更新**：2026-02-21
+**最后更新**：2026-02-22
 
-本次会话（UI 修复）：
+本次会话（v2.2.0 — 视频版本管理与弹窗修复）：
+- **子版本号支持**：`regex_strip_version` / `extract_version_number` 支持 `_7.1` 格式，返回 `(u32, u32)` 元组比较
+- **前端分组修复**：`groupPreviewVideos` 正则 `/_\d+(\.\d+)?$/`，排序从 `localeCompare` 改数字比较（修复 `_9 > _10`）
+- **outdated 橙色标签**：design-system 新增 `--progress-outdated` / `--tag-progress-outdated-bg` 语义变量；文案 `待更新` → `需更新`
+- **NC 旧版本自动清理**：`copy_preview_to_nextcloud` 复制前删除同组旧版本文件
+- **弹窗时机修复**：`confirmPreviewUpload` / `toggleSubtaskCompletion` 补 `checkSubtaskAutoPrompt()`；`mark_upload_prompted` 后同步内存 `upload_prompted_tasks`（修复 stale read）；新增 `visibilitychange` 窗口回焦自动刷新
+
+之前会话（v2.1.0 — UI 优化）：
 - **TitleBar 返回按钮**：箭头 SVG 从 20→40px；leave 动画 `position:absolute` 导致 `align-self:stretch` 失效向上跳动，加 `top:0; bottom:0` 修复
 - **ProjectCard 菜单**：`<Teleport to="body">` 脱离父级 `glass-subtle` 合成层，使 `glass-medium` 毛玻璃生效；`position: fixed` + 动态坐标；`z-index: var(--z-dropdown)`；菜单样式移至全局 `<style>` 块
 - **StatusBar 配置面板**：加 `<Transition name="config-panel">` 进出场动画（`translateY(-6px) scale(0.95)` + opacity）

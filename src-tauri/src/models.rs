@@ -303,10 +303,10 @@ pub struct AttendanceRecord {
     pub last_clock_out: Option<String>,
     /// 用户主动关闭出勤提醒的日期 "YYYY-MM-DD"（每天只弹一次用）
     pub dismissed_clock_in_date: Option<String>,
-    /// 实际出勤打卡时间 "HH:MM"（打卡成功时写入，状态栏用真实时间算工时）
+    /// 实际出勤打卡时间 "HH:mm"（打卡成功时写入，状态栏用真实时间算工时）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actual_clock_in_time: Option<String>,
-    /// 实际退勤打卡时间 "HH:MM"
+    /// 实际退勤打卡时间 "HH:mm"
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actual_clock_out_time: Option<String>,
 }

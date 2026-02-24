@@ -1,6 +1,6 @@
 [package]
 name = "pgb1"
-version = "2.1.0"
+version = "2.3.1"
 description = "PG素材管理系统 - 2D游戏特效师文件整理工具"
 authors = ["Fuchikami"]
 edition = "2021"
@@ -32,3 +32,6 @@ tauri-plugin-notification = "2"
 base64 = "0.22"
 psd = "0.3"
 tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2.4.0"
+
+log = "0.4"

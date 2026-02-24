@@ -1639,7 +1639,7 @@ pub fn start_conversion<R: Runtime>(
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
         match res {
             Ok(event) => handle_file_event(event, &scale_dir_clone, &done_path_clone, &app_handle_inner),
-            Err(e) => eprintln!("watch error: {:?}", e),
+            Err(e) => log::error!("watch error: {:?}", e),
         }
     }).map_err(|e| e.to_string())?;
 
@@ -5540,7 +5540,7 @@ pub async fn extract_psd_thumbnail(path: String, max_size: u32) -> Result<Option
         let psd = match psd::Psd::from_bytes(&data) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("PSD 解析失败 {}: {}", path, e);
+                log::warn!("PSD 解析失败 {}: {}", path, e);
                 return Ok(None);
             }
         };

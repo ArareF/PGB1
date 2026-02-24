@@ -104,7 +104,7 @@ pub fn handle_file_event<R: Runtime>(
                 let _ = fs::create_dir_all(&target_dir);
             }
             if let Err(e) = fs::rename(&source, &dest) {
-                eprintln!("自动整理失败 ({}): {}", stem, e);
+                log::warn!("自动整理失败 ({}): {}", stem, e);
             } else {
                 let _ = app_handle_clone.emit("conversion-organized", stem);
             }

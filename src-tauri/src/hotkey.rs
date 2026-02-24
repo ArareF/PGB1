@@ -102,7 +102,7 @@ fn create_translator_window(app: &AppHandle) {
             }
         }
         Err(e) => {
-            eprintln!("[hotkey] 创建翻译窗口失败: {}", e);
+            log::error!("[hotkey] 创建翻译窗口失败: {}", e);
         }
     }
 }

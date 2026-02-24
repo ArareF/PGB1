@@ -1,4 +1,4 @@
-mod commands;
+﻿mod commands;
 mod hotkey;
 mod models;
 mod scheduler;
@@ -88,7 +88,7 @@ pub fn run() {
             commands::get_file_mtime,
         ])
         .setup(|app| {
-            let window = app.get_webview_window("main").unwrap();
+            let window = app.get_webview_window("main").expect("main 窗口必须在 tauri.conf.json 中声明");
 
             // ─── 系统托盘 ────────────────────────────────────────
             let show_item = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
@@ -96,7 +96,7 @@ pub fn run() {
             let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(app.default_window_icon().expect("tauri.conf.json 必须配置 windows.icon").clone())
                 .tooltip("PG素材管理系统")
                 .menu(&tray_menu)
                 .show_menu_on_left_click(false)

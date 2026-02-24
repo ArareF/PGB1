@@ -1944,13 +1944,18 @@ pub fn execute_normalize(items: Vec<NormalizePreviewItem>) -> Result<(), String>
         match item.action_type {
             NormalizeActionType::Rename => {
                 // 重命名：将旧路径的基础名部分改为目标名
-                let new_path = old_path.parent().unwrap().join(&item.target_name);
+                let new_path = old_path
+                    .parent()
+                    .ok_or_else(|| format!("无法获取父目录: {}", item.original_path))?
+                    .join(&item.target_name);
                 fs::rename(old_path, new_path)
                     .map_err(|e| format!("重命名失败 ({} -> {}): {}", item.original_name, item.target_name, e))?;
             }
             NormalizeActionType::MoveToFolder => {
                 // 移动到文件夹：创建目标文件夹并移动文件
-                let parent = old_path.parent().unwrap();
+                let parent = old_path
+                    .parent()
+                    .ok_or_else(|| format!("无法获取父目录: {}", item.original_path))?;
                 let target_dir = parent.join(&item.target_name);
                 
                 if !target_dir.exists() {
@@ -1958,7 +1963,11 @@ pub fn execute_normalize(items: Vec<NormalizePreviewItem>) -> Result<(), String>
                         .map_err(|e| format!("创建目标目录 {} 失败: {}", item.target_name, e))?;
                 }
                 
-                let dest_path = target_dir.join(old_path.file_name().unwrap());
+                let dest_path = target_dir.join(
+                    old_path
+                        .file_name()
+                        .ok_or_else(|| format!("无法获取文件名: {}", item.original_path))?,
+                );
                 fs::rename(old_path, dest_path)
                     .map_err(|e| format!("移动文件 {} 到 {} 失败: {}", item.original_name, item.target_name, e))?;
             }

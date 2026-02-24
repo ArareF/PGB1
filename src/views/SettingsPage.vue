@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
 import { useSettings } from '../composables/useSettings'
 import { useTheme } from '../composables/useTheme'
@@ -12,6 +14,7 @@ import { APP_NAME, APP_VERSION, APP_DEVELOPER } from '../config/app'
 
 const route = useRoute()
 const router = useRouter()
+const { t, locale } = useI18n()
 const { setNavigation } = useNavigation()
 const { loadSettings, saveSettings, pickFile, pickDir } = useSettings()
 const { theme, toggleTheme } = useTheme()
@@ -51,8 +54,17 @@ const attendanceSaving = ref(false)
 const attendanceError = ref('')
 const attendanceSaved = ref(false)
 const attendanceDirty = ref(false)
+const attendanceMode = ref<'off' | 'auto' | 'record_only'>('auto')
+const dailyReportEnabled = ref(true)
 let initialPassword = ''
 let initialUsername = ''
+
+// ─── 测试打卡状态 ───────────────────────────────────────────
+const clockTesting = ref(false)
+const clockTestStep = ref('')
+const clockTestMessage = ref('')
+const clockTestResult = ref<'success' | 'error' | ''>('')
+let unlistenTest: UnlistenFn | null = null
 
 async function init() {
   // 加载 AppSettings
@@ -64,10 +76,13 @@ async function init() {
   // 加载日报打卡配置
   try {
     const config = await invoke<{
+      mode?: string
       attendance: { clock_in_time: string; clock_out_time: string; url: string; lunch_start_time?: string; lunch_end_time?: string }
-      daily_report: { time: string; url: string }
+      daily_report: { enabled?: boolean; time: string; url: string }
       username: string
     }>('load_attendance_config')
+    attendanceMode.value = (config.mode ?? 'auto') as 'off' | 'auto' | 'record_only'
+    dailyReportEnabled.value = config.daily_report.enabled ?? true
     clockInTime.value = config.attendance.clock_in_time
     clockOutTime.value = config.attendance.clock_out_time
     attendanceUrl.value = config.attendance.url
@@ -92,13 +107,46 @@ async function init() {
   }
 
   setNavigation({
-    title: '程序设置',
+    title: t('settings.title'),
     showBackButton: true,
     onBack: () => router.back(),
   })
 }
 
-onMounted(init)
+onMounted(async () => {
+  await init()
+  // 监听测试打卡进度
+  unlistenTest = await listen<{ step: string; message: string }>('clock-test-progress', (event) => {
+    const { step, message } = event.payload
+    clockTestStep.value = step
+    clockTestMessage.value = message
+    if (step === 'success') {
+      clockTestResult.value = 'success'
+      clockTesting.value = false
+    } else if (step === 'error') {
+      clockTestResult.value = 'error'
+      clockTesting.value = false
+    }
+  })
+})
+
+onUnmounted(() => {
+  if (unlistenTest) unlistenTest()
+})
+
+async function handleTestClock() {
+  clockTesting.value = true
+  clockTestResult.value = ''
+  clockTestStep.value = ''
+  clockTestMessage.value = t('settings.startingTest')
+  try {
+    await invoke('test_clock_action')
+  } catch (e) {
+    clockTestMessage.value = String(e)
+    clockTestResult.value = 'error'
+    clockTesting.value = false
+  }
+}
 
 /** 监听 AppSettings 变化标记为脏 */
 watch(editSettings, () => {
@@ -106,7 +154,9 @@ watch(editSettings, () => {
 }, { deep: true })
 
 /** 监听出勤字段变化标记为脏 */
-watch([clockInTime, clockOutTime, attendanceUrl, lunchStartTime, lunchEndTime, dailyReportTime, dailyReportUrl, attendanceUsername, attendancePassword], () => {
+watch([clockInTime, clockOutTime, attendanceUrl, lunchStartTime, lunchEndTime,
+       dailyReportTime, dailyReportUrl, attendanceUsername, attendancePassword,
+       attendanceMode, dailyReportEnabled], () => {
   attendanceDirty.value = true
   attendanceSaved.value = false
 })
@@ -136,7 +186,7 @@ async function handleAttendanceSave() {
 
   // 简单校验邮箱格式
   if (attendanceUsername.value && !attendanceUsername.value.includes('@')) {
-    attendanceError.value = '账号格式不正确，请输入有效的邮箱地址'
+    attendanceError.value = t('settings.emailFormatError')
     attendanceSaving.value = false
     return
   }
@@ -144,6 +194,7 @@ async function handleAttendanceSave() {
   try {
     await invoke('save_attendance_config', {
       config: {
+        mode: attendanceMode.value,
         attendance: {
           clock_in_time: clockInTime.value,
           clock_out_time: clockOutTime.value,
@@ -152,6 +203,7 @@ async function handleAttendanceSave() {
           lunch_end_time: lunchEndTime.value || null,
         },
         daily_report: {
+          enabled: dailyReportEnabled.value,
           time: dailyReportTime.value,
           url: dailyReportUrl.value.trim(),
         },
@@ -183,13 +235,13 @@ async function handleAttendanceSave() {
 
 async function browseFile(field: 'imaginePath' | 'texturePackerCliPath' | 'texturePackerGuiPath') {
   if (!editSettings.value) return
-  const path = await pickFile('选择可执行文件', [{ name: 'Executable', extensions: ['exe'] }])
+  const path = await pickFile(t('settings.selectExecutable'), [{ name: 'Executable', extensions: ['exe'] }])
   if (path) editSettings.value.workflow[field] = path
 }
 
 async function browseDir() {
   if (!editSettings.value) return
-  const path = await pickDir('选择项目根目录')
+  const path = await pickDir(t('settings.selectProjectRootDir'))
   if (path) editSettings.value.general.projectRootDir = path
 }
 
@@ -201,6 +253,21 @@ async function onScaleChange(e: Event) {
   await saveSettings(editSettings.value!)
   isDirty.value = false
 }
+
+async function onLanguageChange(e: Event) {
+  const val = (e.target as HTMLSelectElement).value as 'zh-CN' | 'en'
+  locale.value = val
+  editSettings.value!.general.language = val
+  // 语言是运行时偏好，立即持久化
+  await saveSettings(editSettings.value!)
+  isDirty.value = false
+  // 刷新导航标题
+  setNavigation({
+    title: t('settings.title'),
+    showBackButton: true,
+    onBack: () => router.back(),
+  })
+}
 </script>
 
 <template>
@@ -209,19 +276,19 @@ async function onScaleChange(e: Event) {
       <!-- 左侧 Tab 导航 -->
       <aside class="settings-sidebar">
         <button class="tab-btn" :class="{ active: activeTab === 'workflow' }" @click="activeTab = 'workflow'">
-          工作流设置
+          {{ $t('settings.workflowTab') }}
         </button>
         <button class="tab-btn" :class="{ active: activeTab === 'translation' }" @click="activeTab = 'translation'">
-          翻译设置
+          {{ $t('settings.translationTab') }}
         </button>
         <button class="tab-btn" :class="{ active: activeTab === 'attendance' }" @click="activeTab = 'attendance'">
-          日报打卡
+          {{ $t('settings.attendanceTab') }}
         </button>
         <button class="tab-btn" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">
-          通用设置
+          {{ $t('settings.generalTab') }}
         </button>
         <button class="tab-btn" :class="{ active: activeTab === 'about' }" @click="activeTab = 'about'">
-          关于
+          {{ $t('settings.aboutTab') }}
         </button>
 
         <div class="sidebar-footer">
@@ -233,7 +300,7 @@ async function onScaleChange(e: Event) {
             :disabled="!isDirty || saving"
             @click="handleSave"
           >
-            {{ saving ? '正在保存...' : '保存修改' }}
+            {{ saving ? $t('common.saving') : $t('common.saveChanges') }}
           </button>
           <button
             v-else
@@ -242,7 +309,7 @@ async function onScaleChange(e: Event) {
             :disabled="!attendanceDirty || attendanceSaving"
             @click="handleAttendanceSave"
           >
-            {{ attendanceSaving ? '正在保存...' : attendanceSaved ? '已保存 ✓' : '保存修改' }}
+            {{ attendanceSaving ? $t('common.saving') : attendanceSaved ? $t('common.saved') : $t('common.saveChanges') }}
           </button>
         </div>
       </aside>
@@ -251,76 +318,76 @@ async function onScaleChange(e: Event) {
       <main class="settings-content">
         <!-- 工作流设置 -->
         <div v-if="activeTab === 'workflow'" class="settings-section">
-          <h2 class="section-title">工作流设置</h2>
+          <h2 class="section-title">{{ $t('settings.workflowTitle') }}</h2>
 
           <div class="form-group">
-            <label class="form-label">Imagine 路径</label>
+            <label class="form-label">{{ $t('settings.imaginePath') }}</label>
             <div class="path-input-group">
-              <input v-model="editSettings.workflow.imaginePath" type="text" class="form-input" placeholder="请选择 imagine.exe" />
-              <button class="browse-btn" @click="browseFile('imaginePath')">浏览...</button>
+              <input v-model="editSettings.workflow.imaginePath" type="text" class="form-input" :placeholder="$t('settings.imaginePathPlaceholder')" />
+              <button class="browse-btn" @click="browseFile('imaginePath')">{{ $t('common.browse') }}</button>
             </div>
-            <p class="form-hint">用于静帧转换 webp</p>
+            <p class="form-hint">{{ $t('settings.imaginePathHint') }}</p>
           </div>
 
           <div class="form-group">
-            <label class="form-label">TexturePacker CLI 路径</label>
+            <label class="form-label">{{ $t('settings.tpCliPath') }}</label>
             <div class="path-input-group">
-              <input v-model="editSettings.workflow.texturePackerCliPath" type="text" class="form-input" placeholder="请选择 TexturePacker.exe" />
-              <button class="browse-btn" @click="browseFile('texturePackerCliPath')">浏览...</button>
+              <input v-model="editSettings.workflow.texturePackerCliPath" type="text" class="form-input" :placeholder="$t('settings.tpCliPathPlaceholder')" />
+              <button class="browse-btn" @click="browseFile('texturePackerCliPath')">{{ $t('common.browse') }}</button>
             </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label">TexturePacker GUI 路径</label>
+            <label class="form-label">{{ $t('settings.tpGuiPath') }}</label>
             <div class="path-input-group">
-              <input v-model="editSettings.workflow.texturePackerGuiPath" type="text" class="form-input" placeholder="通常与 CLI 路径相同" />
-              <button class="browse-btn" @click="browseFile('texturePackerGuiPath')">浏览...</button>
+              <input v-model="editSettings.workflow.texturePackerGuiPath" type="text" class="form-input" :placeholder="$t('settings.tpGuiPathPlaceholder')" />
+              <button class="browse-btn" @click="browseFile('texturePackerGuiPath')">{{ $t('common.browse') }}</button>
             </div>
           </div>
         </div>
 
         <!-- 翻译设置 -->
         <div v-if="activeTab === 'translation'" class="settings-section">
-          <h2 class="section-title">翻译设置</h2>
+          <h2 class="section-title">{{ $t('settings.translationTitle') }}</h2>
 
           <div class="form-group">
-            <label class="form-label">Gemini API Key</label>
-            <input v-model="editSettings.translation.apiKey" type="password" class="form-input" placeholder="粘贴您的 API Key" />
+            <label class="form-label">{{ $t('settings.apiKey') }}</label>
+            <input v-model="editSettings.translation.apiKey" type="password" class="form-input" :placeholder="$t('settings.apiKeyPlaceholder')" />
           </div>
 
           <div class="form-group">
-            <label class="form-label">AI 模型</label>
+            <label class="form-label">{{ $t('settings.aiModel') }}</label>
             <select v-model="editSettings.translation.model" class="form-select">
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash (推荐)</option>
-              <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (更快更省)</option>
-              <option value="gemini-3-flash-preview">Gemini 3 Flash (最新预览)</option>
-              <option value="gemini-2.5-pro">Gemini 2.5 Pro (最强)</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash ({{ $t('settings.modelFlashRecommended') }})</option>
+              <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite ({{ $t('settings.modelFlashLiteFaster') }})</option>
+              <option value="gemini-3-flash-preview">Gemini 3 Flash ({{ $t('settings.modelFlashPreview') }})</option>
+              <option value="gemini-2.5-pro">Gemini 2.5 Pro ({{ $t('settings.modelProStrongest') }})</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label class="form-label">全局快捷键</label>
-            <input v-model="editSettings.translation.shortcut" type="text" class="form-input" placeholder="例如 Control+Shift+T" />
+            <label class="form-label">{{ $t('settings.globalShortcut') }}</label>
+            <input v-model="editSettings.translation.shortcut" type="text" class="form-input" :placeholder="$t('settings.shortcutPlaceholder')" />
           </div>
 
           <div class="form-group">
             <label class="checkbox-label">
               <input type="checkbox" v-model="editSettings.translation.useCalculatorKey" />
-              拦截计算器键 (Calculator Key) 呼出翻译
+              {{ $t('settings.interceptCalcKey') }}
             </label>
           </div>
 
           <div class="form-group">
-            <label class="form-label">默认语言对</label>
+            <label class="form-label">{{ $t('settings.defaultLangPair') }}</label>
             <div class="lang-pair-row">
               <select v-model="editSettings.translation.langA" class="form-select lang-select">
-                <option value="zh-CN">中文</option>
+                <option value="zh-CN">{{ $t('settings.langChinese') }}</option>
                 <option value="en">English</option>
                 <option value="ja">日本語</option>
               </select>
               <span class="lang-separator">↔</span>
               <select v-model="editSettings.translation.langB" class="form-select lang-select">
-                <option value="zh-CN">中文</option>
+                <option value="zh-CN">{{ $t('settings.langChinese') }}</option>
                 <option value="en">English</option>
                 <option value="ja">日本語</option>
               </select>
@@ -330,58 +397,105 @@ async function onScaleChange(e: Event) {
 
         <!-- 日报打卡 -->
         <div v-if="activeTab === 'attendance'" class="settings-section">
-          <h2 class="section-title">日报打卡</h2>
+          <h2 class="section-title">{{ $t('settings.attendanceTitle') }}</h2>
 
           <div class="attendance-group">
-            <p class="attendance-group-title">考勤设置</p>
+            <p class="attendance-group-title">{{ $t('settings.attendanceGroup') }}</p>
             <div class="form-group">
-              <label class="form-label">出勤提醒时间</label>
+              <label class="form-label">{{ $t('settings.clockMode') }}</label>
+              <div class="mode-btn-group">
+                <button
+                  class="mode-btn"
+                  :class="{ active: attendanceMode === 'off' }"
+                  @click="attendanceMode = 'off'"
+                >{{ $t('settings.clockModeOff') }}</button>
+                <button
+                  class="mode-btn"
+                  :class="{ active: attendanceMode === 'auto' }"
+                  @click="attendanceMode = 'auto'"
+                >{{ $t('settings.clockModeAuto') }}</button>
+                <button
+                  class="mode-btn"
+                  :class="{ active: attendanceMode === 'record_only' }"
+                  @click="attendanceMode = 'record_only'"
+                >{{ $t('settings.clockModeRecordOnly') }}</button>
+              </div>
+              <p v-if="attendanceMode === 'record_only'" class="form-hint">
+                {{ $t('settings.clockModeRecordOnlyHint') }}
+              </p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">{{ $t('settings.clockInTime') }}</label>
               <input v-model="clockInTime" type="time" class="form-input form-input-time" />
             </div>
             <div class="form-group">
-              <label class="form-label">退勤提醒时间</label>
+              <label class="form-label">{{ $t('settings.clockOutTime') }}</label>
               <input v-model="clockOutTime" type="time" class="form-input form-input-time" />
             </div>
             <div class="form-group">
-              <label class="form-label">午休开始时间</label>
+              <label class="form-label">{{ $t('settings.lunchStartTime') }}</label>
               <input v-model="lunchStartTime" type="time" class="form-input form-input-time" />
             </div>
             <div class="form-group">
-              <label class="form-label">午休结束时间</label>
+              <label class="form-label">{{ $t('settings.lunchEndTime') }}</label>
               <input v-model="lunchEndTime" type="time" class="form-input form-input-time" />
             </div>
-            <div class="form-group">
-              <label class="form-label">打卡网站 URL</label>
+            <div class="form-group" :class="{ 'form-group-disabled': attendanceMode !== 'auto' }">
+              <label class="form-label">{{ $t('settings.attendanceUrl') }}</label>
               <input v-model="attendanceUrl" type="text" class="form-input" placeholder="https://timecard.example.com/login.html" />
             </div>
           </div>
 
           <div class="attendance-group">
-            <p class="attendance-group-title">日报设置</p>
+            <div class="group-title-row">
+              <p class="attendance-group-title">{{ $t('settings.dailyReportGroup') }}</p>
+              <label class="toggle-label">
+                <input type="checkbox" v-model="dailyReportEnabled" />
+                {{ $t('settings.dailyReportEnabled') }}
+              </label>
+            </div>
+            <div :class="{ 'form-group-disabled': !dailyReportEnabled }">
             <div class="form-group">
-              <label class="form-label">日报提醒时间</label>
+              <label class="form-label">{{ $t('settings.dailyReportTime') }}</label>
               <input v-model="dailyReportTime" type="time" class="form-input form-input-time" />
             </div>
             <div class="form-group">
-              <label class="form-label">日报网站 URL</label>
+              <label class="form-label">{{ $t('settings.dailyReportUrl') }}</label>
               <input v-model="dailyReportUrl" type="text" class="form-input" placeholder="https://docs.google.com/..." />
+            </div>
             </div>
           </div>
 
-          <div class="attendance-group">
-            <p class="attendance-group-title">账号设置</p>
+          <div class="attendance-group" :class="{ 'form-group-disabled': attendanceMode !== 'auto' }">
+            <p class="attendance-group-title">{{ $t('settings.accountGroup') }}</p>
             <div class="form-group">
-              <label class="form-label">账号</label>
+              <label class="form-label">{{ $t('settings.account') }}</label>
               <input v-model="attendanceUsername" type="text" class="form-input" placeholder="your@email.com" />
             </div>
             <div class="form-group">
-              <label class="form-label">密码</label>
+              <label class="form-label">{{ $t('settings.password') }}</label>
               <div class="path-input-group">
                 <input v-model="attendancePassword" :type="showPassword ? 'text' : 'password'" class="form-input" placeholder="••••••••" />
                 <button class="browse-btn" @click="showPassword = !showPassword">
-                  {{ showPassword ? '隐藏' : '显示' }}
+                  {{ showPassword ? $t('settings.hidePassword') : $t('settings.showPassword') }}
                 </button>
               </div>
+            </div>
+          </div>
+
+          <!-- 测试打卡连接 -->
+          <div class="attendance-group" :class="{ 'form-group-disabled': attendanceMode !== 'auto' }">
+            <p class="attendance-group-title">{{ $t('settings.connectionTest') }}</p>
+            <p class="form-hint">{{ $t('settings.connectionTestHint') }}</p>
+            <button
+              class="test-clock-btn"
+              :disabled="clockTesting || !attendanceUrl || !attendanceUsername"
+              @click="handleTestClock"
+            >
+              {{ clockTesting ? $t('settings.testing') : $t('settings.testConnection') }}
+            </button>
+            <div v-if="clockTestMessage" class="test-progress" :class="{ 'test-success': clockTestResult === 'success', 'test-error': clockTestResult === 'error' }">
+              {{ clockTestMessage }}
             </div>
           </div>
 
@@ -390,27 +504,39 @@ async function onScaleChange(e: Event) {
 
         <!-- 通用设置 -->
         <div v-if="activeTab === 'general'" class="settings-section">
-          <h2 class="section-title">通用设置</h2>
+          <h2 class="section-title">{{ $t('settings.generalTitle') }}</h2>
 
           <div class="form-group">
-            <label class="form-label">项目根目录</label>
+            <label class="form-label">{{ $t('settings.projectRootDir') }}</label>
             <div class="path-input-group">
-              <input v-model="editSettings.general.projectRootDir" type="text" class="form-input" placeholder="选择存放所有项目的文件夹" />
-              <button class="browse-btn" @click="browseDir">浏览...</button>
+              <input v-model="editSettings.general.projectRootDir" type="text" class="form-input" :placeholder="$t('settings.projectRootDirPlaceholder')" />
+              <button class="browse-btn" @click="browseDir">{{ $t('common.browse') }}</button>
             </div>
-            <p class="form-hint">软件将扫描此目录下的文件夹作为项目</p>
+            <p class="form-hint">{{ $t('settings.projectRootDirHint') }}</p>
           </div>
 
           <div class="form-group">
-            <label class="form-label">界面主题</label>
+            <label class="form-label">{{ $t('settings.language') }}</label>
+            <select
+              class="form-select"
+              :value="editSettings.general.language"
+              @change="onLanguageChange"
+            >
+              <option value="zh-CN">中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">{{ $t('settings.uiTheme') }}</label>
             <div class="theme-toggle-row">
-              <span class="theme-current">当前：{{ theme === 'light' ? '浅色' : '深色' }}</span>
-              <button class="browse-btn" @click="toggleTheme">切换为{{ theme === 'light' ? '深色' : '浅色' }}</button>
+              <span class="theme-current">{{ $t('settings.themeCurrent') }}{{ theme === 'light' ? $t('settings.themeLight') : $t('settings.themeDark') }}</span>
+              <button class="browse-btn" @click="toggleTheme">{{ $t('settings.themeSwitchTo') }}{{ theme === 'light' ? $t('settings.themeDark') : $t('settings.themeLight') }}</button>
             </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label">序列帧默认帧率</label>
+            <label class="form-label">{{ $t('settings.defaultFps') }}</label>
             <div class="fps-input-row">
               <input
                 v-model.number="editSettings.preview.defaultFps"
@@ -421,27 +547,27 @@ async function onScaleChange(e: Event) {
               />
               <span class="fps-unit">fps</span>
             </div>
-            <p class="form-hint">序列帧未标注帧率时使用此值播放预览动画</p>
+            <p class="form-hint">{{ $t('settings.defaultFpsHint') }}</p>
           </div>
 
           <div class="form-group">
             <label class="checkbox-label">
               <input type="checkbox" v-model="editSettings.preview.backgroundTransparent" />
-              序列帧预览使用透明背景
+              {{ $t('settings.transparentBg') }}
             </label>
-            <p class="form-hint">关闭时使用黑色背景，开启时显示棋盘格（透明）</p>
+            <p class="form-hint">{{ $t('settings.transparentBgHint') }}</p>
           </div>
 
           <div class="form-group">
             <label class="checkbox-label">
               <input type="checkbox" v-model="editSettings.general.autoStart" />
-              开机自动启动
+              {{ $t('settings.autoStart') }}
             </label>
-            <p class="form-hint">将应用添加到 Windows 启动项，开机后自动运行</p>
+            <p class="form-hint">{{ $t('settings.autoStartHint') }}</p>
           </div>
 
           <div class="form-group">
-            <label class="form-label">UI 缩放</label>
+            <label class="form-label">{{ $t('settings.uiScale') }}</label>
             <select
               class="form-select"
               :value="editSettings.general.uiScale"
@@ -459,18 +585,18 @@ async function onScaleChange(e: Event) {
         </div>
         <!-- 关于 -->
         <div v-if="activeTab === 'about'" class="settings-section about-section">
-          <h2 class="section-title">关于本软件</h2>
+          <h2 class="section-title">{{ $t('settings.aboutTitle') }}</h2>
           <div class="about-card">
             <div class="about-row">
-              <span class="about-label">软件名称</span>
+              <span class="about-label">{{ $t('settings.softwareName') }}</span>
               <span class="about-value">{{ APP_NAME }}</span>
             </div>
             <div class="about-row">
-              <span class="about-label">版本号</span>
+              <span class="about-label">{{ $t('settings.versionLabel') }}</span>
               <span class="about-value">{{ APP_VERSION }}</span>
             </div>
             <div class="about-row">
-              <span class="about-label">开发者</span>
+              <span class="about-label">{{ $t('settings.developerLabel') }}</span>
               <span class="about-value">{{ APP_DEVELOPER }}</span>
             </div>
           </div>
@@ -478,7 +604,7 @@ async function onScaleChange(e: Event) {
       </main>
     </div>
     <div v-else class="loading-state">
-      加载中...
+      {{ $t('common.loading') }}
     </div>
   </div>
 </template>
@@ -758,5 +884,103 @@ async function onScaleChange(e: Event) {
 .about-value {
   font-size: var(--text-sm);
   color: var(--text-primary);
+}
+
+/* 测试打卡按钮 */
+.test-clock-btn {
+  height: 40px;
+  padding: 0 var(--spacing-5);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-primary-500);
+  background: transparent;
+  color: var(--color-primary-500);
+  font-weight: var(--font-bold);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+  align-self: flex-start;
+}
+
+.test-clock-btn:hover:not(:disabled) {
+  background: var(--color-primary-500);
+  color: white;
+}
+
+.test-clock-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.test-progress {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+}
+
+.test-progress.test-success {
+  color: var(--color-success);
+}
+
+.test-progress.test-error {
+  color: var(--color-danger);
+}
+
+/* 打卡模式三段按钮 */
+.mode-btn-group {
+  display: flex;
+  gap: var(--spacing-1);
+}
+
+.mode-btn {
+  flex: 1;
+  height: var(--button-height);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-heading);
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.mode-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+}
+
+.mode-btn.active {
+  color: var(--color-primary-300);
+  background: color-mix(in srgb, var(--color-primary-500) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary-500) 40%, transparent);
+}
+
+/* 日报 group 标题行（标题 + toggle 同行） */
+.group-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-3);
+}
+
+.group-title-row .attendance-group-title {
+  margin-bottom: 0;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* 灰化状态（mode 不适用时） */
+.form-group-disabled {
+  opacity: 0.35;
+  pointer-events: none;
 }
 </style>

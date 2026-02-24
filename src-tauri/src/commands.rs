@@ -61,13 +61,10 @@ pub fn scan_projects(root_dir: String) -> Result<Vec<ProjectInfo>, String> {
         let enabled_tasks = config.enabled_tasks.clone();
         let nextcloud_dir = path.join("03_Render_VFX").join("VFX").join("nextcloud");
 
-        // 统计无子任务的父任务中已全部上传的任务
+        // 统计所有父任务中素材+视频全部上传的任务（含有子任务的父任务）
         let completed_tasks: Vec<String> = enabled_tasks.iter()
             .filter(|t| !t.contains('/'))
             .filter(|parent| {
-                // 有子任务的父任务不在此列（由 completed_subtasks 处理）
-                let has_children = enabled_tasks.iter().any(|t| t.starts_with(&format!("{}/", parent)));
-                if has_children { return false; }
                 let original_dir = export_path.join(parent).join("00_original");
                 let nc_task_dir = nextcloud_dir.join(parent);
                 let is_prototype = parent.to_lowercase() == "prototype";
@@ -230,8 +227,21 @@ fn count_preview_progress(preview_dir: &Path, nc_preview_dir: &Path) -> (u32, u3
         }
     }
 
-    let total = video_names.len() as u32;
-    if total == 0 { return (0, 0); }
+    if video_names.is_empty() { return (0, 0); }
+
+    // 按 baseName 分组（去掉版本号后缀），每组只保留最新版本（按版本号数字比较）
+    // 与前端 groupPreviewVideos 的 localeCompare 对齐：避免字符串比较导致 _9 > _10 的问题
+    let mut groups: std::collections::HashMap<String, (String, bool)> = std::collections::HashMap::new();
+    for (name, is_bd) in &video_names {
+        let stem = name.rsplitn(2, '.').nth(1).unwrap_or(name);
+        let base_name = regex_strip_version(stem).to_string();
+        let entry = groups.entry(base_name).or_insert_with(|| (name.clone(), *is_bd));
+        if extract_version_number(name) > extract_version_number(&entry.0) {
+            *entry = (name.clone(), *is_bd);
+        }
+    }
+
+    let total = groups.len() as u32;
 
     // 收集 nextcloud/preview/ 中的文件名（小写）
     let nc_files: std::collections::HashSet<String> = if nc_preview_dir.exists() {
@@ -262,7 +272,8 @@ fn count_preview_progress(preview_dir: &Path, nc_preview_dir: &Path) -> (u32, u3
         std::collections::HashSet::new()
     };
 
-    let uploaded = video_names.iter().filter(|(name, is_bd)| {
+    // 每组只检查最新版本是否已上传
+    let uploaded = groups.values().filter(|(name, is_bd)| {
         if *is_bd { nc_breakdown_files.contains(name) } else { nc_files.contains(name) }
     }).count() as u32;
 
@@ -508,6 +519,16 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
     let entries =
         fs::read_dir(&original_dir).map_err(|e| format!("无法读取 00_original: {}", e))?;
 
+    // ── Phase 1: 分类收集所有条目 ──
+    // 目录 → 已规范化的序列帧
+    // 文件（stem 末尾 _NN 纯数字后缀）→ 散落的序列帧候选
+    // 文件（其他）→ 独立文件（静帧/视频/其他）
+    let mut dir_entries: Vec<(std::path::PathBuf, String)> = Vec::new();
+    let mut seq_candidates: std::collections::HashMap<String, Vec<std::path::PathBuf>> =
+        std::collections::HashMap::new();
+    let mut standalone_files: Vec<(std::path::PathBuf, String)> = Vec::new();
+    let mut dir_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     for entry in entries {
         let entry = entry.map_err(|e| format!("读取失败: {}", e))?;
         let path = entry.path();
@@ -524,23 +545,88 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
         }
 
         if path.is_dir() {
-            // 序列帧目录
-            let frame_count = count_frames(&path);
-            let first_frame = find_first_frame(&path);
-            let base_name = file_name.clone();
+            dir_names.insert(file_name.clone());
+            dir_entries.push((path, file_name));
+        } else {
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
+            // 检查 stem 末尾是否有 _NN 纯数字后缀（序列帧特征）
+            let seq_base = if let Some(pos) = stem.rfind('_') {
+                let suffix = &stem[pos + 1..];
+                if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+                    Some(stem[..pos].to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some(base) = seq_base {
+                seq_candidates.entry(base).or_default().push(path);
+            } else {
+                standalone_files.push((path, file_name));
+            }
+        }
+    }
 
+    // ── Phase 2: 处理目录（已规范化的序列帧） ──
+    for (path, file_name) in &dir_entries {
+        let frame_count = count_frames(path);
+        let first_frame = find_first_frame(path);
+        let base_name = file_name.clone();
+
+        let progress = determine_progress_sequence(&base_name, &done_dir, &nextcloud_dir);
+        let scales = collect_scales_for_sequence(&base_name, &done_dir);
+        let fps = collect_fps_for_sequence(&base_name, &done_dir);
+
+        // 优先取 02_done 中精灵图三件套大小，回退到 00_original 目录大小
+        let size_bytes = done_size_sequence(&done_dir, &base_name)
+            .unwrap_or_else(|| calc_dir_size(path));
+
+        materials.push(MaterialInfo {
+            name: base_name,
+            file_name: file_name.clone(),
+            path: path.to_string_lossy().to_string(),
+            material_type: MaterialType::Sequence,
+            progress,
+            size_bytes,
+            frame_count,
+            extension: "seq".to_string(),
+            preview_path: first_frame,
+            scales,
+            fps,
+        });
+    }
+
+    // ── Phase 3: 处理散落的序列帧候选组 ──
+    for (base_name, mut files) in seq_candidates {
+        // 同名目录已存在 → 散落文件是残留，跳过
+        if dir_names.contains(&base_name) {
+            continue;
+        }
+
+        if files.len() > 1 {
+            // 多文件同基础名 → 未规范化的序列帧，合并显示
+            files.sort();
+            let frame_count = files.len() as u32;
+            let first_frame = files.first().map(|p| p.to_string_lossy().to_string());
             let progress = determine_progress_sequence(&base_name, &done_dir, &nextcloud_dir);
             let scales = collect_scales_for_sequence(&base_name, &done_dir);
             let fps = collect_fps_for_sequence(&base_name, &done_dir);
-
-            // 优先取 02_done 中精灵图三件套大小，回退到 00_original 目录大小
             let size_bytes = done_size_sequence(&done_dir, &base_name)
-                .unwrap_or_else(|| calc_dir_size(&path));
+                .unwrap_or_else(|| {
+                    files
+                        .iter()
+                        .map(|f| f.metadata().map(|m| m.len()).unwrap_or(0))
+                        .sum()
+                });
 
             materials.push(MaterialInfo {
-                name: base_name,
-                file_name,
-                path: path.to_string_lossy().to_string(),
+                name: base_name.clone(),
+                file_name: base_name.clone(),
+                path: original_dir.to_string_lossy().to_string(),
                 material_type: MaterialType::Sequence,
                 progress,
                 size_bytes,
@@ -551,60 +637,71 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
                 fps,
             });
         } else {
-            // 单个文件
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-
-            // 提取基础名（去掉扩展名，如有 _01 后缀也去掉）
-            let stem = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown");
-            let base_name = stem.strip_suffix("_01").unwrap_or(stem).to_string();
-
-            let material_type = match ext.as_str() {
-                "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" => MaterialType::Image,
-                "mp4" | "mov" | "avi" | "webm" => MaterialType::Video,
-                _ => MaterialType::Other,
-            };
-
-            let progress = if material_type == MaterialType::Image {
-                determine_progress_image(&base_name, &scale_dir, &done_dir, &nextcloud_dir)
-            } else {
-                MaterialProgress::Original
-            };
-
-            let scales = if material_type == MaterialType::Image {
-                collect_scales_for_image(&base_name, &scale_dir)
-            } else {
-                Vec::new()
-            };
-
-            // 优先取 02_done 中的文件大小，回退到 00_original
-            let size_bytes = if material_type == MaterialType::Image {
-                done_size_image(&done_dir, &base_name)
-                    .unwrap_or_else(|| path.metadata().map(|m| m.len()).unwrap_or(0))
-            } else {
-                path.metadata().map(|m| m.len()).unwrap_or(0)
-            };
-
-            materials.push(MaterialInfo {
-                name: base_name,
-                file_name,
-                path: path.to_string_lossy().to_string(),
-                material_type,
-                progress,
-                size_bytes,
-                frame_count: 0,
-                extension: ext,
-                preview_path: Some(path.to_string_lossy().to_string()),
-                scales,
-                fps: None,
-            });
+            // 单文件（如 _01 的静帧）→ 移入独立文件列表
+            let path = files.into_iter().next().unwrap();
+            let fname = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+            standalone_files.push((path, fname));
         }
+    }
+
+    // ── Phase 4: 处理独立文件（静帧/视频/其他） ──
+    for (path, file_name) in standalone_files {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        // 提取基础名（去掉扩展名，如有 _01 后缀也去掉）
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+        let base_name = stem.strip_suffix("_01").unwrap_or(stem).to_string();
+
+        let material_type = match ext.as_str() {
+            "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" => MaterialType::Image,
+            "mp4" | "mov" | "avi" | "webm" => MaterialType::Video,
+            _ => MaterialType::Other,
+        };
+
+        let progress = if material_type == MaterialType::Image {
+            determine_progress_image(&base_name, &scale_dir, &done_dir, &nextcloud_dir)
+        } else {
+            MaterialProgress::Original
+        };
+
+        let scales = if material_type == MaterialType::Image {
+            collect_scales_for_image(&base_name, &scale_dir)
+        } else {
+            Vec::new()
+        };
+
+        // 优先取 02_done 中的文件大小，回退到 00_original
+        let size_bytes = if material_type == MaterialType::Image {
+            done_size_image(&done_dir, &base_name)
+                .unwrap_or_else(|| path.metadata().map(|m| m.len()).unwrap_or(0))
+        } else {
+            path.metadata().map(|m| m.len()).unwrap_or(0)
+        };
+
+        materials.push(MaterialInfo {
+            name: base_name,
+            file_name,
+            path: path.to_string_lossy().to_string(),
+            material_type,
+            progress,
+            size_bytes,
+            frame_count: 0,
+            extension: ext,
+            preview_path: Some(path.to_string_lossy().to_string()),
+            scales,
+            fps: None,
+        });
     }
 
     // 按名称排序
@@ -1220,12 +1317,16 @@ fn sum_files_in_dir(dir: &Path, base_name: &str) -> u64 {
 }
 
 /// 列出序列帧目录中的所有帧文件路径（按文件名排序）
+/// 当提供 base_name 时，只返回匹配 {base_name}_NN.ext 模式的文件
+/// （用于散落序列帧场景，dir_path 为 00_original/ 时过滤出指定序列的帧）
 #[tauri::command]
-pub fn list_sequence_frames(dir_path: String) -> Result<Vec<String>, String> {
+pub fn list_sequence_frames(dir_path: String, base_name: Option<String>) -> Result<Vec<String>, String> {
     let dir = Path::new(&dir_path);
     if !dir.exists() {
         return Ok(Vec::new());
     }
+
+    let prefix = base_name.map(|bn| format!("{}_", bn));
 
     let mut files: Vec<String> = Vec::new();
 
@@ -1240,6 +1341,19 @@ pub fn list_sequence_frames(dir_path: String) -> Result<Vec<String>, String> {
                 .unwrap_or("")
                 .to_lowercase();
             if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "webp" | "bmp") {
+                // 有 base_name 过滤时，只取 {base_name}_NN 模式的文件
+                if let Some(ref pfx) = prefix {
+                    let stem = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("");
+                    if let Some(suffix) = stem.strip_prefix(pfx.as_str()) {
+                        if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+                            files.push(path.to_string_lossy().to_string());
+                        }
+                    }
+                    continue;
+                }
                 files.push(path.to_string_lossy().to_string());
             }
         }
@@ -1937,11 +2051,13 @@ pub fn execute_scaling(requests: Vec<ScaleRequest>) -> Result<(), String> {
 }
 
 /// 扫描目录并按基础名分组文件，生成预览项
+/// 只对 stem 末尾有 _NN 纯数字后缀的文件做分组（序列帧特征），
+/// 同名不同扩展名的文件（如 .jpg+.png 对）不参与分组。
 fn scan_and_group_files(
     dir: &Path,
     preview_items: &mut Vec<NormalizePreviewItem>,
 ) -> Result<(), String> {
-    let mut groups: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    let mut seq_groups: HashMap<String, Vec<PathBuf>> = HashMap::new();
 
     let entries = fs::read_dir(dir).map_err(|e| format!("读取目录失败: {}", e))?;
 
@@ -1956,26 +2072,21 @@ fn scan_and_group_files(
             continue;
         }
 
-        // 提取基础名（去掉扩展名和 _NN 后缀）
+        // 只对 stem 末尾有 _NN 纯数字后缀的文件做分组
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        let base_name = if let Some(pos) = stem.rfind('_') {
+        if let Some(pos) = stem.rfind('_') {
             let suffix = &stem[pos + 1..];
-            if suffix.chars().all(|c| c.is_ascii_digit()) {
-                stem[..pos].to_string()
-            } else {
-                stem.to_string()
+            if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+                let base = stem[..pos].to_string();
+                seq_groups.entry(base).or_default().push(path);
             }
-        } else {
-            stem.to_string()
-        };
-
-        groups.entry(base_name).or_default().push(path);
+        }
+        // 没有 _NN 数字后缀的文件不需要规范化
     }
 
-    for (base_name, mut files) in groups {
+    for (base_name, mut files) in seq_groups {
         if files.len() == 1 {
-            // 单个文件：如果是以 _01 结尾且非 png/jpg 外的其他格式（如 mp4），仅重命名
-            // 实际上 AE 导出的静帧通常是 _01
+            // 单文件以 _01 结尾 → 重命名去后缀
             let path = &files[0];
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
@@ -1992,14 +2103,14 @@ fn scan_and_group_files(
                 });
             }
         } else {
-            // 多个文件：序列帧，移动到以 base_name 命名的文件夹
+            // 多文件同基础名 → 序列帧，移动到以 base_name 命名的文件夹
             files.sort();
             for path in files {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 preview_items.push(NormalizePreviewItem {
                     original_path: path.to_string_lossy().to_string(),
                     original_name: name.to_string(),
-                    target_name: base_name.clone(), // 这里的 target_name 在 MoveToFolder 时表示目录名
+                    target_name: base_name.clone(),
                     action_type: NormalizeActionType::MoveToFolder,
                     is_sequence: true,
                 });
@@ -2098,7 +2209,8 @@ fn collect_best_files(
         if seq_dir.is_dir() {
             return collect_all_files_in_dir(&seq_dir);
         }
-        Vec::new()
+        // 回退到 00_original 中散落的序列帧文件（未规范化）
+        collect_scattered_sequence_files(original_dir, base_name)
     } else {
         // video / other：直接用 00_original
         collect_matching_files_flat(original_dir, base_name)
@@ -2175,6 +2287,31 @@ fn collect_matching_files_flat(dir: &Path, base_name: &str) -> Vec<String> {
             }
         }
     }
+    results
+}
+
+/// 收集散落在目录中的序列帧文件（未规范化状态，文件名形如 base_name_01.png）
+fn collect_scattered_sequence_files(dir: &Path, base_name: &str) -> Vec<String> {
+    let prefix = format!("{}_", base_name);
+    let mut results = Vec::new();
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            if let Some(suffix) = stem.strip_prefix(prefix.as_str()) {
+                if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+                    results.push(path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    results.sort();
     results
 }
 
@@ -3243,6 +3380,21 @@ fn emit_progress(app: &tauri::AppHandle, step: &str, message: &str) {
     }));
 }
 
+/// 获取 WebView 当前 URL（Tauri 原生 API，不依赖 document.title）
+fn get_webview_url(webview: &tauri::WebviewWindow) -> String {
+    webview.url().map(|u| u.to_string()).unwrap_or_default()
+}
+
+/// 从 WebView URL hash 读取状态（格式：#__pgb1_STATE）
+fn read_webview_hash_state(webview: &tauri::WebviewWindow) -> String {
+    webview
+        .url()
+        .ok()
+        .and_then(|u| u.fragment().map(String::from))
+        .and_then(|f| f.strip_prefix("__pgb1_").map(String::from))
+        .unwrap_or_default()
+}
+
 /// 打卡自动化内部实现
 async fn execute_clock_action_inner(
     app_handle: tauri::AppHandle,
@@ -3267,6 +3419,29 @@ async fn execute_clock_action_inner(
         return Err("请先配置日报打卡设置".to_string());
     };
 
+    // ── 模式分发 ──────────────────────────────────────────────
+    if config.mode == "off" {
+        return Err("打卡功能已关闭".to_string());
+    }
+
+    if config.mode == "record_only" {
+        let now = chrono::Local::now();
+        let today = now.format("%Y-%m-%d").to_string();
+        let actual_time = now.format("%H:%M").to_string();
+        let record_path = config_dir.join("attendance_record.json");
+        let mut record = load_attendance_record_internal(&record_path);
+        if action == "clock_in" {
+            record.last_clock_in = Some(today);
+            record.actual_clock_in_time = Some(actual_time.clone());
+        } else {
+            record.last_clock_out = Some(today);
+            record.actual_clock_out_time = Some(actual_time.clone());
+        }
+        save_attendance_record_internal(&record_path, &record);
+        emit_progress(&app_handle, "success", &format!("已记录 {}", actual_time));
+        return Ok(format!("已记录 {}", actual_time));
+    }
+    // ── 以下为 mode == "auto" 的 WebView 自动化逻辑 ─────────────
     if config.attendance.url.is_empty() {
         return Err("打卡网站 URL 未配置".to_string());
     }
@@ -3356,83 +3531,92 @@ async fn execute_clock_action_inner(
     })()"#;
     let _ = webview_window.eval(login_js);
 
-    // 7. 等待页面跳转
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-    // 7a. 检测是否仍在登录页（登录失败诊断）
-    let login_check_js = r#"document.title = window.location.href"#;
-    let _ = webview_window.eval(login_check_js);
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    if let Ok(current_url) = webview_window.title() {
-        if current_url.contains("login") {
-            return Err("登录失败：账号或密码错误，请前往「程序设置 → 日报打卡」检查账号和密码".to_string());
+    // 7. 轮询等待登录跳转（URL 离开 login 页即成功，最多 10 秒）
+    let mut login_ok = false;
+    for _ in 0..20 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let u = get_webview_url(&webview_window);
+        if !u.is_empty() && !u.contains("login") {
+            login_ok = true;
+            break;
         }
+    }
+    if !login_ok {
+        return Err("登录失败：账号或密码错误，请前往「程序设置 → 日报打卡」检查账号和密码".to_string());
     }
 
     emit_progress(&app_handle, "navigating", "正在进入打刻页面...");
 
-    // 8. 点击「打刻」链接（模拟完整鼠标事件链）
-    let dakoku_js = r#"(function() {
-        function simulateClick(el) {
-            var rect = el.getBoundingClientRect();
-            var cx = rect.left + rect.width / 2;
-            var cy = rect.top + rect.height / 2;
-            var opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy};
-            el.dispatchEvent(new MouseEvent('mousedown', opts));
-            el.dispatchEvent(new MouseEvent('mouseup', opts));
-            el.dispatchEvent(new MouseEvent('click', opts));
-        }
-        var links = document.querySelectorAll('a');
-        for (var i = 0; i < links.length; i++) {
-            var text = links[i].textContent || '';
-            var href = links[i].href || '';
-            if (text.indexOf('打刻') >= 0 || href.indexOf('record/register') >= 0) {
-                simulateClick(links[i]); return 'clicked';
+    // 8. 导航到打刻页面
+    //    直接从 URL origin 构造打刻页地址并跳转，比「找链接 → 模拟点击」更可靠
+    let current_url = get_webview_url(&webview_window);
+    if !current_url.contains("record/register") {
+        // 从配置 URL 提取 origin（如 https://timecard.yenbo.jp）
+        let origin = if let Some(scheme_end) = url.find("://") {
+            let after_scheme = &url[scheme_end + 3..];
+            if let Some(slash) = after_scheme.find('/') {
+                &url[..scheme_end + 3 + slash]
+            } else {
+                url.as_str()
+            }
+        } else {
+            url.as_str()
+        };
+        let register_url = format!("{}/record/register.html", origin);
+        let nav_js = format!(r#"window.location.href = '{}'"#, register_url);
+        let _ = webview_window.eval(&nav_js);
+
+        // 轮询等待打刻页加载（最多 10 秒）
+        let mut reached = false;
+        for _ in 0..20 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            if get_webview_url(&webview_window).contains("record/register") {
+                reached = true;
+                break;
             }
         }
-        return 'not_found';
-    })()"#;
-    let _ = webview_window.eval(dakoku_js);
-
-    // 等待打刻页面加载
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-    // 8a. 检测是否成功进入打刻页
-    let _ = webview_window.eval(r#"document.title = window.location.href"#);
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    if let Ok(current_url) = webview_window.title() {
-        if !current_url.contains("record/register") {
-            return Err(format!("未能进入打刻页面（当前页：{}），请检查打卡网站是否正常", current_url));
+        if !reached {
+            let u = get_webview_url(&webview_window);
+            return Err(format!(
+                "未能进入打刻页面（当前页：{}），请检查打卡网站是否正常",
+                u
+            ));
         }
     }
+
+    // 打刻页已就绪，等待页面 JS 初始化完成
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
     emit_progress(&app_handle, "finding-button", "正在查找打卡按钮...");
 
     // 9. 轮询等待目标按钮变为可点击（resetStatus 完成后按钮才会启用）
-    //    Tauri eval() 无返回值，用 document.title 做状态通信
+    //    Tauri eval() 无返回值，用 URL hash (#__pgb1_STATE) 做状态通信
     let button_text = if action == "clock_in" { "出勤" } else { "退勤" };
 
     let mut button_state = String::from("not_found");
-    for _ in 0..30 {
-        // 最多等 15 秒，每 500ms 检查一次
-        let title_js = format!(
-            r#"document.title = (function() {{
+    for _ in 0..60 {
+        // 最多等 15 秒，每 250ms 检查一次
+        let hash_js = format!(
+            r#"(function() {{
                 var elements = document.querySelectorAll('button, input[type="button"], input[type="submit"]');
                 for (var i = 0; i < elements.length; i++) {{
                     var text = elements[i].textContent || elements[i].value || '';
                     if (text.indexOf('{}') >= 0) {{
-                        return elements[i].disabled ? 'disabled' : 'ready';
+                        var s = elements[i].disabled ? 'disabled' : 'ready';
+                        try {{ history.replaceState(null, '', location.pathname + location.search + '#__pgb1_' + s); }} catch(e) {{}}
+                        return;
                     }}
                 }}
-                return 'not_found';
+                try {{ history.replaceState(null, '', location.pathname + location.search + '#__pgb1_not_found'); }} catch(e) {{}}
             }})()"#,
             button_text
         );
-        let _ = webview_window.eval(&title_js);
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let _ = webview_window.eval(&hash_js);
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
 
-        if let Ok(title) = webview_window.title() {
-            button_state = title;
+        let state = read_webview_hash_state(&webview_window);
+        if !state.is_empty() {
+            button_state = state;
             if button_state == "ready" || button_state == "disabled" {
                 break;
             }
@@ -3441,14 +3625,22 @@ async fn execute_clock_action_inner(
 
     // 判断按钮状态
     if button_state == "disabled" {
-        // 按钮已禁用 = 已经打过卡了
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        // 按钮已禁用 = 已经打过卡了（不覆盖已有的 actual 时间）
+        let now = chrono::Local::now();
+        let today = now.format("%Y-%m-%d").to_string();
         let record_path = config_dir.join("attendance_record.json");
         let mut record = load_attendance_record_internal(&record_path);
         if action == "clock_in" {
             record.last_clock_in = Some(today);
+            // 仅在未记录时补写（避免覆盖已有的实际时间）
+            if record.actual_clock_in_time.is_none() {
+                record.actual_clock_in_time = Some(now.format("%H:%M").to_string());
+            }
         } else {
             record.last_clock_out = Some(today);
+            if record.actual_clock_out_time.is_none() {
+                record.actual_clock_out_time = Some(now.format("%H:%M").to_string());
+            }
         }
         save_attendance_record_internal(&record_path, &record);
 
@@ -3501,39 +3693,42 @@ async fn execute_clock_action_inner(
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
         let verify_js = format!(
-            r#"document.title = (function() {{
+            r#"(function() {{
                 var elements = document.querySelectorAll('button, input[type="button"], input[type="submit"]');
                 for (var i = 0; i < elements.length; i++) {{
                     var text = elements[i].textContent || elements[i].value || '';
                     if (text.indexOf('{}') >= 0) {{
-                        return elements[i].disabled ? 'confirmed' : 'pending';
+                        var s = elements[i].disabled ? 'confirmed' : 'pending';
+                        try {{ history.replaceState(null, '', location.pathname + location.search + '#__pgb1_' + s); }} catch(e) {{}}
+                        return;
                     }}
                 }}
-                return 'not_found';
             }})()"#,
             button_text
         );
         let _ = webview_window.eval(&verify_js);
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        if let Ok(title) = webview_window.title() {
-            if title == "confirmed" {
-                confirmed = true;
-                break;
-            }
+        if read_webview_hash_state(&webview_window) == "confirmed" {
+            confirmed = true;
+            break;
         }
     }
 
     // 12. 根据验证结果更新记录
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let now = chrono::Local::now();
+    let today = now.format("%Y-%m-%d").to_string();
+    let actual_time = now.format("%H:%M").to_string();
     let record_path = config_dir.join("attendance_record.json");
 
     if confirmed {
         let mut record = load_attendance_record_internal(&record_path);
         if action == "clock_in" {
             record.last_clock_in = Some(today);
+            record.actual_clock_in_time = Some(actual_time);
         } else {
             record.last_clock_out = Some(today);
+            record.actual_clock_out_time = Some(actual_time);
         }
         save_attendance_record_internal(&record_path, &record);
 
@@ -3543,6 +3738,308 @@ async fn execute_clock_action_inner(
         emit_progress(&app_handle, "success", "打卡操作已执行，请查看浏览器确认结果");
         Ok("打卡操作已执行，请查看浏览器确认结果".to_string())
     }
+}
+
+/// 测试打卡连接（可见 WebView）— 走完登录→打刻页流程，但不点击打卡按钮
+#[tauri::command]
+pub fn test_clock_action(
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let app = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = test_clock_action_inner(app.clone()).await {
+            let _ = app.emit(
+                "clock-test-progress",
+                serde_json::json!({ "step": "error", "message": e.to_string() }),
+            );
+        }
+    });
+    Ok("测试已启动".to_string())
+}
+
+fn emit_test_progress(app: &tauri::AppHandle, step: &str, message: &str) {
+    let _ = app.emit(
+        "clock-test-progress",
+        serde_json::json!({ "step": step, "message": message }),
+    );
+}
+
+async fn test_clock_action_inner(app_handle: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+
+    emit_test_progress(&app_handle, "loading-config", "正在加载配置...");
+
+    // 1. 加载配置和密码
+    let config_dir = app_handle
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("获取配置目录失败: {}", e))?;
+    let config_path = config_dir.join("attendance_config.json");
+
+    let config: AttendanceConfig = if config_path.exists() {
+        let content =
+            fs::read_to_string(&config_path).map_err(|e| format!("读取配置失败: {}", e))?;
+        serde_json::from_str(&content).map_err(|e| format!("解析配置失败: {}", e))?
+    } else {
+        return Err("请先配置日报打卡设置".to_string());
+    };
+
+    if config.attendance.url.is_empty() {
+        return Err("打卡网站 URL 未配置".to_string());
+    }
+    if config.username.is_empty() {
+        return Err("账号未配置".to_string());
+    }
+
+    let password = {
+        let entry = keyring::Entry::new("pgb1-attendance", &config.username)
+            .map_err(|e| format!("读取凭据失败: {}", e))?;
+        match entry.get_password() {
+            Ok(pwd) => pwd,
+            Err(keyring::Error::NoEntry) => return Err("密码未配置".to_string()),
+            Err(e) => return Err(format!("读取密码失败: {}", e)),
+        }
+    };
+
+    emit_test_progress(&app_handle, "opening-page", "正在打开打卡网站...");
+
+    // 2. 创建 **可见** WebView 窗口
+    let webview_label = "webview-clock-test";
+    if let Some(existing) = app_handle.get_webview_window(webview_label) {
+        let _ = existing.close();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
+    let url = config.attendance.url.clone();
+    let webview_window = tauri::WebviewWindowBuilder::new(
+        &app_handle,
+        webview_label,
+        tauri::WebviewUrl::External(url.parse().map_err(|e| format!("URL 无效: {}", e))?),
+    )
+    .title("打卡测试")
+    .inner_size(1024.0, 768.0)
+    .visible(true)
+    .center()
+    .build()
+    .map_err(|e| format!("创建测试 WebView 失败: {}", e))?;
+
+    // 3. 等待页面加载
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+    let current_url = get_webview_url(&webview_window);
+    emit_test_progress(
+        &app_handle,
+        "page-loaded",
+        &format!("页面已加载：{}", current_url),
+    );
+
+    // 如果已在打刻页（可能配置 URL 直指打刻页或登录后自动跳转），跳过登录
+    if current_url.contains("record/register") {
+        emit_test_progress(&app_handle, "success", "已直接到达打刻页面，测试通过！");
+        return Ok(());
+    }
+
+    emit_test_progress(&app_handle, "logging-in", "正在填写账号密码...");
+
+    // 4. 填写账号
+    let fill_username_js = format!(
+        r#"(function() {{
+            var el = document.querySelector('input[type="email"], input[name="username"], input[name="email"], input[type="text"]');
+            if (el) {{ el.value = '{}'; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
+            return 'not_found';
+        }})()"#,
+        config.username.replace('\'', "\\'").replace('"', "\\\"")
+    );
+    let _ = webview_window.eval(&fill_username_js);
+
+    // 5. 填写密码
+    let fill_password_js = format!(
+        r#"(function() {{
+            var el = document.querySelector('input[type="password"]');
+            if (el) {{ el.value = '{}'; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
+            return 'not_found';
+        }})()"#,
+        password.replace('\'', "\\'").replace('"', "\\\"")
+    );
+    let _ = webview_window.eval(&fill_password_js);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    emit_test_progress(&app_handle, "clicking-login", "正在点击登录...");
+
+    // 6. 点击登录按钮
+    let login_js = r#"(function() {
+        function simulateClick(el) {
+            var rect = el.getBoundingClientRect();
+            var cx = rect.left + rect.width / 2;
+            var cy = rect.top + rect.height / 2;
+            var opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy};
+            el.dispatchEvent(new MouseEvent('mousedown', opts));
+            el.dispatchEvent(new MouseEvent('mouseup', opts));
+            el.dispatchEvent(new MouseEvent('click', opts));
+        }
+        var buttons = document.querySelectorAll('button, input[type="submit"]');
+        for (var i = 0; i < buttons.length; i++) {
+            var text = buttons[i].textContent || buttons[i].value || '';
+            if (text.indexOf('ログイン') >= 0 || text.indexOf('Login') >= 0 || text.indexOf('login') >= 0) {
+                if (!buttons[i].disabled) { simulateClick(buttons[i]); return 'clicked'; }
+            }
+        }
+        return 'not_found';
+    })()"#;
+    let _ = webview_window.eval(login_js);
+
+    // 7. 轮询等待登录跳转（最多 10 秒）
+    let mut login_ok = false;
+    let mut current_url = String::new();
+    for _ in 0..20 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        current_url = get_webview_url(&webview_window);
+        if !current_url.is_empty() && !current_url.contains("login") {
+            login_ok = true;
+            break;
+        }
+    }
+
+    emit_test_progress(
+        &app_handle,
+        "after-login",
+        &format!("登录后页面：{}", current_url),
+    );
+
+    if !login_ok {
+        emit_test_progress(
+            &app_handle,
+            "error",
+            &format!("登录失败，仍在登录页：{}", current_url),
+        );
+        return Err("登录失败".to_string());
+    }
+
+    // 如果登录后已经在打刻页
+    if current_url.contains("record/register") {
+        emit_test_progress(&app_handle, "success", "登录成功，已到达打刻页面，测试通过！");
+        return Ok(());
+    }
+
+    emit_test_progress(&app_handle, "navigating", "登录成功，正在导航到打刻页...");
+
+    // 8. 直接导航到打刻页
+    let origin = if let Some(scheme_end) = url.find("://") {
+        let after_scheme = &url[scheme_end + 3..];
+        if let Some(slash) = after_scheme.find('/') {
+            &url[..scheme_end + 3 + slash]
+        } else {
+            url.as_str()
+        }
+    } else {
+        url.as_str()
+    };
+    let register_url = format!("{}/record/register.html", origin);
+    let nav_js = format!(r#"window.location.href = '{}'"#, register_url);
+    let _ = webview_window.eval(&nav_js);
+
+    // 轮询等待（最多 10 秒）
+    let mut reached = false;
+    for _ in 0..20 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let u = get_webview_url(&webview_window);
+        if u.contains("record/register") {
+            reached = true;
+            break;
+        }
+    }
+
+    let final_url = get_webview_url(&webview_window);
+    if !reached {
+        emit_test_progress(
+            &app_handle,
+            "error",
+            &format!("未能到达打刻页面，当前停留在：{}", final_url),
+        );
+        return Ok(());
+    }
+
+    emit_test_progress(
+        &app_handle,
+        "finding-button",
+        &format!("已到达打刻页：{}，正在查找「休憩入」按钮...", final_url),
+    );
+
+    // 等待页面 JS 初始化
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    // 9. 轮询查找「出勤」按钮（用 URL hash 通信）
+    let mut button_state = String::from("not_found");
+    for _ in 0..60 {
+        let hash_js = r#"(function() {
+            var el = document.getElementById('work-start');
+            if (el) {
+                var s = el.disabled ? 'disabled' : 'ready';
+                try { history.replaceState(null, '', location.pathname + location.search + '#__pgb1_' + s); } catch(e) {}
+                return;
+            }
+            var elements = document.querySelectorAll('button, input[type="button"]');
+            for (var i = 0; i < elements.length; i++) {
+                var text = elements[i].textContent || elements[i].value || '';
+                if (text.indexOf('出勤') >= 0) {
+                    var s = elements[i].disabled ? 'disabled' : 'ready';
+                    try { history.replaceState(null, '', location.pathname + location.search + '#__pgb1_' + s); } catch(e) {}
+                    return;
+                }
+            }
+            try { history.replaceState(null, '', location.pathname + location.search + '#__pgb1_not_found'); } catch(e) {}
+        })()"#;
+        let _ = webview_window.eval(hash_js);
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+
+        let state = read_webview_hash_state(&webview_window);
+        if !state.is_empty() {
+            button_state = state.clone();
+            if button_state == "ready" || button_state == "disabled" {
+                break;
+            }
+        }
+    }
+
+    if button_state == "not_found" {
+        emit_test_progress(
+            &app_handle,
+            "error",
+            "未找到「出勤」按钮，页面结构可能已变化",
+        );
+        return Ok(());
+    }
+
+    // 10. 高亮「出勤」按钮（绿色呼吸边框），不点击
+    let highlight_js = r#"(function() {
+        var style = document.createElement('style');
+        style.textContent = '@keyframes __pgb1_pulse{0%,100%{box-shadow:0 0 8px 2px rgba(34,197,94,.6)}50%{box-shadow:0 0 20px 6px rgba(34,197,94,.9)}}';
+        document.head.appendChild(style);
+        var el = document.getElementById('work-start');
+        if (!el) {
+            var elements = document.querySelectorAll('button, input[type="button"]');
+            for (var i = 0; i < elements.length; i++) {
+                if ((elements[i].textContent || '').indexOf('出勤') >= 0) { el = elements[i]; break; }
+            }
+        }
+        if (el) {
+            el.style.outline = '3px solid #22c55e';
+            el.style.outlineOffset = '3px';
+            el.style.animation = '__pgb1_pulse 1.5s ease-in-out infinite';
+            el.scrollIntoView({behavior:'smooth',block:'center'});
+        }
+    })()"#;
+    let _ = webview_window.eval(highlight_js);
+
+    let status_text = if button_state == "disabled" { "已禁用（今天已打卡）" } else { "可点击" };
+    emit_test_progress(
+        &app_handle,
+        "success",
+        &format!("测试通过！已找到「出勤」按钮（{}），请查看浏览器窗口", status_text),
+    );
+
+    Ok(())
 }
 
 /// 显示打卡 WebView 窗口（让用户查看结果）
@@ -4896,21 +5393,67 @@ pub fn scan_preview_videos(
     Ok(files)
 }
 
-/// 去掉文件名末尾的版本号后缀（_01, _02 ...），用于判断是否同一视频的不同版本
+/// 从文件名提取版本号 (major, minor)，支持 _7 → (7,0) 和 _7.1 → (7,1)
+/// 无版本返回 (0, 0)
+fn extract_version_number(filename: &str) -> (u32, u32) {
+    let stem = filename.rsplitn(2, '.').nth(1).unwrap_or(filename);
+    let bytes = stem.as_bytes();
+    let mut i = bytes.len();
+
+    // 尾部数字
+    while i > 0 && bytes[i - 1].is_ascii_digit() { i -= 1; }
+    if i == bytes.len() { return (0, 0); }
+
+    let last_start = i;
+    let last_digits = &stem[last_start..];
+
+    // 检查 .digits 模式（_major.minor）
+    if i > 0 && bytes[i - 1] == b'.' {
+        let dot_pos = i - 1;
+        let mut j = dot_pos;
+        while j > 0 && bytes[j - 1].is_ascii_digit() { j -= 1; }
+        if j < dot_pos && j > 0 && bytes[j - 1] == b'_' {
+            let major: u32 = stem[j..dot_pos].parse().unwrap_or(0);
+            let minor: u32 = last_digits.parse().unwrap_or(0);
+            return (major, minor);
+        }
+    }
+
+    // 简单 _digits
+    if last_start > 0 && bytes[last_start - 1] == b'_' {
+        return (last_digits.parse().unwrap_or(0), 0);
+    }
+
+    (0, 0)
+}
+
+/// 去掉文件名末尾的版本号后缀（_01, _7.1 ...），用于判断是否同一视频的不同版本
 fn regex_strip_version(name: &str) -> &str {
-    // 从末尾匹配 _\d+ 后缀
     let bytes = name.as_bytes();
     let mut i = bytes.len();
-    // 跳过数字
-    while i > 0 && bytes[i - 1].is_ascii_digit() {
-        i -= 1;
+
+    // 1. 从末尾匹配数字
+    while i > 0 && bytes[i - 1].is_ascii_digit() { i -= 1; }
+    if i == bytes.len() { return name; } // 无尾部数字
+
+    let minor_start = i;
+
+    // 2. 检查 .digits 模式（子版本号 _major.minor）
+    if i > 0 && bytes[i - 1] == b'.' {
+        let dot_pos = i - 1;
+        let mut j = dot_pos;
+        while j > 0 && bytes[j - 1].is_ascii_digit() { j -= 1; }
+        if j < dot_pos && j > 0 && bytes[j - 1] == b'_' {
+            return &name[..j - 1]; // _major.minor 全部剥离
+        }
     }
-    // 数字前必须有 _
-    if i > 0 && bytes[i - 1] == b'_' && i < bytes.len() {
-        &name[..i - 1]
-    } else {
-        name
+
+    // 3. 简单 _digits 模式
+    if minor_start > 0 && bytes[minor_start - 1] == b'_' {
+        return &name[..minor_start - 1];
     }
+
+    name
 }
 
 /// 将选中的预览视频复制到 nextcloud/preview/（breakdown 的到 preview/breakdown/）
@@ -4945,6 +5488,29 @@ pub fn copy_preview_to_nextcloud(
 
     fs::create_dir_all(&dest_dir)
         .map_err(|e| format!("创建目录失败: {}", e))?;
+
+    // 删除同组旧版本：baseName 相同但文件名不同的旧文件
+    let new_stem_lower = name_no_ext.to_lowercase();
+    let new_base = regex_strip_version(&new_stem_lower);
+    if let Ok(entries) = fs::read_dir(&dest_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() { continue; }
+            let existing_name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            // 跳过即将写入的同名文件
+            if existing_name.eq_ignore_ascii_case(name) { continue; }
+            let existing_stem = path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            if regex_strip_version(&existing_stem) == new_base {
+                let _ = fs::remove_file(&path); // 静默删除旧版本
+            }
+        }
+    }
 
     let dest = dest_dir.join(name);
     fs::copy(src, &dest)

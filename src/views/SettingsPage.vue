@@ -149,7 +149,12 @@ async function handleTestClock() {
 }
 
 async function handleTestDailyReminder() {
-  await invoke('test_reminder', { reminderType: 'daily-report' }).catch(() => {})
+  attendanceError.value = ''
+  try {
+    await invoke('test_reminder', { reminderType: 'daily-report' })
+  } catch (e) {
+    attendanceError.value = String(e)
+  }
 }
 
 /** 监听 AppSettings 变化标记为脏 */
@@ -467,10 +472,10 @@ async function onLanguageChange(e: Event) {
               <label class="form-label">{{ $t('settings.dailyReportUrl') }}</label>
               <input v-model="dailyReportUrl" type="text" class="form-input" placeholder="https://docs.google.com/..." />
             </div>
+            </div>
             <button class="test-clock-btn" @click="handleTestDailyReminder">
               {{ $t('settings.testDailyReminder') }}
             </button>
-            </div>
           </div>
 
           <div class="attendance-group" :class="{ 'form-group-disabled': attendanceMode !== 'auto' }">

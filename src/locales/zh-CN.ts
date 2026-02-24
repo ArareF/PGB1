@@ -266,6 +266,7 @@ export default {
     connectionTest: '连接测试',
     connectionTestHint: '打开可见浏览器窗口，依次执行：登录 → 进入打刻页面。不会实际打卡。',
     testConnection: '测试打卡连接',
+    testDailyReminder: '预览提醒弹窗',
     testing: '测试中...',
     emailFormatError: '账号格式不正确，请输入有效的邮箱地址',
     startingTest: '正在启动测试...',

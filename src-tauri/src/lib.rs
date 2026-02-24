@@ -57,6 +57,7 @@ pub fn run() {
             commands::show_clock_webview,
             commands::close_clock_webview,
             commands::open_daily_report,
+            commands::test_reminder,
             commands::load_attendance_record,
             commands::save_attendance_record,
             commands::dismiss_clock_in_reminder,

@@ -148,6 +148,10 @@ async function handleTestClock() {
   }
 }
 
+async function handleTestDailyReminder() {
+  await invoke('test_reminder', { reminderType: 'daily-report' }).catch(() => {})
+}
+
 /** 监听 AppSettings 变化标记为脏 */
 watch(editSettings, () => {
   isDirty.value = true
@@ -463,6 +467,9 @@ async function onLanguageChange(e: Event) {
               <label class="form-label">{{ $t('settings.dailyReportUrl') }}</label>
               <input v-model="dailyReportUrl" type="text" class="form-input" placeholder="https://docs.google.com/..." />
             </div>
+            <button class="test-clock-btn" @click="handleTestDailyReminder">
+              {{ $t('settings.testDailyReminder') }}
+            </button>
             </div>
           </div>
 

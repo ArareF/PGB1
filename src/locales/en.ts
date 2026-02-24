@@ -254,6 +254,7 @@ export default {
     connectionTest: 'Connection Test',
     connectionTestHint: 'Opens a visible browser window to test: Login → Navigate to clock page. No actual clock action.',
     testConnection: 'Test Connection',
+    testDailyReminder: 'Preview Reminder',
     testing: 'Testing...',
     emailFormatError: 'Invalid account format. Please enter a valid email address.',
     startingTest: 'Starting test...',

@@ -4146,6 +4146,12 @@ pub async fn open_daily_report(app_handle: tauri::AppHandle) -> Result<(), Strin
     Ok(())
 }
 
+/// 测试提醒弹窗（设置页用）
+#[tauri::command]
+pub fn test_reminder(app_handle: tauri::AppHandle, reminder_type: String) -> Result<(), String> {
+    crate::scheduler::create_reminder_window(&app_handle, &reminder_type)
+}
+
 /// 加载本地打卡记录
 #[tauri::command]
 pub fn load_attendance_record(app_handle: tauri::AppHandle) -> Result<AttendanceRecord, String> {

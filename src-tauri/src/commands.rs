@@ -5016,7 +5016,7 @@ pub fn rename_material(
                         if fname.starts_with(base_name.as_str()) {
                             let fsuffix = &fname[base_name.len()..];
                             let new_fname = format!("{}{}", new_base_name, fsuffix);
-                            let _ = fs::rename(&fpath, fpath.parent().unwrap().join(&new_fname));
+                            let _ = fs::rename(&fpath, fpath.parent().expect("read_dir 帧文件必有父目录").join(&new_fname));
                         }
                     }
                 }

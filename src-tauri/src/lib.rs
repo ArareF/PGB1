@@ -53,6 +53,7 @@ pub fn run() {
             commands::save_attendance_password,
             commands::load_attendance_password,
             commands::execute_clock_action,
+            commands::test_clock_action,
             commands::show_clock_webview,
             commands::close_clock_webview,
             commands::open_daily_report,

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+const { t } = useI18n()
 const route = useRoute()
 const reminderType = computed(() => route.params.type as string)
 
@@ -21,6 +23,9 @@ const resultMessage = ref('')
 let unlisten: UnlistenFn | null = null
 
 onMounted(async () => {
+  // 路由渲染完成后再显示窗口，消除闪烁（窗口创建时 visible(false)）
+  await getCurrentWindow().show()
+
   unlisten = await listen<{ step: string; message: string }>('clock-progress', (event) => {
     const { step, message } = event.payload
     progressStep.value = step
@@ -47,36 +52,36 @@ const config = computed(() => {
   switch (reminderType.value) {
     case 'clock-in':
       return {
-        title: '出勤打卡提醒',
-        body: '现在是出勤打卡时间',
-        buttons: [{ label: '出勤打卡', action: 'clockIn', primary: true }],
+        title: t('reminder.clockInTitle'),
+        body: t('reminder.clockInBody'),
+        buttons: [{ label: t('reminder.clockIn'), action: 'clockIn', primary: true }],
       }
     case 'clock-out':
       return {
-        title: '退勤打卡提醒',
-        body: '现在是退勤打卡时间',
+        title: t('reminder.clockOutTitle'),
+        body: t('reminder.clockOutBody'),
         buttons: [
-          { label: '正常退勤', action: 'clockOut', primary: true },
-          { label: '加班', action: 'overtime', primary: false },
+          { label: t('reminder.normalClockOut'), action: 'clockOut', primary: true },
+          { label: t('reminder.overtime'), action: 'overtime', primary: false },
         ],
       }
     case 'daily-report':
       return {
-        title: '日报提醒',
-        body: '现在是日报填写时间',
-        buttons: [{ label: '打开日报', action: 'openReport', primary: true }],
+        title: t('reminder.dailyReportTitle'),
+        body: t('reminder.dailyReportBody'),
+        buttons: [{ label: t('reminder.openReport'), action: 'openReport', primary: true }],
       }
     case 'overtime':
       return {
-        title: '退勤打卡提醒',
-        body: '加班时间到',
-        buttons: [{ label: '正常退勤', action: 'clockOut', primary: true }],
+        title: t('reminder.overtimeTitle'),
+        body: t('reminder.overtimeBody'),
+        buttons: [{ label: t('reminder.normalClockOut'), action: 'clockOut', primary: true }],
       }
     default:
       return {
-        title: '提醒',
+        title: t('reminder.defaultTitle'),
         body: '',
-        buttons: [{ label: '关闭', action: 'dismiss', primary: true }],
+        buttons: [{ label: t('common.close'), action: 'dismiss', primary: true }],
       }
   }
 })
@@ -101,13 +106,13 @@ async function handleAction(action: string) {
     switch (action) {
       case 'clockIn':
         clockingMode.value = true
-        progressMessage.value = '正在准备...'
+        progressMessage.value = t('reminder.preparing')
         await invoke('execute_clock_action', { action: 'clock_in' })
         break
 
       case 'clockOut':
         clockingMode.value = true
-        progressMessage.value = '正在准备...'
+        progressMessage.value = t('reminder.preparing')
         await invoke('execute_clock_action', { action: 'clock_out' })
         break
 
@@ -140,14 +145,14 @@ async function handleAction(action: string) {
 <template>
   <div class="reminder-container glass-strong" data-tauri-drag-region>
     <!-- 关闭按钮 -->
-    <button class="close-btn" title="关闭" @click="closeWindow">×</button>
+    <button class="close-btn" :title="$t('common.close')" @click="closeWindow">×</button>
 
     <!-- 打卡进度模式 -->
     <template v-if="clockingMode">
       <!-- 有结果了 -->
       <template v-if="clockResult">
         <p class="reminder-title">
-          {{ clockResult === 'error' ? '打卡失败' : '打卡完成' }}
+          {{ clockResult === 'error' ? $t('reminder.clockFailed') : $t('reminder.clockComplete') }}
         </p>
         <div class="divider"></div>
         <p class="reminder-body" :class="{ 'error-body': clockResult === 'error' }">
@@ -155,12 +160,12 @@ async function handleAction(action: string) {
         </p>
         <div class="btn-group">
           <template v-if="clockResult === 'error'">
-            <button class="action-btn action-btn-secondary" @click="closeWindow">关闭</button>
+            <button class="action-btn action-btn-secondary" @click="closeWindow">{{ $t('common.close') }}</button>
           </template>
           <template v-else>
-            <button class="action-btn action-btn-primary" @click="closeWindow">确认</button>
+            <button class="action-btn action-btn-primary" @click="closeWindow">{{ $t('common.confirm') }}</button>
             <button class="action-btn action-btn-secondary" @click="handleAction('showResult')">
-              查看结果
+              {{ $t('reminder.viewResult') }}
             </button>
           </template>
         </div>
@@ -168,7 +173,7 @@ async function handleAction(action: string) {
 
       <!-- 进行中 -->
       <template v-else>
-        <p class="reminder-title">正在打卡</p>
+        <p class="reminder-title">{{ $t('reminder.clocking') }}</p>
         <div class="divider"></div>
         <p class="progress-message">{{ progressMessage }}</p>
         <div class="progress-bar-track">

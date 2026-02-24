@@ -160,6 +160,7 @@ pub fn create_reminder_window(app: &AppHandle, reminder_type: &str) -> Result<()
         .transparent(true)
         .always_on_top(true)
         .center()
+        .visible(false)
         .build()
         .map_err(|e| format!("创建提醒窗口失败: {}", e))?;
 

@@ -4125,9 +4125,23 @@ pub async fn open_daily_report(app_handle: tauri::AppHandle) -> Result<(), Strin
     .build()
     .map_err(|e| format!("创建日报窗口失败: {}", e))?;
 
-    // 等待页面加载后滚动到底部
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-    let _ = window.eval("window.scrollTo(0, document.body.scrollHeight)");
+    // 后台等待 Google Docs 加载完成后滚动到底部（不阻塞命令返回）
+    tauri::async_runtime::spawn(async move {
+        // 初始等待 2 秒让页面开始加载
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        // 轮询找到 Google Docs 真实滚动容器后执行滚动（最多等待 10 秒）
+        let script = r#"
+            (function scroll(retries) {
+                var el = document.querySelector('.kix-appview-editor-scroller');
+                if (el) {
+                    el.scrollTop = el.scrollHeight;
+                } else if (retries > 0) {
+                    setTimeout(function() { scroll(retries - 1); }, 500);
+                }
+            })(20);
+        "#;
+        let _ = window.eval(script);
+    });
 
     Ok(())
 }

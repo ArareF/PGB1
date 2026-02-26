@@ -2,8 +2,13 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
+import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
 import { useSettings } from '../composables/useSettings'
+import PageGuideOverlay from '../components/PageGuideOverlay.vue'
+import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
+
+const { t } = useI18n()
 
 interface GlobalTaskChild {
   name: string
@@ -36,6 +41,7 @@ type TabType = 'enable' | 'edit' | 'archive'
 const route = useRoute()
 const router = useRouter()
 const { setNavigation } = useNavigation()
+const showGuide = ref(false)
 
 // 从路由参数/query 读取
 const projectId = route.params.projectId as string
@@ -130,11 +136,13 @@ watch(activeTab, (tab) => {
 
 onMounted(async () => {
   setNavigation({
-    title: `任务列表 · ${projectId}`,
+    title: `${t('taskList.title')} · ${projectId}`,
     showBackButton: true,
     onBack: () => router.push({ name: 'project', params: { projectId } }),
     actions: [],
-    moreMenuItems: [],
+    moreMenuItems: [
+      { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
+    ],
   })
 
   try {
@@ -236,14 +244,14 @@ async function restoreArchive(version: ArchivedVersion) {
     })
     await loadArchivedTasks()
   } catch (e: any) {
-    showAlert('恢复失败', typeof e === 'string' ? e : e.message || '恢复失败')
+    showAlert(t('taskList.restoreFailed'), typeof e === 'string' ? e : e.message || t('taskList.restoreFailed'))
   }
 }
 
 function deleteArchive(version: ArchivedVersion) {
   showConfirm(
-    '删除归档',
-    `确定删除「${version.task_name}」的归档版本 ${version.display_time}？此操作不可撤销。`,
+    t('taskList.deleteArchive'),
+    t('taskList.confirmDeleteArchive', { taskName: version.task_name, version: version.display_time }),
     async () => {
       try {
         await invoke('delete_archived_version', {
@@ -324,28 +332,28 @@ function handleCancel() {
           :class="{ active: activeTab === 'enable' }"
           @click="activeTab = 'enable'"
         >
-          任务启用
+          {{ $t('taskList.enableTab') }}
         </button>
         <button
           class="tab-btn"
           :class="{ active: activeTab === 'edit' }"
           @click="activeTab = 'edit'"
         >
-          模板编辑
+          {{ $t('taskList.templateTab') }}
         </button>
         <button
           class="tab-btn"
           :class="{ active: activeTab === 'archive' }"
           @click="activeTab = 'archive'"
         >
-          时光机
+          {{ $t('taskList.timeMachine') }}
         </button>
       </div>
     </div>
 
     <!-- 加载中 -->
     <div v-if="loading" class="page-body">
-      <p class="hint-text">加载中...</p>
+      <p class="hint-text">{{ $t('common.loading') }}</p>
     </div>
 
     <!-- Tab 1: 任务启用 -->
@@ -374,22 +382,22 @@ function handleCancel() {
     <div v-show="!loading && activeTab === 'edit'" class="page-body">
       <template v-for="(task, tIdx) in editedTasks" :key="tIdx">
         <div class="edit-row">
-          <input v-model="task.name" class="edit-input" placeholder="任务名称" />
-          <button class="edit-delete-btn" title="删除任务" @click="removeTask(tIdx)">&times;</button>
+          <input v-model="task.name" class="edit-input" :placeholder="$t('taskList.taskNamePlaceholder')" />
+          <button class="edit-delete-btn" :title="$t('common.delete')" @click="removeTask(tIdx)">&times;</button>
         </div>
         <div
           v-for="(child, cIdx) in task.children"
           :key="`${tIdx}-${cIdx}`"
           class="edit-row edit-child-row"
         >
-          <input v-model="child.name" class="edit-input edit-child-input" placeholder="子任务名称" />
-          <button class="edit-delete-btn" title="删除子任务" @click="removeChild(tIdx, cIdx)">&times;</button>
+          <input v-model="child.name" class="edit-input edit-child-input" :placeholder="$t('taskList.subtaskNamePlaceholder')" />
+          <button class="edit-delete-btn" :title="$t('common.delete')" @click="removeChild(tIdx, cIdx)">&times;</button>
         </div>
         <div class="edit-row edit-child-row edit-add-row">
           <input
             v-model="newChildNames[tIdx]"
             class="edit-input edit-child-input"
-            placeholder="添加子任务..."
+            :placeholder="$t('taskList.addSubtaskPlaceholder')"
             @keydown.enter="addChild(tIdx)"
           />
           <button
@@ -405,7 +413,7 @@ function handleCancel() {
         <input
           v-model="newTaskName"
           class="edit-input"
-          placeholder="添加新任务..."
+          :placeholder="$t('taskList.addTaskPlaceholder')"
           @keydown.enter="addTask"
         />
         <button class="edit-add-btn" :disabled="!newTaskName.trim()" @click="addTask">+</button>
@@ -414,8 +422,8 @@ function handleCancel() {
 
     <!-- Tab 3: 时光机 -->
     <div v-show="!loading && activeTab === 'archive'" class="page-body">
-      <div v-if="archiveLoading" class="hint-text">加载中...</div>
-      <div v-else-if="groupedArchives.length === 0" class="hint-text">暂无归档任务</div>
+      <div v-if="archiveLoading" class="hint-text">{{ $t('common.loading') }}</div>
+      <div v-else-if="groupedArchives.length === 0" class="hint-text">{{ $t('taskList.noArchived') }}</div>
       <template v-else>
         <div v-for="group in groupedArchives" :key="group.taskName" class="archive-group">
           <p class="archive-task-name">{{ group.taskName }}</p>
@@ -426,8 +434,8 @@ function handleCancel() {
           >
             <span class="archive-time">{{ ver.display_time }}</span>
             <div class="archive-actions">
-              <button class="archive-btn archive-restore-btn" @click="restoreArchive(ver)">恢复</button>
-              <button class="archive-btn archive-delete-btn" @click="deleteArchive(ver)">删除</button>
+              <button class="archive-btn archive-restore-btn" @click="restoreArchive(ver)">{{ $t('taskList.restore') }}</button>
+              <button class="archive-btn archive-delete-btn" @click="deleteArchive(ver)">{{ $t('common.delete') }}</button>
             </div>
           </div>
         </div>
@@ -437,16 +445,16 @@ function handleCancel() {
     <!-- 底部操作栏 -->
     <div class="page-footer">
       <button class="action-btn action-btn-primary" :disabled="saving" @click="handleConfirm">
-        {{ saving ? '处理中...' : activeTab === 'archive' ? '关闭' : '确定' }}
+        {{ saving ? $t('common.processing') : activeTab === 'archive' ? $t('common.close') : $t('common.ok') }}
       </button>
       <button class="action-btn action-btn-secondary" :disabled="saving" @click="handleCancel">
-        取消
+        {{ $t('common.cancel') }}
       </button>
     </div>
 
     <!-- 内部确认/提示弹窗 -->
     <Teleport to="body">
-      <div v-if="innerDialog.visible" class="inner-dialog-overlay" @click.self="handleInnerCancel">
+      <div v-if="innerDialog.visible" class="inner-dialog-overlay">
         <div class="inner-dialog glass-strong">
           <p class="inner-dialog-title">{{ innerDialog.title }}</p>
           <p class="inner-dialog-message">{{ innerDialog.message }}</p>
@@ -456,15 +464,16 @@ function handleCancel() {
               class="action-btn action-btn-primary"
               @click="handleInnerConfirm"
             >
-              确定
+              {{ $t('common.ok') }}
             </button>
             <button class="action-btn action-btn-secondary" @click="handleInnerCancel">
-              {{ innerDialog.type === 'alert' ? '知道了' : '取消' }}
+              {{ innerDialog.type === 'alert' ? $t('common.gotIt') : $t('common.cancel') }}
             </button>
           </div>
         </div>
       </div>
     </Teleport>
+    <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.taskList" @close="showGuide = false" />
   </div>
 </template>
 

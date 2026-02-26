@@ -33,6 +33,7 @@ export default {
     skip: '跳过',
     back: '返回',
     more: '更多',
+    pageGuide: '页面指引',
     longPressHint: '（长按选择版本）',
     reset: '重置',
   },
@@ -169,9 +170,13 @@ export default {
     converting: '正在转换...',
     externalToolHint: '请在外部工具中完成导出\n程序将自动分类归位',
     conversionComplete: '转换已全部完成！',
+    sequenceStartFailed: '序列帧转换启动失败',
     skippedSequences: '以下序列帧未发布，已跳过',
     startMaking: '开始制作',
     finishConversion: '完成转换',
+    tpPreset: 'TexturePacker 预设',
+    tpScale: '缩放比例',
+    tpWebpQuality: 'WebP 质量',
     selectTitle: '格式转换选择',
     selectDesc: '选择待转换的素材，序列帧需指定帧率',
     allConverted: '暂无需要转换的素材（已全部完成转换）',
@@ -473,4 +478,92 @@ export default {
   layout: {
     attendance: '日报打卡',
   },
+
+  onboarding: {
+    // 步骤标题
+    welcomeTitle: '欢迎使用 PG素材管理系统',
+    welcomeDesc: '让我们花一分钟完成基础设置',
+    languageTitle: '选择界面语言',
+    languageDesc: '你可以随时在设置中修改',
+    projectDirTitle: '设置项目根目录',
+    projectDirDesc: '软件将扫描此目录下的文件夹作为项目',
+    projectDirHint: '首次使用建议新建一个空文件夹，再把项目文件夹放进去',
+    toolPathsTitle: '工具路径（可跳过）',
+    toolPathsDesc: '用于静帧转换和序列帧打包，已自动扫描常见安装位置',
+    autoDetected: '已检测',
+    toolNotFound: '未检测到，请手动选择',
+    attendanceTitle: '打卡模式',
+    attendanceDesc: '选择适合你的考勤方式，之后可在设置中修改',
+    attendanceModeOff: '不开启',
+    attendanceModeAuto: '自动打卡',
+    attendanceModeRecord: '仅记录',
+    // 页面介绍
+    pageIntroTitle: '功能介绍',
+    pageHome: '主页',
+    pageHomeDesc: '显示所有项目，点击项目卡片进入项目页面。通过 [+] 按钮新建项目。',
+    pageProject: '项目页',
+    pageProjectDesc: '展示项目下的所有制作任务，提供游戏介绍、项目素材、打开AE、任务列表等快捷入口。',
+    pageTask: '任务页',
+    pageTaskDesc: '素材浏览主页面。支持树形/名称双视图，点击素材查看详情，支持规范化、缩放、转换全工作流。',
+    pageTaskList: '任务列表',
+    pageTaskListDesc: '管理任务的启用/禁用，编辑任务模板，以及通过时光机恢复已归档的任务。',
+    pageGameIntro: '游戏介绍',
+    pageGameIntroDesc: '浏览游戏设计文档（00_Game Design & Doc），支持预览图片、视频、PDF 等多种格式。',
+    pageMaterials: '项目素材',
+    pageMaterialsDesc: '按目录分组展示项目辅助素材（预制作/制作/PSD/外部），支持拖拽导入文件。',
+    pageScale: '缩放页',
+    pageScaleDesc: '为静帧素材生成不同比例的源文件（70%/50%/40%），选中素材后标注比例并执行批量缩放。',
+    pageConvert: '转换页',
+    pageConvertDesc: '格式转换工作台。静帧通过 Imagine 转为 webp，序列帧通过 TexturePacker 打包。',
+    pageSettings: '设置页',
+    pageSettingsDesc: '配置工作流路径、翻译 API、日报打卡、通用设置（语言/主题/缩放）等全局选项。',
+    // 完成步骤
+    doneTitle: '设置完成！',
+    doneDesc: '你可以随时通过右上角「更多」菜单中的「页面指引」查看各页面的功能说明。',
+    // 按钮
+    next: '下一步',
+    prev: '上一步',
+    skip: '跳过',
+    startUsing: '开始使用',
+    selectDir: '选择目录',
+    notSetYet: '尚未设置',
+  },
+
+  pageGuide: {
+    // 通用
+    closeHint: '点击任意处关闭',
+    // 主页
+    homeSidebar: '快捷方式栏：添加常用应用、文件夹、网页',
+    homeProjectList: '项目列表：点击进入项目',
+    homeAddProject: '[+] 新建项目',
+    homeMoreMenu: '更多菜单：打开文件夹、程序设置',
+    // 项目页
+    projectTaskList: '任务卡片：点击进入任务详情',
+    projectShortcuts: '快捷功能：游戏介绍、素材、AE、任务列表',
+    projectMoreMenu: '更多菜单',
+    // 任务页
+    taskViewSwitch: '视图切换：树形视图 / 名称视图',
+    taskMaterial: '素材卡片：点击查看详情，多选后可拖拽',
+    taskSidebar: '侧边栏：素材详情、重命名、删除，\n点击卡片后展开' ,
+    taskWorkflow: '工作流按钮：子任务、规范化、缩放、转换',
+    // 任务列表
+    taskListEnable: '任务启用：勾选要在项目中使用的任务\n模板编辑：管理任务和子任务模板\n时光机：恢复已归档的任务',
+    // 游戏介绍
+    gameIntroFiles: '文件列表：预览图片、视频、PDF 等',
+    gameIntroPrototype: '启动原型：如检测到游戏构建（Unity / Godot）可直接启动',
+    // 项目素材
+    materialsGroups: '按目录分组展示辅助素材\n拖拽文件到分组区域即可导入',
+    // 缩放
+    scaleSelect: '选中素材卡片，然后标注缩放比例',
+    scalePanel: '控制面板：选择比例进行标注\n执行缩放即可完成',
+    // 转换
+    convertImages: '静帧：默认全选，通过 Imagine 转换\n(直接输出即可)\n序列帧区：需先标注好帧率',
+    // 设置
+    settingsTabs: '左侧 Tab：工作流、翻译、打卡、通用、关于',
+    settingsContent: '右侧内容区：当前 Tab 的详细配置',
+    // 出勤引导（新手引导完成后跳转）
+    attConfig: '在这里设置上下班时间、网址和账号密码',
+    attMore: '每个页面不懂的地方，都可以在这里查看指引',
+  },
+
 }

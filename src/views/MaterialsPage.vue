@@ -10,12 +10,17 @@ import { useDirectoryFiles, type FileEntry } from '../composables/useDirectoryFi
 import NormalCard from '../components/NormalCard.vue'
 import FileDetailSidebar from '../components/FileDetailSidebar.vue'
 import { useRubberBandSelect } from '../composables/useRubberBandSelect'
+import { useI18n } from 'vue-i18n'
+import PageGuideOverlay from '../components/PageGuideOverlay.vue'
+import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const { setNavigation } = useNavigation()
 const { projects, loadProjects } = useProjects()
 const { openInExplorer } = useDirectoryFiles()
+const showGuide = ref(false)
 
 const projectId = route.params.projectId as string
 
@@ -126,12 +131,13 @@ function onMainClick(e: MouseEvent) {
 
 /* 注册项目素材页导航配置 */
 setNavigation({
-  title: '项目素材',
+  title: t('materialsPage.title'),
   showBackButton: true,
   onBack: () => router.push({ name: 'project', params: { projectId } }),
   actions: [],
   moreMenuItems: [
-    { id: 'refresh', label: '刷新', handler: refreshAll },
+    { id: 'refresh', label: t('common.refresh'), handler: refreshAll },
+    { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
   ],
 })
 
@@ -308,22 +314,22 @@ onUnmounted(() => {
   <div class="materials-page" :class="{ 'drag-over': isDragOver }" @click="onMainClick">
     <!-- 固定小标题栏 -->
     <div class="sub-title-bar">
-      <span class="sub-title">素材文件夹</span>
+      <span class="sub-title">{{ $t('materialsPage.materialFolders') }}</span>
       <div class="view-buttons">
-        <button class="view-btn" @click="refreshAll">刷新</button>
+        <button class="view-btn" @click="refreshAll">{{ $t('common.refresh') }}</button>
         <button
           class="view-btn"
           :class="{ active: isMultiSelect }"
           @click="toggleMultiSelect"
         >
-          {{ isMultiSelect ? '多选 ✓' : '多选' }}
+          {{ isMultiSelect ? $t('common.multiSelectOn') : $t('common.multiSelect') }}
         </button>
         <button
           v-if="isMultiSelect"
           class="view-btn"
           @click="toggleSelectAll"
         >
-          {{ isAllSelected ? '取消全选' : '全选' }}
+          {{ isAllSelected ? $t('common.deselectAll') : $t('common.selectAll') }}
         </button>
       </div>
     </div>
@@ -335,9 +341,9 @@ onUnmounted(() => {
       @mousedown="onContainerMouseDown"
       @scroll="onContainerScroll"
     >
-      <p v-if="loading" class="loading-text">扫描中...</p>
+      <p v-if="loading" class="loading-text">{{ $t('common.scanning') }}</p>
 
-      <p v-else-if="groups.length === 0" class="empty-text">暂无素材</p>
+      <p v-else-if="groups.length === 0" class="empty-text">{{ $t('materialsPage.noMaterials') }}</p>
 
       <template v-else>
         <section
@@ -350,7 +356,7 @@ onUnmounted(() => {
             <h3 class="group-label">{{ group.label }}</h3>
             <button
               class="folder-btn"
-              title="打开文件夹"
+              :title="$t('common.openFolder')"
               @click="openInExplorer(group.dirPath)"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -378,7 +384,7 @@ onUnmounted(() => {
           <p
             v-if="group.files.length === 0 && !group.subGroups?.length"
             class="drop-hint"
-          >将文件拖入此处</p>
+          >{{ $t('materialsPage.dropHint') }}</p>
 
           <!-- 子分组（flatten 展开） -->
           <div v-if="group.subGroups" class="sub-groups">
@@ -387,7 +393,7 @@ onUnmounted(() => {
                 <span class="sub-group-label">{{ sub.label }}</span>
                 <button
                   class="folder-btn"
-                  title="打开文件夹"
+                  :title="$t('common.openFolder')"
                   @click="openInExplorer(sub.dirPath)"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -436,6 +442,8 @@ onUnmounted(() => {
       }"
     />
   </Teleport>
+
+  <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.materials" @close="showGuide = false" />
 </template>
 
 <style scoped>

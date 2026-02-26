@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 
 interface NormalizePreviewItem {
@@ -19,6 +20,8 @@ const emit = defineEmits<{
   close: []
   success: []
 }>()
+
+useI18n()
 
 const loading = ref(true)
 const executing = ref(false)
@@ -80,44 +83,49 @@ async function handleExecute() {
   }
 }
 
-onMounted(fetchPreview)
+// 每次弹窗打开时重新拉取数据（而非 onMounted，避免挂载时 taskPath 尚未赋值）
+watch(() => props.show, (visible) => {
+  if (visible !== false) {
+    fetchPreview()
+  }
+})
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="dialog">
-    <div v-if="props.show !== false" class="dialog-overlay" @click.self="!executing && emit('close')">
+    <div v-if="props.show !== false" class="dialog-overlay">
       <div class="dialog-content glass-strong">
         <div class="dialog-header">
-          <p class="dialog-title">规范化预览</p>
-          <p class="dialog-subtitle">识别静帧与序列帧，清理文件名后缀</p>
+          <p class="dialog-title">{{ $t('normalize.title') }}</p>
+          <p class="dialog-subtitle">{{ $t('normalize.desc') }}</p>
         </div>
 
         <div class="dialog-body">
           <div v-if="loading" class="loading-state">
             <span class="spinner"></span>
-            扫描中...
+            {{ $t('common.scanning') }}
           </div>
           
           <div v-else-if="error" class="error-state">
             <p>{{ error }}</p>
-            <button class="retry-btn" @click="fetchPreview">重试</button>
+            <button class="retry-btn" @click="fetchPreview">{{ $t('common.retry') }}</button>
           </div>
 
           <div v-else-if="items.length === 0" class="empty-state">
-            <p>00_original 目录已规范化，无需操作。</p>
+            <p>{{ $t('normalize.alreadyNormalized') }}</p>
           </div>
 
           <div v-else class="preview-container">
             <div class="list-header">
               <label class="select-all" @click="toggleSelectAll">
                 <span class="checkbox" :class="{ checked: selectedIndexes.size === items.length }" />
-                全选 ({{ selectedIndexes.size }}/{{ items.length }})
+                {{ $t('common.selectAll') }} ({{ selectedIndexes.size }}/{{ items.length }})
               </label>
               <div class="header-labels">
-                <span>原始文件</span>
+                <span>{{ $t('normalize.sourceFile') }}</span>
                 <span></span>
-                <span>目标</span>
+                <span>{{ $t('normalize.target') }}</span>
               </div>
             </div>
 
@@ -139,7 +147,7 @@ onMounted(fetchPreview)
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M5 12h14M12 5l7 7-7 7" />
                     </svg>
-                    <span class="action-label">{{ item.action_type === 'rename' ? '去后缀' : '归类' }}</span>
+                    <span class="action-label">{{ item.action_type === 'rename' ? $t('normalize.removeSuffix') : $t('normalize.classify') }}</span>
                   </div>
 
                   <div class="target-info">
@@ -163,14 +171,14 @@ onMounted(fetchPreview)
 
         <div class="dialog-actions">
           <button class="dialog-btn secondary" :disabled="executing" @click="emit('close')">
-            取消
+            {{ $t('common.cancel') }}
           </button>
           <button
             class="dialog-btn primary"
             :disabled="executing || items.length === 0 || selectedIndexes.size === 0"
             @click="handleExecute"
           >
-            {{ executing ? '执行中...' : '执行规范化' }}
+            {{ executing ? $t('common.executing') : $t('normalize.execute') }}
           </button>
         </div>
       </div>

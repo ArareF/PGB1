@@ -5,6 +5,7 @@ import { loadSequenceFrames } from '../composables/useFrameCache'
 
 const props = defineProps<{
   folderPath: string
+  baseName?: string
   fps?: number
   maxWidth?: number
   transparent?: boolean
@@ -20,7 +21,10 @@ let lastFrameTime = 0
 const frameInterval = 1000 / (props.fps ?? 24)
 
 async function init() {
-  const filePaths = await invoke<string[]>('list_sequence_frames', { dirPath: props.folderPath })
+  const filePaths = await invoke<string[]>('list_sequence_frames', {
+    dirPath: props.folderPath,
+    baseName: props.baseName ?? null,
+  })
   if (filePaths.length === 0) return
 
   frames = await loadSequenceFrames(props.folderPath, filePaths, props.maxWidth ?? 200)

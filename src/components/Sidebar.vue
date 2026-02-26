@@ -2,7 +2,10 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { useI18n } from 'vue-i18n'
 import ShortcutDialog from './ShortcutDialog.vue'
+
+useI18n()
 
 interface Shortcut {
   id: string
@@ -231,7 +234,7 @@ function startDrag(shortcut: Shortcut) {
 </script>
 
 <template>
-  <aside ref="sidebarEl" class="sidebar glass-medium" @click.self="exitEditMode">
+  <aside ref="sidebarEl" class="sidebar" @click.self="exitEditMode">
     <!-- 快捷方式列表 -->
     <TransitionGroup tag="div" class="sidebar-items" name="sort">
       <div
@@ -291,7 +294,7 @@ function startDrag(shortcut: Shortcut) {
     </TransitionGroup>
 
     <!-- 添加按钮（始终在最底部） -->
-    <button class="sidebar-add-btn" title="添加快捷方式" @click.stop="showDialog = true">
+    <button class="sidebar-add-btn" :title="$t('shortcut.addTitle')" @click.stop="showDialog = true">
       <svg width="20" height="20" viewBox="0 0 20 20">
         <line x1="10" y1="4" x2="10" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         <line x1="4" y1="10" x2="16" y2="10" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -318,7 +321,13 @@ function startDrag(shortcut: Shortcut) {
   gap: var(--floating-sidebar-gap);
   flex-shrink: 0;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: clip;
+  /* 手动复刻 glass-medium 视觉，不用 backdrop-filter：
+     与 main-content(glass-medium) 相邻，双 backdrop-filter
+     在 WebView2 + Acrylic 下 gap 区域产生白色闪烁 */
+  background: var(--glass-medium-bg);
+  border: var(--glass-medium-border);
+  box-shadow: var(--glass-medium-shadow);
 }
 
 .sidebar-add-btn {

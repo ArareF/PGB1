@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { useSettings } from '../composables/useSettings'
+
+useI18n()
 
 const { loadSettings } = useSettings()
 
@@ -111,19 +114,19 @@ function handleKeydown(e: KeyboardEvent) {
       <textarea
         v-model="inputText"
         class="panel-textarea"
-        placeholder="在此输入要翻译的文本..."
+        :placeholder="$t('translator.placeholder')"
         @keydown="handleKeydown"
       />
       <!-- 粘贴/复制按钮 -->
       <div class="text-actions">
-        <button class="action-btn" @click="handlePaste" title="粘贴">
+        <button class="action-btn" @click="handlePaste" :title="$t('translator.paste')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
             <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
           </svg>
-          <span>粘贴</span>
+          <span>{{ $t('translator.paste') }}</span>
         </button>
-        <button class="action-btn" :class="{ 'action-btn-success': copyFeedback }" @click="handleCopy" title="复制">
+        <button class="action-btn" :class="{ 'action-btn-success': copyFeedback }" @click="handleCopy" :title="$t('translator.copy')">
           <svg v-if="!copyFeedback" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -131,7 +134,7 @@ function handleKeydown(e: KeyboardEvent) {
           <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
-          <span>{{ copyFeedback ? '已复制' : '复制' }}</span>
+          <span>{{ copyFeedback ? $t('translator.copied') : $t('translator.copy') }}</span>
         </button>
       </div>
     </div>
@@ -139,9 +142,9 @@ function handleKeydown(e: KeyboardEvent) {
     <!-- 操作行：语言对 + 翻译按钮 + 撤回 -->
     <div class="translator-action-row">
       <select v-model="langPair" class="lang-select">
-        <option value="zh-en">中英</option>
-        <option value="zh-ja">中日</option>
-        <option value="en-ja">英日</option>
+        <option value="zh-en">{{ $t('translator.zhEn') }}</option>
+        <option value="zh-ja">{{ $t('translator.zhJa') }}</option>
+        <option value="en-ja">{{ $t('translator.enJa') }}</option>
       </select>
       <button
         class="translate-btn"
@@ -155,19 +158,19 @@ function handleKeydown(e: KeyboardEvent) {
           <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
           <path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"/>
         </svg>
-        {{ isTranslating ? '翻译中...' : '翻译' }}
+        {{ isTranslating ? $t('translator.translating') : $t('translator.translate') }}
       </button>
       <button
         class="undo-btn"
         :disabled="!canUndo"
         @click="handleUndo"
-        title="撤回原文"
+        :title="$t('translator.undoTitle')"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="1 4 1 10 7 10"/>
           <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
         </svg>
-        <span>撤回</span>
+        <span>{{ $t('translator.undo') }}</span>
       </button>
     </div>
   </div>

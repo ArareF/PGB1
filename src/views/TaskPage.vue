@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { startDrag } from '@crabnebula/tauri-plugin-drag'
@@ -25,6 +26,8 @@ import ImageViewer from '../components/ImageViewer.vue'
 import FileDetailSidebar from '../components/FileDetailSidebar.vue'
 import UploadConfirmDialog from '../components/UploadConfirmDialog.vue'
 import NormalizationDialog from '../components/NormalizationDialog.vue'
+import PageGuideOverlay from '../components/PageGuideOverlay.vue'
+import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
 interface GlobalTaskChild {
   name: string
@@ -51,6 +54,7 @@ interface MaterialVersion {
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const { setNavigation } = useNavigation()
 const { projects, loadProjects } = useProjects()
 const { openInExplorer } = useDirectoryFiles()
@@ -146,6 +150,7 @@ const draggedPreviewFile = ref<PreviewVideoEntry | null>(null)
 
 /** 规范化弹窗状态 */
 const showNormalizeDialog = ref(false)
+const showGuide = ref(false)
 
 /** 拖拽意图检测：mousedown 记录起始位置，mousemove 超过阈值后启动拖拽 */
 const DRAG_THRESHOLD = 5 // 像素
@@ -348,18 +353,30 @@ const selectedPreviewGroup = ref<PreviewVideoGroup | null>(null)
 /** 侧边栏共享宽度（两个侧边栏用同一宽度变量，避免跳变） */
 const fileDetailWidthPercent = ref(30)
 
+/** 从文件名提取版本号 [major, minor]，无版本返回 [0, 0] */
+function extractVersion(name: string): [number, number] {
+  const stem = name.replace(/\.[^.]+$/, '')
+  const m = stem.match(/_(\d+)(?:\.(\d+))?$/)
+  if (!m) return [0, 0]
+  return [parseInt(m[1], 10), m[2] ? parseInt(m[2], 10) : 0]
+}
+
 /** 将 PreviewVideoEntry[] 分组为 PreviewVideoGroup[] */
 function groupPreviewVideos(files: PreviewVideoEntry[]): PreviewVideoGroup[] {
   const map = new Map<string, PreviewVideoEntry[]>()
   for (const f of files) {
     const nameWithoutExt = f.name.replace(/\.[^.]+$/, '')
-    const baseName = nameWithoutExt.replace(/_\d+$/, '')
+    const baseName = nameWithoutExt.replace(/_\d+(\.\d+)?$/, '')
     if (!map.has(baseName)) map.set(baseName, [])
     map.get(baseName)!.push(f)
   }
   const groups: PreviewVideoGroup[] = []
   for (const [baseName, versions] of map) {
-    versions.sort((a, b) => a.name.localeCompare(b.name))
+    versions.sort((a, b) => {
+      const va = extractVersion(a.name)
+      const vb = extractVersion(b.name)
+      return va[0] - vb[0] || va[1] - vb[1]
+    })
     const latest = versions[versions.length - 1]
     groups.push({ baseName, versions, uploadStatus: latest.upload_status })
   }
@@ -528,7 +545,52 @@ const subtaskTotal = ref(0)       // 分母：Tab 1 勾选启用的子任务数
 const enabledSubtasks = ref<string[]>([])   // 启用的子任务 key 列表
 const completedSubtasks = ref<Set<string>>(new Set())  // 已完成的子任务 key 集合
 const showSubtaskDialog = ref(false)
-const subtaskAutoPrompt = ref(false)  // 是否由自动检测触发
+const subtaskAutoPrompt = ref(false)  // 是否由自动检测触发（文件全传 → 提醒勾子任务）
+const subtaskRevertPrompt = ref(false)  // 反向检测触发（子任务全勾但文件未全传 → 提醒取消勾选）
+const subtaskSnapshot = ref<Set<string>>(new Set())  // 弹窗打开时的勾选快照
+
+/** 自动触发弹窗是否处于活跃状态（禁止点击外部关闭） */
+const isAutoTriggered = computed(() => subtaskAutoPrompt.value || subtaskRevertPrompt.value)
+
+/** 对比当前勾选状态与弹窗打开时的快照，有变动才允许确认 */
+const hasSubtaskChanges = computed(() => {
+  const snap = subtaskSnapshot.value
+  const curr = completedSubtasks.value
+  if (snap.size !== curr.size) return true
+  for (const k of snap) {
+    if (!curr.has(k)) return true
+  }
+  return false
+})
+
+/** 关闭子任务弹窗并清理自动触发标记 */
+function closeSubtaskDialog() {
+  showSubtaskDialog.value = false
+  subtaskAutoPrompt.value = false
+  subtaskRevertPrompt.value = false
+}
+
+/** 跳过按钮：长按期间持续抖动，满 1.5s 关闭 */
+const dialogShaking = ref(false)
+let skipPressTimer: ReturnType<typeof setTimeout> | null = null
+
+function onSkipMouseDown() {
+  dialogShaking.value = true
+  skipPressTimer = setTimeout(() => {
+    skipPressTimer = null
+    dialogShaking.value = false
+    closeSubtaskDialog()
+  }, 1500)
+}
+
+function stopSkipPress() {
+  if (skipPressTimer) {
+    clearTimeout(skipPressTimer)
+    skipPressTimer = null
+  }
+  dialogShaking.value = false
+}
+
 let currentProjectPath = ''
 
 /** 更新导航栏（含子任务数量） */
@@ -541,17 +603,18 @@ function updateNavigation() {
     actions: [
       {
         id: 'subtasks',
-        label: `子任务 ${subtaskCompleted.value}/${subtaskTotal.value}`,
-        handler: () => { subtaskAutoPrompt.value = false; showSubtaskDialog.value = true },
+        label: `${t('task.subtasks')} ${subtaskCompleted.value}/${subtaskTotal.value}`,
+        handler: () => { subtaskAutoPrompt.value = false; subtaskRevertPrompt.value = false; showSubtaskDialog.value = true },
         disabled: !hasSubtasks,
       },
-      { id: 'normalize', label: '规范化', handler: () => { showNormalizeDialog.value = true } },
-      { id: 'scale', label: '缩放', handler: startScaling },
-      { id: 'convert', label: '转换', handler: () => router.push({ name: 'convert', params: { projectId, taskId }, query: { taskPath: taskFolderPath } }) },
+      { id: 'normalize', label: t('task.normalize'), handler: () => { showNormalizeDialog.value = true } },
+      { id: 'scale', label: t('task.scale'), handler: startScaling },
+      { id: 'convert', label: t('task.convert'), handler: () => router.push({ name: 'convert', params: { projectId, taskId }, query: { taskPath: taskFolderPath } }) },
     ],
     moreMenuItems: [
-      { id: 'open-task-folder', label: '打开任务文件夹', handler: () => { if (taskFolderPath) openInExplorer(taskFolderPath) } },
-      { id: 'open-nextcloud', label: '打开 nextcloud 文件夹', handler: () => { if (nextcloudPath) openInExplorer(nextcloudPath) } },
+      { id: 'open-task-folder', label: t('task.openTaskFolder'), handler: () => { if (taskFolderPath) openInExplorer(taskFolderPath) } },
+      { id: 'open-nextcloud', label: t('task.openNextcloudFolder'), handler: () => { if (nextcloudPath) openInExplorer(nextcloudPath) } },
+      { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
     ],
   })
 }
@@ -567,6 +630,8 @@ async function toggleSubtaskCompletion(subtaskKey: string) {
     // 只统计当前任务的已启用子任务中已完成的
     subtaskCompleted.value = enabledSubtasks.value.filter(k => completedSubtasks.value.has(k)).length
     updateNavigation()
+    // 子任务状态变化后检测弹窗（全部完成 + 文件未全传 → 反向提醒）
+    checkSubtaskAutoPrompt()
   } catch (e) {
     console.error('切换子任务完成状态失败:', e)
   }
@@ -585,7 +650,7 @@ const groupedMaterials = computed(() => {
     const subcatMap = new Map<string, MaterialInfo[]>()
     for (const m of materials.value) {
       const slashIndex = m.name.indexOf('/')
-      const subCategory = slashIndex > 0 ? m.name.substring(0, slashIndex) : '其他'
+      const subCategory = slashIndex > 0 ? m.name.substring(0, slashIndex) : t('task.others')
       if (!subcatMap.has(subCategory)) subcatMap.set(subCategory, [])
       subcatMap.get(subCategory)!.push(m)
     }
@@ -607,7 +672,7 @@ const groupedMaterials = computed(() => {
           }
         }
         if (scaleMap.has('original')) {
-          groups.push({ label: '原始', items: scaleMap.get('original')! })
+          groups.push({ label: t('task.original'), items: scaleMap.get('original')! })
         }
         const numericScales = Array.from(scaleMap.keys())
           .filter((k): k is number => k !== 'original')
@@ -642,7 +707,7 @@ const groupedMaterials = computed(() => {
     }
     // 原始组优先，然后按比例从大到小
     if (scaleMap.has('original')) {
-      groups.push({ label: '原始', items: scaleMap.get('original')!, isSubHeader: true })
+      groups.push({ label: t('task.original'), items: scaleMap.get('original')!, isSubHeader: true })
     }
     const numericScales = Array.from(scaleMap.keys())
       .filter((k): k is number => k !== 'original')
@@ -652,13 +717,13 @@ const groupedMaterials = computed(() => {
     }
   }
 
-  buildScaleGroups(materials.value.filter(m => m.material_type === 'image'), '静帧')
-  buildScaleGroups(materials.value.filter(m => m.material_type === 'sequence'), '序列帧')
+  buildScaleGroups(materials.value.filter(m => m.material_type === 'image'), t('task.images'))
+  buildScaleGroups(materials.value.filter(m => m.material_type === 'sequence'), t('task.sequences'))
 
   const videos = materials.value.filter(m => m.material_type === 'video')
   const others = materials.value.filter(m => m.material_type === 'other')
-  if (videos.length) groups.push({ label: '视频', items: videos })
-  if (others.length) groups.push({ label: '其他', items: others })
+  if (videos.length) groups.push({ label: t('task.videos'), items: videos })
+  if (others.length) groups.push({ label: t('task.others'), items: others })
   return groups
 })
 
@@ -771,6 +836,8 @@ async function confirmPreviewUpload() {
       nextcloudPreviewPath,
     })
     previewGroups.value = groupPreviewVideos(files)
+    // 检测是否触发子任务完成弹窗
+    checkSubtaskAutoPrompt()
   } catch (err) {
     console.error('复制预览视频失败:', err)
   }
@@ -846,16 +913,65 @@ function formatSize(bytes: number): string {
 
 /** 素材类型中文映射 */
 function typeLabel(type: string): string {
-  const map: Record<string, string> = { image: '静帧', sequence: '序列帧', video: '视频', other: '其他' }
+  const map: Record<string, string> = { image: t('task.typeImage'), sequence: t('task.typeSequence'), video: t('task.typeVideo'), other: t('task.typeOther') }
   return map[type] ?? type
 }
 
 /** 进度状态中文映射 */
 function progressLabel(progress: string): string {
   const map: Record<string, string> = {
-    none: '未开始', original: '原始文件', scaled: '已缩放', done: '已完成', uploaded: '已上传', broken: '请检查',
+    none: t('task.progressNone'), original: t('task.progressOriginal'), scaled: t('task.progressScaled'), done: t('task.progressDone'), uploaded: t('task.progressUploaded'), broken: t('task.progressBroken'),
   }
   return map[progress] ?? progress
+}
+
+/** 纯检测：对比当前 materials/previewGroups/completedSubtasks 与 upload_prompted_tasks，按需弹窗 */
+function checkSubtaskAutoPrompt() {
+  if (enabledSubtasks.value.length === 0 || !currentProjectPath) return
+
+  const project = projects.value.find(p => p.name === projectId)
+  if (!project) return
+
+  const allMaterialsUploaded = materials.value.length > 0
+    && materials.value.every(m => m.progress === 'uploaded')
+  const allVideosUploaded = previewGroups.value.length === 0
+    || previewGroups.value.every(g => g.uploadStatus === 'uploaded')
+  const allUploaded = allMaterialsUploaded && allVideosUploaded
+  const hasIncomplete = enabledSubtasks.value.some(k => !completedSubtasks.value.has(k))
+  const allSubtasksDone = !hasIncomplete && enabledSubtasks.value.length > 0
+  const alreadyPrompted = project.upload_prompted_tasks.includes(taskId.toLowerCase())
+
+  if (allUploaded && hasIncomplete && !alreadyPrompted) {
+    subtaskAutoPrompt.value = true
+    subtaskSnapshot.value = new Set(completedSubtasks.value)
+    showSubtaskDialog.value = true
+    // 同步内存 + 持久化
+    const key = taskId.toLowerCase()
+    if (!project.upload_prompted_tasks.includes(key)) {
+      project.upload_prompted_tasks.push(key)
+    }
+    invoke('mark_upload_prompted', {
+      projectPath: currentProjectPath,
+      taskName: taskId,
+      prompted: true,
+    }).catch(e => console.error('标记上传提醒失败:', e))
+  } else if (!allUploaded && allSubtasksDone) {
+    subtaskRevertPrompt.value = true
+    subtaskSnapshot.value = new Set(completedSubtasks.value)
+    showSubtaskDialog.value = true
+  }
+
+  if (!allUploaded && alreadyPrompted) {
+    // 同步内存 + 持久化
+    const key = taskId.toLowerCase()
+    const idx = project.upload_prompted_tasks.indexOf(key)
+    if (idx !== -1) project.upload_prompted_tasks.splice(idx, 1)
+    invoke('mark_upload_prompted', {
+      projectPath: currentProjectPath,
+      taskName: taskId,
+      prompted: false,
+    }).catch(e => console.error('清除上传提醒标记失败:', e))
+  }
 }
 
 async function refresh() {
@@ -874,6 +990,15 @@ async function refresh() {
     } catch (e) {
       console.error('刷新预览视频失败:', e)
     }
+    // 刷新项目数据（获取最新 prompted 标记 + 子任务完成状态），再检测
+    await loadProjects()
+    const freshProject = projects.value.find(p => p.name === projectId)
+    if (freshProject && enabledSubtasks.value.length > 0) {
+      completedSubtasks.value = new Set(freshProject.completed_subtasks)
+      subtaskCompleted.value = enabledSubtasks.value.filter(k => completedSubtasks.value.has(k)).length
+      updateNavigation()
+    }
+    checkSubtaskAutoPrompt()
   }
 }
 
@@ -909,37 +1034,28 @@ onMounted(async () => {
       const globalTask = config.tasks.find(t => t.name.toLowerCase() === taskLower)
       if (globalTask && globalTask.children.length > 0) {
         const prefix = `${globalTask.name}/`
-        // 分母：enabled_tasks 中属于当前任务的子任务 key
         enabledSubtasks.value = project.enabled_tasks.filter(k => k.startsWith(prefix))
         subtaskTotal.value = enabledSubtasks.value.length
-        // 分子：completed_subtasks 中属于当前任务且已启用的
         completedSubtasks.value = new Set(project.completed_subtasks)
         subtaskCompleted.value = enabledSubtasks.value.filter(k => completedSubtasks.value.has(k)).length
         updateNavigation()
-
-        // 自动检测：所有素材已上传 + 所有预览视频已上传 + 有未完成的子任务 + 未提醒过 → 弹窗
-        const allMaterialsUploaded = materials.value.length > 0
-          && materials.value.every(m => m.progress === 'uploaded')
-        const allVideosUploaded = previewGroups.value.length === 0
-          || previewGroups.value.every(g => g.uploadStatus === 'uploaded')
-        const allUploaded = allMaterialsUploaded && allVideosUploaded
-        const hasIncomplete = enabledSubtasks.value.some(k => !completedSubtasks.value.has(k))
-        const alreadyPrompted = project.upload_prompted_tasks.includes(taskId.toLowerCase())
-        if (allUploaded && hasIncomplete && !alreadyPrompted) {
-          subtaskAutoPrompt.value = true
-          showSubtaskDialog.value = true
-          // 标记已提醒，下次不再弹
-          invoke('mark_upload_prompted', {
-            projectPath: currentProjectPath,
-            taskName: taskId,
-            prompted: true,
-          }).catch(e => console.error('标记上传提醒失败:', e))
-        }
+        checkSubtaskAutoPrompt()
       }
     } catch (e) {
       console.error('加载子任务数据失败:', e)
     }
   }
+})
+
+// 窗口重新可见时自动刷新（用户从外部操作回来后及时检测状态变化）
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    refresh()
+  }
+}
+document.addEventListener('visibilitychange', onVisibilityChange)
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 </script>
 
@@ -949,38 +1065,38 @@ onMounted(async () => {
     <div class="main-content" @click="onMainContentClick">
       <!-- 小标题栏 -->
       <div class="sub-title-bar">
-        <span class="sub-title">素材列表</span>
+        <span class="sub-title">{{ $t('task.materialList') }}</span>
         <div class="view-buttons">
           <button
             class="view-btn"
             :class="{ active: viewMode === 'tree' }"
             @click="viewMode = 'tree'"
           >
-            树形视图
+            {{ $t('task.treeView') }}
           </button>
           <button
             class="view-btn"
             :class="{ active: viewMode === 'name' }"
             @click="viewMode = 'name'"
           >
-            名称视图
+            {{ $t('task.nameView') }}
           </button>
           <button class="view-btn" @click="refresh">
-            刷新
+            {{ $t('common.refresh') }}
           </button>
           <button
             class="view-btn"
             :class="{ active: isMultiSelect }"
             @click="toggleMultiSelect"
           >
-            {{ isMultiSelect ? '多选 ✓' : '多选' }}
+            {{ isMultiSelect ? $t('common.multiSelectOn') : $t('common.multiSelect') }}
           </button>
           <button
             v-if="isMultiSelect"
             class="view-btn"
             @click="toggleSelectAll"
           >
-            {{ isAllSelected ? '取消全选' : '全选' }}
+            {{ isAllSelected ? $t('common.deselectAll') : $t('common.selectAll') }}
           </button>
         </div>
       </div>
@@ -993,11 +1109,11 @@ onMounted(async () => {
         @scroll="onContainerScroll"
       >
         <!-- 加载状态 -->
-        <p v-if="loading" class="loading-text">扫描中...</p>
+        <p v-if="loading" class="loading-text">{{ $t('common.scanning') }}</p>
 
         <!-- 空状态 -->
         <p v-else-if="materials.length === 0" class="empty-text">
-          暂无素材文件
+          {{ $t('task.noMaterials') }}
         </p>
 
         <!-- 树形视图 -->
@@ -1043,7 +1159,7 @@ onMounted(async () => {
 
         <!-- 03_preview 预览视频区块 -->
         <div v-if="previewGroups.length > 0" class="preview-videos-section">
-          <p class="section-label">预览视频</p>
+          <p class="section-label">{{ $t('task.previewVideos') }}</p>
           <div class="preview-videos-grid">
             <button
               v-for="group in previewGroups"
@@ -1070,8 +1186,8 @@ onMounted(async () => {
                 <span
                   class="pv-upload-tag"
                   :class="group.uploadStatus"
-                >{{ group.uploadStatus === 'uploaded' ? '已上传' : group.uploadStatus === 'outdated' ? '待更新' : '未上传' }}</span>
-                <span class="pv-card-count">{{ group.versions.length }} 版本</span>
+                >{{ group.uploadStatus === 'uploaded' ? $t('task.uploaded') : group.uploadStatus === 'outdated' ? $t('task.outdated') : $t('task.notUploaded') }}</span>
+                <span class="pv-card-count">{{ $t('task.versionCount', { n: group.versions.length }) }}</span>
               </div>
             </button>
           </div>
@@ -1085,22 +1201,23 @@ onMounted(async () => {
     <Transition name="sidebar">
     <div
       v-if="selectedMaterial"
-      class="detail-sidebar glass-strong"
+      class="detail-sidebar"
       :class="{ 'is-resizing': isResizing }"
       :style="{ width: sidebarWidthPercent + '%' }"
     >
       <!-- 拖拽把手 -->
       <div class="resize-handle" @mousedown="startResize" />
       <div class="sidebar-header">
-        <span class="sidebar-title">详情</span>
+        <span class="sidebar-title">{{ $t('task.detail') }}</span>
       </div>
       <div class="sidebar-body">
         <!-- 预览区 -->
         <div class="sidebar-preview">
           <SequencePreview
             v-if="selectedMaterial.material_type === 'sequence'"
-            :key="selectedMaterial.path"
+            :key="`${selectedMaterial.path}-${selectedMaterial.name}`"
             :folder-path="selectedMaterial.path"
+            :base-name="selectedMaterial.name"
             :fps="selectedMaterial.fps ?? settings?.preview.defaultFps ?? 24"
             :max-width="400"
             :transparent="settings?.preview.backgroundTransparent ?? false"
@@ -1111,32 +1228,32 @@ onMounted(async () => {
             :src="convertFileSrc(selectedMaterial.preview_path)"
             :alt="selectedMaterial.name"
           />
-          <div v-else class="sidebar-no-preview">无预览</div>
+          <div v-else class="sidebar-no-preview">{{ $t('common.noPreview') }}</div>
         </div>
         <!-- 基本信息 -->
         <div class="sidebar-section">
-          <p class="section-title">基本信息</p>
+          <p class="section-title">{{ $t('task.basicInfo') }}</p>
           <div class="info-list">
             <div class="info-row">
-              <span class="info-label">文件名</span>
+              <span class="info-label">{{ $t('task.fileName') }}</span>
               <span class="info-value">{{ selectedMaterial.file_name }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">类型</span>
+              <span class="info-label">{{ $t('common.type') }}</span>
               <span class="info-value">{{ typeLabel(selectedMaterial.material_type) }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">大小</span>
+              <span class="info-label">{{ $t('common.size') }}</span>
               <span class="info-value">{{ formatSize(selectedMaterial.size_bytes) }}</span>
             </div>
             <div v-if="selectedMaterial.material_type === 'sequence'" class="info-row">
-              <span class="info-label">帧数</span>
+              <span class="info-label">{{ $t('task.frameCount') }}</span>
               <span class="info-value">{{ selectedMaterial.frame_count }}</span>
             </div>
             <div v-if="selectedMaterial.material_type === 'sequence'" class="info-row">
-              <span class="info-label">帧率</span>
+              <span class="info-label">{{ $t('task.frameRate') }}</span>
               <template v-if="selectedMaterial.fps != null">
-                <span v-if="!editingFps" class="info-value fps-clickable" title="点击修改帧率" @click="startEditFps">
+                <span v-if="!editingFps" class="info-value fps-clickable" :title="$t('task.modify')" @click="startEditFps">
                   {{ selectedMaterial.fps }} fps
                 </span>
                 <span v-else class="fps-edit-group">
@@ -1153,10 +1270,10 @@ onMounted(async () => {
                   <span class="fps-unit">fps</span>
                 </span>
               </template>
-              <span v-else class="info-value">未转换</span>
+              <span v-else class="info-value">{{ $t('task.notConverted') }}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">进度</span>
+              <span class="info-label">{{ $t('task.progress') }}</span>
               <span class="info-value">{{ progressLabel(selectedMaterial.progress) }}</span>
             </div>
           </div>
@@ -1164,7 +1281,7 @@ onMounted(async () => {
 
         <!-- 其他版本 -->
         <div v-if="versions.length > 0" class="sidebar-section">
-          <p class="section-title">其他版本</p>
+          <p class="section-title">{{ $t('task.otherVersions') }}</p>
           <div class="version-list">
             <div
               v-for="v in versions"
@@ -1185,7 +1302,7 @@ onMounted(async () => {
                 <span class="version-ext">{{ v.extension.toUpperCase() }}</span>
                 <button
                   class="version-folder-btn"
-                  title="打开所在文件夹"
+                  :title="$t('common.openContainingFolder')"
                   @click.stop="openInExplorer(v.folder_path)"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1204,35 +1321,35 @@ onMounted(async () => {
           v-if="selectedMaterial?.material_type === 'sequence' && versions.some(v => v.stage === '02_done')"
           class="sidebar-action-btn"
           @click="openTpsFile"
-        >修改</button>
-        <button class="sidebar-action-btn" @click="openRenameDialog">重命名</button>
-        <button class="sidebar-action-btn danger" @click="openDeleteDialog">删除</button>
+        >{{ $t('task.modify') }}</button>
+        <button class="sidebar-action-btn" @click="openRenameDialog">{{ $t('common.rename') }}</button>
+        <button class="sidebar-action-btn danger" @click="openDeleteDialog">{{ $t('common.delete') }}</button>
       </div>
 
       <!-- 内联操作弹窗（覆盖整个侧边栏） -->
-      <div v-if="sidebarDialog !== 'none'" class="sidebar-dialog-overlay" @click.self="closeSidebarDialog">
+      <div v-if="sidebarDialog !== 'none'" class="sidebar-dialog-overlay">
         <!-- 重命名弹窗 -->
-        <div v-if="sidebarDialog === 'rename'" class="sidebar-dialog glass-strong">
-          <p class="sidebar-dialog-title">重命名</p>
+        <div v-if="sidebarDialog === 'rename'" class="sidebar-dialog">
+          <p class="sidebar-dialog-title">{{ $t('task.renameTitle') }}</p>
           <input
             v-model="renameInput"
             class="sidebar-dialog-input"
-            placeholder="输入新名称"
+            :placeholder="$t('task.inputNewName')"
             @keydown.enter="confirmRename"
             @keydown.escape="closeSidebarDialog"
           />
           <div class="sidebar-dialog-actions">
-            <button class="sidebar-dialog-btn" @click="closeSidebarDialog">取消</button>
-            <button class="sidebar-dialog-btn primary" @click="confirmRename">确认</button>
+            <button class="sidebar-dialog-btn" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
+            <button class="sidebar-dialog-btn primary" @click="confirmRename">{{ $t('common.confirm') }}</button>
           </div>
         </div>
         <!-- 删除确认弹窗 -->
-        <div v-if="sidebarDialog === 'delete'" class="sidebar-dialog glass-strong">
-          <p class="sidebar-dialog-title">删除素材</p>
-          <p class="sidebar-dialog-desc">将删除「{{ selectedMaterial?.name }}」的所有版本文件（含 nextcloud），操作不可撤销。</p>
+        <div v-if="sidebarDialog === 'delete'" class="sidebar-dialog">
+          <p class="sidebar-dialog-title">{{ $t('task.deleteMaterial') }}</p>
+          <p class="sidebar-dialog-desc">{{ $t('task.deleteMaterialDesc', { name: selectedMaterial?.name }) }}</p>
           <div class="sidebar-dialog-actions">
-            <button class="sidebar-dialog-btn" @click="closeSidebarDialog">取消</button>
-            <button class="sidebar-dialog-btn danger" @click="confirmDelete">确认删除</button>
+            <button class="sidebar-dialog-btn" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
+            <button class="sidebar-dialog-btn danger" @click="confirmDelete">{{ $t('task.confirmDelete') }}</button>
           </div>
         </div>
       </div>
@@ -1275,10 +1392,11 @@ onMounted(async () => {
 
   <!-- 子任务完成弹窗 -->
   <Teleport to="body">
-    <div v-if="showSubtaskDialog" class="subtask-overlay" @click.self="showSubtaskDialog = false">
-      <div class="subtask-dialog glass-strong">
-        <p class="subtask-title">子任务进度</p>
-        <p v-if="subtaskAutoPrompt" class="subtask-hint">检测到所有素材已上传，哪个子任务完成了？</p>
+    <div v-if="showSubtaskDialog" class="subtask-overlay">
+      <div class="subtask-dialog glass-strong" :class="{ 'dialog-shake': dialogShaking }">
+        <p class="subtask-title">{{ $t('task.subtaskProgress') }}</p>
+        <p v-if="subtaskAutoPrompt" class="subtask-hint">{{ $t('task.allUploadedHint') }}</p>
+        <p v-else-if="subtaskRevertPrompt" class="subtask-hint">{{ $t('task.partialUploadHint') }}</p>
         <div class="subtask-list">
           <label
             v-for="key in enabledSubtasks"
@@ -1294,7 +1412,20 @@ onMounted(async () => {
           </label>
         </div>
         <div class="subtask-actions">
-          <button class="subtask-close-btn" @click="showSubtaskDialog = false">关闭</button>
+          <span
+            v-if="isAutoTriggered"
+            class="subtask-skip-btn"
+            @mousedown.prevent="onSkipMouseDown"
+            @mouseup="stopSkipPress"
+            @mouseleave="stopSkipPress"
+          >{{ $t('common.skip') }}</span>
+          <button
+            class="subtask-close-btn"
+            :disabled="isAutoTriggered && !hasSubtaskChanges"
+            @click="closeSubtaskDialog"
+          >
+            {{ isAutoTriggered ? $t('common.confirm') : $t('common.close') }}
+          </button>
         </div>
       </div>
     </div>
@@ -1313,6 +1444,8 @@ onMounted(async () => {
       }"
     />
   </Teleport>
+
+  <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.task" @close="showGuide = false" />
 </template>
 
 <style scoped>
@@ -1492,7 +1625,39 @@ onMounted(async () => {
 
 .subtask-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.subtask-skip-btn {
+  font-size: var(--text-xs);
+  color: var(--text-quaternary, var(--text-tertiary));
+  opacity: 0.5;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity var(--transition-fast);
+}
+
+.subtask-skip-btn:hover {
+  opacity: 0.7;
+}
+
+.subtask-skip-btn:active {
+  opacity: 1;
+}
+
+@keyframes dialog-shake {
+  0%, 100% { transform: translate(0, 0); }
+  15% { transform: translate(-4px, 0); }
+  30% { transform: translate(4px, 0); }
+  45% { transform: translate(-3px, 0); }
+  60% { transform: translate(3px, 0); }
+  75% { transform: translate(-2px, 0); }
+  90% { transform: translate(2px, 0); }
+}
+
+.dialog-shake {
+  animation: dialog-shake 0.3s ease infinite;
 }
 
 .subtask-close-btn {
@@ -1510,9 +1675,14 @@ onMounted(async () => {
   transition: all var(--transition-fast);
 }
 
-.subtask-close-btn:hover {
+.subtask-close-btn:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.subtask-close-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 </style>
@@ -1528,6 +1698,12 @@ onMounted(async () => {
   padding: var(--floating-main-padding);
   overflow: hidden;
   flex-shrink: 0;
+  /* 手动复刻 glass-strong 视觉，不用 backdrop-filter：
+     与 main-content(glass-medium) 相邻时，双 backdrop-filter
+     在 WebView2 + Windows Acrylic 下 gap 区域产生白色闪烁伪影 */
+  background: var(--glass-strong-bg);
+  border: var(--glass-strong-border);
+  box-shadow: var(--glass-strong-shadow);
 }
 
 .detail-sidebar.is-resizing {
@@ -1740,8 +1916,7 @@ onMounted(async () => {
   border: var(--glass-medium-border);
   border-radius: var(--radius-button);
   background: var(--glass-medium-bg);
-  backdrop-filter: blur(var(--glass-subtle-blur));
-  -webkit-backdrop-filter: blur(var(--glass-subtle-blur));
+  /* 不用 backdrop-filter，避免与父级 glass 容器 compositor 冲突 */
   color: var(--text-secondary);
   font-size: var(--text-2xl);
   font-family: inherit;
@@ -1814,6 +1989,8 @@ onMounted(async () => {
   border-radius: var(--floating-main-radius);
 }
 
+/* 手动复刻 glass-strong 视觉，不用 backdrop-filter：
+   在 Teleport 到 #content-row 的侧边栏内，与 main-content 同层 */
 .sidebar-dialog {
   width: calc(100% - var(--spacing-8) * 2);
   border-radius: var(--radius-xl);
@@ -1821,6 +1998,9 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-4);
+  background: var(--glass-strong-bg);
+  border: var(--glass-strong-border);
+  box-shadow: var(--glass-strong-shadow);
 }
 
 .sidebar-dialog-title {
@@ -1899,7 +2079,7 @@ onMounted(async () => {
 
 /* ─── 03_preview 视频区块 ─── */
 .preview-videos-section {
-  padding: 0 var(--spacing-5) var(--spacing-6);
+  padding-bottom: var(--spacing-6);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-3);
@@ -1988,6 +2168,6 @@ onMounted(async () => {
 }
 
 .pv-upload-tag.uploaded  { background: var(--tag-progress-uploaded-bg); }
-.pv-upload-tag.outdated  { background: var(--tag-progress-scaled-bg); }
+.pv-upload-tag.outdated  { background: var(--tag-progress-outdated-bg); }
 .pv-upload-tag.none      { background: var(--tag-progress-none-bg); }
 </style>

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+useI18n()
 
 const props = defineProps<{
   src: string
@@ -71,7 +74,7 @@ const isTransformed = () => scale.value !== 1 || offsetX.value !== 0 || offsetY.
       class="image-viewer-reset"
       @click.stop="reset"
     >
-      重置
+      {{ $t('common.reset') }}
     </button>
   </div>
 </template>

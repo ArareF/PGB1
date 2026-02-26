@@ -372,6 +372,8 @@ pub struct StartConversionRequest {
     pub imagine_path: String,
     pub texture_packer_cli_path: String,
     pub texture_packer_gui_path: String,
+    pub tp_scale: f64,
+    pub tp_webp_quality: u32,
 }
 
 // ─── 全局应用设置 ─────────────────────────────────────────────
@@ -391,7 +393,14 @@ pub struct WorkflowSettings {
     pub imagine_path: String,
     pub texture_packer_cli_path: String,
     pub texture_packer_gui_path: String,
+    #[serde(default = "default_tp_scale")]
+    pub tp_scale: f64,
+    #[serde(default = "default_tp_webp_quality")]
+    pub tp_webp_quality: u32,
 }
+
+fn default_tp_scale() -> f64 { 0.5 }
+fn default_tp_webp_quality() -> u32 { 80 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -439,6 +448,9 @@ pub struct GeneralSettings {
     /// 界面语言（"zh-CN" | "en"）
     #[serde(default = "default_language")]
     pub language: String,
+    /// 是否已完成首次引导
+    #[serde(default)]
+    pub onboarded: bool,
 }
 
 fn default_language() -> String { "zh-CN".to_string() }
@@ -450,6 +462,8 @@ impl Default for AppSettings {
                 imagine_path: String::new(),
                 texture_packer_cli_path: String::new(),
                 texture_packer_gui_path: String::new(),
+                tp_scale: default_tp_scale(),
+                tp_webp_quality: default_tp_webp_quality(),
             },
             translation: TranslationSettings {
                 api_key: String::new(),
@@ -464,6 +478,7 @@ impl Default for AppSettings {
                 ui_scale: 1.0,
                 auto_start: false,
                 language: "zh-CN".to_string(),
+                onboarded: false,
             },
             preview: PreviewSettings::default(),
         }

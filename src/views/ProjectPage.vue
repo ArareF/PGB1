@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { useNavigation } from '../composables/useNavigation'
 import { useProjects } from '../composables/useProjects'
@@ -8,9 +9,12 @@ import { useTasks } from '../composables/useTasks'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import type { TaskInfo } from '../composables/useTasks'
 import TaskCard from '../components/TaskCard.vue'
+import PageGuideOverlay from '../components/PageGuideOverlay.vue'
+import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const { setNavigation } = useNavigation()
 const { projects, loadProjects } = useProjects()
 const { tasks, loading, loadTasks } = useTasks()
@@ -20,6 +24,7 @@ const projectId = route.params.projectId as string
 let projectPath = ''
 
 const enabledTasks = ref<string[]>([])
+const showGuide = ref(false)
 const completedSubtasks = ref<string[]>([])
 const defaultAeFile = ref<string | null>(null)
 
@@ -44,12 +49,12 @@ const taskSubtaskProgress = computed(() => {
 
 function buildNavActions() {
   return [
-    { id: 'game-intro', label: '游戏介绍', handler: () => router.push({ name: 'gameIntro', params: { projectId } }) },
-    { id: 'materials', label: '项目素材', handler: () => router.push({ name: 'materials', params: { projectId } }) },
-    { id: 'ae-project', label: '打开AE', handler: () => openAeProject(), onLongPress: (rect: DOMRect) => openAeProjectPicker(rect), active: !!defaultAeFile.value },
+    { id: 'game-intro', label: t('project.gameIntro'), handler: () => router.push({ name: 'gameIntro', params: { projectId } }) },
+    { id: 'materials', label: t('project.projectMaterials'), handler: () => router.push({ name: 'materials', params: { projectId } }) },
+    { id: 'ae-project', label: t('project.openAE'), handler: () => openAeProject(), onLongPress: (rect: DOMRect) => openAeProjectPicker(rect), active: !!defaultAeFile.value },
     {
       id: 'task-list',
-      label: '任务列表',
+      label: t('project.taskList'),
       handler: () => {
         router.push({
           name: 'taskList',
@@ -71,7 +76,8 @@ function refreshNav() {
     onBack: () => router.push({ name: 'home' }),
     actions: buildNavActions(),
     moreMenuItems: [
-      { id: 'open-folder', label: '打开项目文件夹', handler: () => { if (projectPath) openInExplorer(projectPath) } },
+      { id: 'open-folder', label: t('project.openProjectFolder'), handler: () => { if (projectPath) openInExplorer(projectPath) } },
+      { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
     ],
   })
 }
@@ -176,12 +182,12 @@ onUnmounted(() => {
   <div class="project-page">
     <!-- 固定小标题栏 -->
     <div class="sub-title-bar">
-      <span class="sub-title">制作任务</span>
+      <span class="sub-title">{{ $t('project.tasks') }}</span>
     </div>
 
     <!-- 可滚动内容区 -->
     <div class="scroll-content">
-      <p v-if="loading" class="loading-text">扫描中...</p>
+      <p v-if="loading" class="loading-text">{{ $t('common.scanning') }}</p>
 
       <TransitionGroup v-else name="card" tag="div" class="card-grid">
         <TaskCard
@@ -204,8 +210,8 @@ onUnmounted(() => {
           :style="aepPanelStyle"
           @click.stop
         >
-          <div class="aep-dropdown-title">选择 AE 工程文件</div>
-          <div class="aep-dropdown-hint">点击设为默认并打开</div>
+          <div class="aep-dropdown-title">{{ $t('project.selectAeFile') }}</div>
+          <div class="aep-dropdown-hint">{{ $t('project.clickToSetDefault') }}</div>
           <div class="aep-dropdown-list">
             <button
               v-for="file in aepFiles"
@@ -215,13 +221,14 @@ onUnmounted(() => {
               @click="pickAepFile(file)"
             >
               <span class="aep-item-name">{{ file.name }}</span>
-              <span v-if="file.name === defaultAeFile" class="aep-item-badge">默认</span>
+              <span v-if="file.name === defaultAeFile" class="aep-item-badge">{{ $t('project.default') }}</span>
             </button>
           </div>
         </div>
       </Transition>
     </Teleport>
 
+    <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.project" @close="showGuide = false" />
   </div>
 </template>
 

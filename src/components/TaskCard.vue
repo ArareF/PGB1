@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TaskInfo } from '../composables/useTasks'
+
+const { t } = useI18n()
 
 interface SubtaskProgress {
   completed: number
@@ -16,30 +19,36 @@ defineEmits<{
   click: [task: TaskInfo]
 }>()
 
-/** 进度状态：未开始 / 制作中 / 进行中 / 已完成 */
+/** 文件上传是否全部完成（素材 + 预览视频） */
+function filesAllUploaded(): boolean {
+  const { material_total: mTotal, material_uploaded: mUploaded, video_total: vTotal, video_uploaded: vUploaded } = props.task
+  const materialsOk = mTotal === 0 || mUploaded >= mTotal
+  const videosOk = vTotal === 0 || vUploaded >= vTotal
+  return materialsOk && videosOk
+}
+
+/** 进度状态：未开始 / 制作中 / 已完成 */
 const statusInfo = computed(() => {
   const p = props.subtaskProgress
   if (p && p.total > 0) {
-    // 有子任务：用子任务进度（无法感知本地制作状态，0/N 视为未开始）
-    if (p.completed >= p.total) {
-      return { label: '已完成', cls: 'status-completed' }
+    // 有子任务：子任务进度 + 文件上传双重检查
+    if (p.completed >= p.total && filesAllUploaded()) {
+      return { label: t('taskCard.completed'), cls: 'status-completed' }
     }
     if (p.completed > 0) {
-      return { label: `进行中 ${p.completed}/${p.total}`, cls: 'status-progress' }
+      return { label: `${t('taskCard.inProgress')} ${p.completed}/${p.total}`, cls: 'status-wip' }
     }
-    return { label: `未开始 0/${p.total}`, cls: 'status-pending' }
+    return { label: `${t('taskCard.notStarted')} 0/${p.total}`, cls: 'status-pending' }
   }
-  // 无子任务：3态，不显示数字（分母只有子任务才有意义）
-  const { material_total: total, material_uploaded: uploaded, video_total: vTotal, video_uploaded: vUploaded } = props.task
-  const allMaterialsUploaded = total > 0 && uploaded >= total
-  const allVideosUploaded = vTotal === 0 || vUploaded >= vTotal
-  if (allMaterialsUploaded && allVideosUploaded) {
-    return { label: '已完成', cls: 'status-completed' }
+  // 无子任务：3态
+  const { material_total: total, material_uploaded: uploaded } = props.task
+  if (total > 0 && uploaded >= total && filesAllUploaded()) {
+    return { label: t('taskCard.completed'), cls: 'status-completed' }
   }
   if (total > 0) {
-    return { label: '制作中', cls: 'status-wip' }
+    return { label: t('taskCard.inProgress'), cls: 'status-wip' }
   }
-  return { label: '未开始', cls: 'status-pending' }
+  return { label: t('taskCard.notStarted'), cls: 'status-pending' }
 })
 
 /** 文件大小格式化 */
@@ -117,10 +126,6 @@ function formatSize(bytes: number): string {
 
 .status-wip {
   background: var(--tag-status-wip-bg);
-}
-
-.status-progress {
-  background: var(--tag-status-progress-bg);
 }
 
 .status-completed {

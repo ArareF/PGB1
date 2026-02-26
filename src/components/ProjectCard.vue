@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
 import type { ProjectInfo } from '../composables/useProjects'
+
+useI18n()
 
 const props = defineProps<{
   project: ProjectInfo
@@ -122,7 +125,7 @@ watch(() => props.project.app_icon, loadIcon)
     <div class="card-info">
       <span class="card-name">{{ project.name }}</span>
       <span class="card-deadline">
-        {{ project.deadline ?? '未设置截止日期' }}
+        {{ project.deadline ?? $t('project.noDeadline') }}
       </span>
     </div>
 
@@ -135,7 +138,7 @@ watch(() => props.project.app_icon, loadIcon)
           :style="{ width: progressPercent + '%' }"
         />
       </div>
-      <span class="progress-text">{{ completedTaskCount }} / {{ totalTaskCount }} 个任务</span>
+      <span class="progress-text">{{ completedTaskCount }} / {{ totalTaskCount }} {{ $t('project.taskCount') }}</span>
     </div>
 
     <!-- ··· 菜单按钮（hover 时显示） -->
@@ -154,13 +157,13 @@ watch(() => props.project.app_icon, loadIcon)
       <Transition name="card-menu">
         <div v-if="showMenu" class="card-menu glass-medium" :style="menuStyle" @click.stop>
           <button class="menu-item" @mousedown.prevent="$emit('action', project, 'rename')">
-            重命名
+            {{ $t('project.renameProject') }}
           </button>
           <button class="menu-item" @mousedown.prevent="$emit('action', project, 'deadline')">
-            修改截止日期
+            {{ $t('project.editDeadline') }}
           </button>
           <button class="menu-item menu-item--danger" @mousedown.prevent="$emit('action', project, 'delete')">
-            删除项目
+            {{ $t('project.deleteProject') }}
           </button>
         </div>
       </Transition>

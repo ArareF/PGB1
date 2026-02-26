@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useStatusBar } from '../composables/useStatusBar'
 import type { CalendarRegion } from '../composables/useStatusBar'
 
@@ -23,11 +24,13 @@ const {
   onPomodoroClick,
 } = useStatusBar()
 
+const { t } = useI18n()
+
 const REGION_LABELS: Record<CalendarRegion, string> = {
-  auto: '自动',
-  CN:   '中国',
-  JP:   '日本',
-  none: '不显示',
+  auto: t('status.calendarAuto'),
+  CN:   t('status.calendarChina'),
+  JP:   t('status.calendarJapan'),
+  none: t('status.calendarNone'),
 }
 
 function onRegionChange(e: Event) {
@@ -39,11 +42,11 @@ function onRegionChange(e: Event) {
 // 配置项标签映射（boolean 开关项）
 type BoolConfigKey = 'showTime' | 'showDate' | 'showWorked' | 'showCountdown' | 'showPomodoro'
 const configLabels: Record<BoolConfigKey, string> = {
-  showTime:      '显示时间',
-  showDate:      '显示日期',
-  showWorked:    '显示已工作',
-  showCountdown: '显示倒计时',
-  showPomodoro:  '番茄钟',
+  showTime:      t('status.showTime'),
+  showDate:      t('status.showDate'),
+  showWorked:    t('status.showWorked'),
+  showCountdown: t('status.showCountdown'),
+  showPomodoro:  t('status.pomodoro'),
 }
 
 // 配置面板开关
@@ -133,7 +136,7 @@ onUnmounted(() => {
           v-if="config.showWorked && workedMinutes !== null"
           class="status-bar__capsule status-bar__capsule--worked"
         >
-          已工作 {{ formatMinutes(workedMinutes) }}
+          {{ $t('status.worked') }} {{ formatMinutes(workedMinutes) }}
         </div>
 
         <!-- 倒计时胶囊：未打卡不显示 -->
@@ -146,15 +149,15 @@ onUnmounted(() => {
             'status-bar__capsule--countdown': !isLunch && !hasClockOut,
           }"
         >
-          <template v-if="hasClockOut">下班咯</template>
+          <template v-if="hasClockOut">{{ $t('status.offWork') }}</template>
           <template v-else-if="isLunch">
-            午休{{ lunchLeftMinutes ? ` ${formatMinutes(lunchLeftMinutes)}` : '中' }}
+            {{ lunchLeftMinutes ? `${$t('status.lunch')} ${formatMinutes(lunchLeftMinutes)}` : $t('status.lunchActive') }}
           </template>
           <template v-else-if="toLunchMinutes !== null">
-            距午休 {{ formatMinutes(toLunchMinutes) }}
+            {{ $t('status.toLunch') }} {{ formatMinutes(toLunchMinutes) }}
           </template>
           <template v-else-if="countdownMinutes !== null">
-            距下班 {{ formatMinutes(countdownMinutes) }}
+            {{ $t('status.toOffWork') }} {{ formatMinutes(countdownMinutes) }}
           </template>
         </div>
 
@@ -170,14 +173,14 @@ onUnmounted(() => {
           'status-bar__pomodoro--break': pomodoroPhase === 'break',
           'status-bar__pomodoro--break-done': pomodoroPhase === 'break-done',
         }"
-        :title="pomodoroPhase === 'idle' ? '开始专注' : pomodoroPhase === 'work' ? '点击取消' : pomodoroPhase === 'work-done' ? '开始休息' : pomodoroPhase === 'break' ? '点击取消' : '结束休息'"
+        :title="pomodoroPhase === 'idle' ? $t('status.startFocus') : pomodoroPhase === 'work' ? $t('status.clickToCancel') : pomodoroPhase === 'work-done' ? $t('status.startBreak') : pomodoroPhase === 'break' ? $t('status.clickToCancel') : $t('status.endBreak')"
         @click.stop="onPomodoroClick"
       >
-        <template v-if="pomodoroPhase === 'idle'">专注</template>
+        <template v-if="pomodoroPhase === 'idle'">{{ $t('status.focus') }}</template>
         <template v-else-if="pomodoroPhase === 'work'">{{ pomodoroDisplay }}</template>
-        <template v-else-if="pomodoroPhase === 'work-done'">休息</template>
+        <template v-else-if="pomodoroPhase === 'work-done'">{{ $t('status.rest') }}</template>
         <template v-else-if="pomodoroPhase === 'break'">{{ pomodoroDisplay }}</template>
-        <template v-else-if="pomodoroPhase === 'break-done'">完成</template>
+        <template v-else-if="pomodoroPhase === 'break-done'">{{ $t('status.done') }}</template>
       </button>
     </div>
 
@@ -190,7 +193,7 @@ onUnmounted(() => {
         :style="panelStyle"
         @click="onPanelClick"
       >
-        <div class="status-bar__config-title">状态栏配置</div>
+        <div class="status-bar__config-title">{{ $t('status.configTitle') }}</div>
         <label
           v-for="[key, label] in (Object.entries(configLabels) as [BoolConfigKey, string][])"
           :key="key"
@@ -206,7 +209,7 @@ onUnmounted(() => {
         <template v-if="config.showPomodoro">
           <div class="status-bar__config-divider" />
           <label class="status-bar__config-item">
-            <span>工作</span>
+            <span>{{ $t('status.workMinutes') }}</span>
             <input
               type="number"
               :value="config.pomodoroWork"
@@ -215,10 +218,10 @@ onUnmounted(() => {
               class="status-bar__config-number"
               @change="config.pomodoroWork = Number(($event.target as HTMLInputElement).value); saveConfig()"
             />
-            <span>分钟</span>
+            <span>{{ $t('status.minuteUnit') }}</span>
           </label>
           <label class="status-bar__config-item">
-            <span>休息</span>
+            <span>{{ $t('status.breakMinutes') }}</span>
             <input
               type="number"
               :value="config.pomodoroBreak"
@@ -227,12 +230,12 @@ onUnmounted(() => {
               class="status-bar__config-number"
               @change="config.pomodoroBreak = Number(($event.target as HTMLInputElement).value); saveConfig()"
             />
-            <span>分钟</span>
+            <span>{{ $t('status.minuteUnit') }}</span>
           </label>
         </template>
         <div class="status-bar__config-divider" />
         <label class="status-bar__config-item">
-          <span>假日日历</span>
+          <span>{{ $t('status.holidayCalendar') }}</span>
           <select
             class="status-bar__config-select"
             :value="config.calendarRegion"

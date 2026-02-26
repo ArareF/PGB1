@@ -3,6 +3,9 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{ show?: boolean }>()
 
@@ -110,7 +113,7 @@ async function browseCustomIcon() {
   try {
     const selected = await openDialog({
       multiple: false,
-      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'ico', 'bmp', 'webp'] }],
+      filters: [{ name: t('shortcut.imageFilter'), extensions: ['png', 'jpg', 'jpeg', 'ico', 'bmp', 'webp'] }],
     })
     if (selected && typeof selected === 'string') {
       const tempId = crypto.randomUUID()
@@ -144,7 +147,7 @@ async function browseExe() {
   try {
     const selected = await openDialog({
       multiple: false,
-      filters: [{ name: '应用程序', extensions: ['exe'] }],
+      filters: [{ name: t('shortcut.typeApp'), extensions: ['exe'] }],
     })
     if (selected && typeof selected === 'string') {
       path.value = selected
@@ -174,16 +177,16 @@ function handleSave() {
 <template>
   <Teleport to="body">
     <Transition name="dialog">
-    <div v-if="props.show !== false" class="dialog-overlay" @click.self="$emit('cancel')">
+    <div v-if="props.show !== false" class="dialog-overlay">
       <div class="dialog-content glass-strong">
-        <p class="dialog-title">添加快捷方式</p>
+        <p class="dialog-title">{{ $t('shortcut.addTitle') }}</p>
 
         <div class="dialog-body">
           <!-- 类型选择 -->
           <div class="type-selector">
-            <button class="type-btn" :class="{ active: type === 'app' }" @click="selectType('app')">应用</button>
-            <button class="type-btn" :class="{ active: type === 'folder' }" @click="selectType('folder')">文件夹</button>
-            <button class="type-btn" :class="{ active: type === 'web' }" @click="selectType('web')">网页</button>
+            <button class="type-btn" :class="{ active: type === 'app' }" @click="selectType('app')">{{ $t('shortcut.typeApp') }}</button>
+            <button class="type-btn" :class="{ active: type === 'folder' }" @click="selectType('folder')">{{ $t('shortcut.typeFolder') }}</button>
+            <button class="type-btn" :class="{ active: type === 'web' }" @click="selectType('web')">{{ $t('shortcut.typeWeb') }}</button>
           </div>
 
           <!-- 应用：搜索 + 列表 -->
@@ -191,12 +194,12 @@ function handleSave() {
             <input
               v-model="appSearch"
               class="field-input search-input"
-              placeholder="搜索应用..."
+              :placeholder="$t('shortcut.searchApps')"
               autocomplete="off"
             />
             <div class="app-list">
-              <div v-if="appListLoading" class="app-list-hint">扫描中...</div>
-              <div v-else-if="filteredApps.length === 0" class="app-list-hint">未找到应用</div>
+              <div v-if="appListLoading" class="app-list-hint">{{ $t('common.scanning') }}</div>
+              <div v-else-if="filteredApps.length === 0" class="app-list-hint">{{ $t('shortcut.noAppsFound') }}</div>
               <button
                 v-for="app in filteredApps"
                 :key="app.target_path"
@@ -211,31 +214,31 @@ function handleSave() {
                 <span class="app-item-name">{{ app.name }}</span>
               </button>
             </div>
-            <button class="browse-link" @click="browseExe">找不到？手动选择 .exe 文件...</button>
+            <button class="browse-link" @click="browseExe">{{ $t('shortcut.manualSelect') }}</button>
           </template>
 
           <!-- 文件夹 -->
           <template v-else-if="type === 'folder'">
             <div class="path-row">
-              <input v-model="path" class="field-input" placeholder="文件夹路径" readonly />
-              <button class="browse-btn" @click="browse">浏览...</button>
+              <input v-model="path" class="field-input" :placeholder="$t('shortcut.folderPath')" readonly />
+              <button class="browse-btn" @click="browse">{{ $t('common.browse') }}</button>
             </div>
-            <label class="field-label">名称</label>
-            <input v-model="name" class="field-input" placeholder="显示名称" @keydown.enter="handleSave" />
+            <label class="field-label">{{ $t('common.name') }}</label>
+            <input v-model="name" class="field-input" :placeholder="$t('shortcut.displayName')" @keydown.enter="handleSave" />
           </template>
 
           <!-- 网页 -->
           <template v-else>
-            <label class="field-label">URL</label>
+            <label class="field-label">{{ $t('shortcut.url') }}</label>
             <input v-model="path" class="field-input" placeholder="https://example.com" @keydown.enter="handleSave" />
-            <label class="field-label">名称</label>
-            <input v-model="name" class="field-input" placeholder="显示名称" @keydown.enter="handleSave" />
+            <label class="field-label">{{ $t('common.name') }}</label>
+            <input v-model="name" class="field-input" :placeholder="$t('shortcut.displayName')" @keydown.enter="handleSave" />
           </template>
 
           <!-- 应用已选中时显示确认名称编辑框 -->
           <template v-if="type === 'app' && selectedApp">
-            <label class="field-label">名称</label>
-            <input v-model="name" class="field-input" placeholder="显示名称" @keydown.enter="handleSave" />
+            <label class="field-label">{{ $t('common.name') }}</label>
+            <input v-model="name" class="field-input" :placeholder="$t('shortcut.displayName')" @keydown.enter="handleSave" />
           </template>
 
           <!-- 图标预览 + 自定义上传 -->
@@ -243,7 +246,7 @@ function handleSave() {
             <button
               class="icon-preview-btn"
               :class="{ 'has-custom': customIconPath }"
-              title="点击自定义图标"
+              :title="$t('shortcut.clickToReplaceIcon')"
               @click="browseCustomIcon"
             >
               <img v-if="customIconUrl" :src="customIconUrl" class="preview-img" draggable="false" />
@@ -271,23 +274,23 @@ function handleSave() {
             </button>
             <div class="preview-info">
               <span class="preview-status" :class="{ 'is-custom': customIconPath }">
-                {{ customIconPath ? '已自定义图标' : '图标自动获取' }}
+                {{ customIconPath ? $t('shortcut.customIcon') : $t('shortcut.autoIcon') }}
               </span>
-              <span class="preview-hint">点击替换图标</span>
+              <span class="preview-hint">{{ $t('shortcut.clickToReplaceIcon') }}</span>
               <button
                 v-if="canFetchPreview"
                 class="preview-fetch-btn"
                 :disabled="previewLoading"
                 @click="fetchIconPreview"
-              >{{ previewLoading ? '获取中...' : '预览自动图标' }}</button>
+              >{{ previewLoading ? $t('shortcut.fetchingIcon') : $t('shortcut.previewAutoIcon') }}</button>
             </div>
           </div>
         </div>
 
         <div class="dialog-actions">
           <div class="actions-right">
-            <button class="dialog-btn dialog-btn-primary" :disabled="!canSave" @click="handleSave">添加</button>
-            <button class="dialog-btn dialog-btn-secondary" @click="$emit('cancel')">取消</button>
+            <button class="dialog-btn dialog-btn-primary" :disabled="!canSave" @click="handleSave">{{ $t('common.add') }}</button>
+            <button class="dialog-btn dialog-btn-secondary" @click="$emit('cancel')">{{ $t('common.cancel') }}</button>
           </div>
         </div>
       </div>

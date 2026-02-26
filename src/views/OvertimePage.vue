@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+
+useI18n()
 
 const customTime = ref('')
 const loading = ref(false)
@@ -46,12 +49,12 @@ async function handleCustom() {
 <template>
   <div class="overtime-container glass-strong" data-tauri-drag-region>
     <!-- 关闭按钮 -->
-    <button class="close-btn" title="关闭" @click="closeWindow">
+    <button class="close-btn" :title="$t('common.close')" @click="closeWindow">
       ×
     </button>
 
     <!-- 标题 -->
-    <p class="overtime-title">加班多久？</p>
+    <p class="overtime-title">{{ $t('overtime.title') }}</p>
 
     <!-- 分隔线 -->
     <div class="divider"></div>
@@ -59,19 +62,19 @@ async function handleCustom() {
     <!-- 快捷按钮 -->
     <div class="quick-btns">
       <button class="quick-btn" :disabled="loading" @click="scheduleOvertime(30)">
-        +30分
+        {{ $t('overtime.plus30min') }}
       </button>
       <button class="quick-btn" :disabled="loading" @click="scheduleOvertime(60)">
-        +1小时
+        {{ $t('overtime.plus1hour') }}
       </button>
       <button class="quick-btn" :disabled="loading" @click="scheduleOvertime(120)">
-        +2小时
+        {{ $t('overtime.plus2hours') }}
       </button>
     </div>
 
     <!-- 自定义时间 -->
     <div class="custom-row">
-      <span class="custom-label">自定义:</span>
+      <span class="custom-label">{{ $t('overtime.custom') }}</span>
       <input
         v-model="customTime"
         class="custom-input"
@@ -83,7 +86,7 @@ async function handleCustom() {
         :disabled="loading || !customTime"
         @click="handleCustom"
       >
-        确定
+        {{ $t('common.ok') }}
       </button>
     </div>
   </div>

@@ -3,19 +3,25 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
 import { useMaterials } from '../composables/useMaterials'
 import { useSettings } from '../composables/useSettings'
 import MaterialCard from '../components/MaterialCard.vue'
 import { useRubberBandSelect } from '../composables/useRubberBandSelect'
+import PageGuideOverlay from '../components/PageGuideOverlay.vue'
+import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const { setNavigation } = useNavigation()
 const { materials, loading, loadMaterials } = useMaterials()
-const { settings, loadSettings } = useSettings()
+const { settings, loadSettings, saveSettings } = useSettings()
+const tpPresetOpen = ref(false)
 
 const taskId = route.params.taskId as string
+const showGuide = ref(false)
 const taskPath = route.query.taskPath as string
 
 // ─── 素材过滤 ────────────────────────────────────────
@@ -136,6 +142,7 @@ const canStart = computed(() => {
 const isConverting = ref(false)
 const conversionProgress = ref({ current: 0, total: 0 })
 const failedSequences = ref<string[]>([])
+const sequenceError = ref('')
 let unlistenOrganized: (() => void) | null = null
 let unlistenFailed: (() => void) | null = null
 
@@ -158,6 +165,7 @@ async function handleStart() {
 
   isConverting.value = true
   failedSequences.value = []
+  sequenceError.value = ''
   conversionProgress.value = { current: 0, total: Object.keys(images).length + sequences.length }
 
   try {
@@ -180,15 +188,25 @@ async function handleStart() {
         imagine_path: settings.value.workflow.imaginePath,
         texture_packer_cli_path: settings.value.workflow.texturePackerCliPath,
         texture_packer_gui_path: settings.value.workflow.texturePackerGuiPath,
+        tp_scale: settings.value.workflow.tpScale,
+        tp_webp_quality: settings.value.workflow.tpWebpQuality,
       }
     })
-
-    if (sequences.length > 0) {
-      await invoke('execute_sequence_conversion', { sequences })
-    }
   } catch (err) {
     console.error('转换流程启动失败:', err)
     isConverting.value = false
+    return
+  }
+
+  // 序列帧转换独立处理 —— 失败不应终止静帧的 Imagine 流程
+  if (sequences.length > 0) {
+    try {
+      await invoke('execute_sequence_conversion', { sequences })
+    } catch (seqErr) {
+      console.error('序列帧转换失败:', seqErr)
+      conversionProgress.value.total -= sequences.length
+      sequenceError.value = String(seqErr)
+    }
   }
 }
 
@@ -210,15 +228,30 @@ onUnmounted(() => {
   if (unlistenFailed) unlistenFailed()
 })
 
+// ─── TP 预设输入 + 失焦保存 ──────────────────────────
+function onTpScaleInput(e: Event) {
+  if (!settings.value) return
+  settings.value.workflow.tpScale = Number((e.target as HTMLInputElement).value) || 0
+}
+function onTpWebpQualityInput(e: Event) {
+  if (!settings.value) return
+  settings.value.workflow.tpWebpQuality = Math.round(Number((e.target as HTMLInputElement).value) || 0)
+}
+function onTpPresetBlur() {
+  if (settings.value) saveSettings(settings.value)
+}
+
 // ─── 初始化 ──────────────────────────────────────────
 
 onMounted(async () => {
   setNavigation({
-    title: `转换 · ${taskId}`,
+    title: `${t('task.convert')} · ${taskId}`,
     showBackButton: true,
     onBack: () => router.back(),
     actions: [],
-    moreMenuItems: [],
+    moreMenuItems: [
+      { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
+    ],
   })
   await Promise.all([
     taskPath ? loadMaterials(taskPath) : Promise.resolve(),
@@ -239,12 +272,12 @@ onMounted(async () => {
     @mousedown="onContainerMouseDown"
     @scroll="onContainerScroll"
   >
-    <p v-if="loading" class="hint-text">扫描中...</p>
-    <div v-else-if="totalPending === 0" class="hint-text">暂无需要转换的素材</div>
+    <p v-if="loading" class="hint-text">{{ $t('common.scanning') }}</p>
+    <div v-else-if="totalPending === 0" class="hint-text">{{ $t('convert.noMaterials') }}</div>
     <template v-else>
       <!-- 静帧分区 -->
       <div v-if="pendingImages.length > 0" class="section">
-        <p class="section-label">静帧素材 ({{ pendingImages.length }})</p>
+        <p class="section-label">{{ $t('convert.imageSection') }} ({{ pendingImages.length }})</p>
         <div class="material-grid">
           <MaterialCard
             v-for="m in pendingImages"
@@ -260,7 +293,7 @@ onMounted(async () => {
 
       <!-- 序列帧分区 -->
       <div v-if="pendingSequences.length > 0" class="section">
-        <p class="section-label">序列帧素材 ({{ pendingSequences.length }})</p>
+        <p class="section-label">{{ $t('convert.sequenceSection') }} ({{ pendingSequences.length }})</p>
         <div class="material-grid">
           <MaterialCard
             v-for="m in pendingSequences"
@@ -279,30 +312,30 @@ onMounted(async () => {
 
   <!-- 控制面板：Teleport 到 #content-row，作为独立毛玻璃板块 -->
   <Teleport to="#content-row">
-    <aside class="convert-control-panel glass-medium">
+    <aside class="convert-control-panel">
       <!-- 选择模式 -->
       <div v-if="!isConverting" class="panel-body">
-        <p class="panel-title">格式转换</p>
+        <p class="panel-title">{{ $t('convert.title') }}</p>
 
         <div class="stats">
           <div class="stat-row">
-            <span class="stat-label">静帧</span>
+            <span class="stat-label">{{ $t('convert.imageTab') }}</span>
             <span class="stat-value">{{ selectedImageCount }} / {{ pendingImages.length }}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">序列帧</span>
+            <span class="stat-label">{{ $t('convert.sequenceTab') }}</span>
             <span class="stat-value">{{ annotatedSequenceCount }} / {{ pendingSequences.length }}</span>
           </div>
         </div>
 
         <button v-if="pendingImages.length > 0" class="ghost-btn" @click="toggleSelectAll">
-          {{ pendingImages.every(m => selectedPaths.has(m.path)) ? '取消全选' : '全选' }}
+          {{ pendingImages.every(m => selectedPaths.has(m.path)) ? $t('common.deselectAll') : $t('common.selectAll') }}
         </button>
 
         <!-- 序列帧 FPS 标注区 -->
         <template v-if="pendingSequences.length > 0">
           <div class="divider" />
-          <p class="panel-subtitle">序列帧帧率</p>
+          <p class="panel-subtitle">{{ $t('convert.sequenceFps') }}</p>
           <div class="fps-annotate-row">
             <div class="custom-input-wrapper">
               <input
@@ -321,18 +354,59 @@ onMounted(async () => {
             :disabled="selectedSequencePaths.length === 0 || !fpsInputValid"
             @click="applyFps"
           >
-            应用到选中 ({{ selectedSequencePaths.length }})
+            {{ $t('convert.applyToSelected') }} ({{ selectedSequencePaths.length }})
           </button>
           <div class="seq-stat">
-            <span class="stat-label">已标注</span>
+            <span class="stat-label">{{ $t('convert.annotated') }}</span>
             <span class="stat-value">{{ annotatedSequenceCount }} / {{ pendingSequences.length }}</span>
           </div>
         </template>
+
+        <!-- TP 预设折叠面板 -->
+        <div class="divider" />
+        <div class="tp-preset-section">
+          <button class="tp-preset-toggle" @click="tpPresetOpen = !tpPresetOpen">
+            <span>{{ $t('convert.tpPreset') }}</span>
+            <svg
+              class="tp-preset-arrow"
+              :class="{ open: tpPresetOpen }"
+              width="12" height="12" viewBox="0 0 12 12"
+            >
+              <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div v-show="tpPresetOpen" class="tp-preset-body">
+            <div class="tp-preset-row">
+              <label class="tp-preset-label">{{ $t('convert.tpScale') }}</label>
+              <div class="custom-input-wrapper">
+                <input
+                  type="text"
+                  class="custom-input"
+                  :value="settings?.workflow.tpScale"
+                  @input="onTpScaleInput"
+                  @blur="onTpPresetBlur"
+                />
+              </div>
+            </div>
+            <div class="tp-preset-row">
+              <label class="tp-preset-label">{{ $t('convert.tpWebpQuality') }}</label>
+              <div class="custom-input-wrapper">
+                <input
+                  type="text"
+                  class="custom-input"
+                  :value="settings?.workflow.tpWebpQuality"
+                  @input="onTpWebpQualityInput"
+                  @blur="onTpPresetBlur"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 进度模式 -->
       <div v-else class="panel-body">
-        <p class="panel-title">正在转换...</p>
+        <p class="panel-title">{{ $t('convert.converting') }}</p>
 
         <div class="progress-section">
           <div class="progress-count">
@@ -346,14 +420,18 @@ onMounted(async () => {
           </div>
           <p class="progress-hint">
             <template v-if="conversionProgress.current < conversionProgress.total">
-              请在外部工具中完成导出，程序将自动分类归位
+              {{ $t('convert.externalToolHint') }}
             </template>
-            <template v-else>
-              转换已全部完成！
+            <template v-else-if="conversionProgress.total > 0">
+              {{ $t('convert.conversionComplete') }}
             </template>
           </p>
+          <div v-if="sequenceError" class="failed-list">
+            <p class="failed-title">{{ $t('convert.sequenceStartFailed') }}</p>
+            <p class="failed-item">{{ sequenceError }}</p>
+          </div>
           <div v-if="failedSequences.length > 0" class="failed-list">
-            <p class="failed-title">以下序列帧未发布，已跳过：</p>
+            <p class="failed-title">{{ $t('convert.skippedSequences') }}</p>
             <p v-for="name in failedSequences" :key="name" class="failed-item">{{ name }}</p>
           </div>
         </div>
@@ -361,9 +439,9 @@ onMounted(async () => {
 
       <div class="panel-footer">
         <template v-if="!isConverting">
-          <button class="cancel-btn" @click="router.back()">取消</button>
+          <button class="cancel-btn" @click="router.back()">{{ $t('common.cancel') }}</button>
           <button class="execute-btn" :disabled="!canStart" @click="handleStart">
-            开始制作
+            {{ $t('convert.startMaking') }}
           </button>
         </template>
         <template v-else>
@@ -372,7 +450,7 @@ onMounted(async () => {
             :class="{ done: conversionProgress.current >= conversionProgress.total }"
             @click="handleFinish"
           >
-            完成转换
+            {{ $t('convert.finishConversion') }}
           </button>
         </template>
       </div>
@@ -392,6 +470,8 @@ onMounted(async () => {
       }"
     />
   </Teleport>
+
+  <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.convert" @close="showGuide = false" />
 </template>
 
 <style scoped>
@@ -440,6 +520,9 @@ onMounted(async () => {
 
 <!-- Teleport 出去的面板用非 scoped style -->
 <style>
+/* 手动复刻 glass-medium 视觉，不用 backdrop-filter：
+   Teleport 到 #content-row 后与 main-content(glass-medium) 成兄弟，
+   双 backdrop-filter 在 WebView2 + Acrylic 下 gap 区域产生白色闪烁 */
 .convert-control-panel {
   width: 220px;
   flex-shrink: 0;
@@ -448,6 +531,9 @@ onMounted(async () => {
   flex-direction: column;
   justify-content: space-between;
   overflow: hidden;
+  background: var(--glass-medium-bg);
+  border: var(--glass-medium-border);
+  box-shadow: var(--glass-medium-shadow);
 }
 
 .convert-control-panel .panel-body {
@@ -692,5 +778,56 @@ onMounted(async () => {
 
 .convert-control-panel .execute-btn.done:hover {
   background: var(--color-success-600, #16a34a);
+}
+
+/* TP 预设折叠面板 */
+.convert-control-panel .tp-preset-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.convert-control-panel .tp-preset-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.convert-control-panel .tp-preset-toggle:hover {
+  color: var(--text-primary);
+}
+
+.convert-control-panel .tp-preset-arrow {
+  transition: transform var(--duration-fast);
+  color: var(--text-tertiary);
+}
+
+.convert-control-panel .tp-preset-arrow.open {
+  transform: rotate(180deg);
+}
+
+.convert-control-panel .tp-preset-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin-top: var(--spacing-3);
+}
+
+.convert-control-panel .tp-preset-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.convert-control-panel .tp-preset-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
 }
 </style>

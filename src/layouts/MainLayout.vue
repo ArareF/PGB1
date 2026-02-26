@@ -1,20 +1,32 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import TitleBar from '../components/TitleBar.vue'
 import Sidebar from '../components/Sidebar.vue'
 import WindowControls from '../components/WindowControls.vue'
 import { useNavigation } from '../composables/useNavigation'
 
+const { t } = useI18n()
 const { moreMenuItems, routeDirection, setRouteDirection } = useNavigation()
 const showMoreMenu = ref(false)
 
 // 路由方向检测：路径深度变浅 = 返回
 const router = useRouter()
+const route = useRoute()
 router.beforeEach((to, from) => {
   const toDepth = to.path.split('/').filter(Boolean).length
   const fromDepth = from.path.split('/').filter(Boolean).length
   setRouteDirection(toDepth < fromDepth ? 'back' : 'forward')
+})
+
+/** 全局追加「程序设置」——设置页本身除外 */
+const allMoreMenuItems = computed(() => {
+  const items = [...moreMenuItems.value]
+  if (route.name !== 'settings') {
+    items.push({ id: 'settings', label: t('home.appSettings'), handler: () => router.push({ name: 'settings' }) })
+  }
+  return items
 })
 </script>
 
@@ -26,7 +38,7 @@ router.beforeEach((to, from) => {
       <div class="top-right-column">
         <WindowControls class="window-controls-area" />
         <div class="more-menu-wrapper">
-          <button class="more-menu-btn" title="更多" @click="showMoreMenu = !showMoreMenu">
+          <button class="more-menu-btn" :title="$t('common.more')" @click="showMoreMenu = !showMoreMenu">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <circle cx="3" cy="8" r="1.5" />
               <circle cx="8" cy="8" r="1.5" />
@@ -35,9 +47,9 @@ router.beforeEach((to, from) => {
           </button>
           <!-- 下拉菜单 — 内容由各页面通过 useNavigation 注入 -->
           <Transition name="dropdown">
-            <div v-if="showMoreMenu" class="more-dropdown glass-strong">
+            <div v-if="showMoreMenu" class="more-dropdown">
               <button
-                v-for="item in moreMenuItems"
+                v-for="item in allMoreMenuItems"
                 :key="item.id"
                 class="dropdown-item"
                 @click="showMoreMenu = false; item.handler()"
@@ -147,6 +159,14 @@ router.beforeEach((to, from) => {
 
 .more-menu-btn:hover {
   color: var(--text-primary);
+  border-color: var(--border-medium);
+  transform: translateY(-2px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.more-menu-btn:active {
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 .more-menu-btn svg {
@@ -161,7 +181,9 @@ router.beforeEach((to, from) => {
   margin-top: auto;
 }
 
-/* 下拉菜单 */
+/* 下拉菜单 — 手动复刻 glass-strong 视觉，不用 backdrop-filter：
+   未 Teleport to body，仍在原始 DOM 树中，
+   backdrop-filter 会侵入相邻 glass 区域（与 Sidebar/左岛同类问题） */
 .more-dropdown {
   position: absolute;
   top: calc(100% + var(--spacing-2));
@@ -170,6 +192,9 @@ router.beforeEach((to, from) => {
   padding: var(--spacing-2);
   border-radius: var(--floating-action-radius);
   z-index: var(--z-dropdown);
+  background: var(--glass-strong-bg);
+  border: var(--glass-strong-border);
+  box-shadow: var(--glass-strong-shadow);
 }
 
 .dropdown-item {

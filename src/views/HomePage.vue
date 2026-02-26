@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
-import { APP_NAME } from '../config/app'
 import { useProjects } from '../composables/useProjects'
 import { useSettings } from '../composables/useSettings'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
@@ -10,14 +10,18 @@ import type { ProjectInfo } from '../composables/useProjects'
 import ProjectCard from '../components/ProjectCard.vue'
 import CreateProjectDialog from '../components/CreateProjectDialog.vue'
 import EditProjectDialog from '../components/EditProjectDialog.vue'
+import PageGuideOverlay from '../components/PageGuideOverlay.vue'
+import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
 const router = useRouter()
+const { t } = useI18n()
 const { setNavigation } = useNavigation()
 const { projects, loading, loadProjects } = useProjects()
 const { loadSettings } = useSettings()
 const { openInExplorer } = useDirectoryFiles()
 
 const showCreateDialog = ref(false)
+const showGuide = ref(false)
 const editTarget = ref<ProjectInfo | null>(null)
 const editMode = ref<'rename' | 'deadline' | 'delete' | null>(null)
 
@@ -45,20 +49,28 @@ function closeEditDialog() {
 
 /* 注册主页导航配置 */
 setNavigation({
-  title: APP_NAME,
+  title: t('app.name'),
   showBackButton: false,
   actions: [],
   moreMenuItems: [
-    { id: 'open-root', label: '打开项目文件夹', handler: async () => {
+    { id: 'open-root', label: t('home.openProjectFolder'), handler: async () => {
       const s = await loadSettings()
       if (s?.general.projectRootDir) openInExplorer(s.general.projectRootDir)
     }},
-    { id: 'settings', label: '程序设置', handler: () => router.push({ name: 'settings' }) },
+    { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
   ],
 })
 
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') loadProjects()
+}
+
 onMounted(() => {
   loadProjects()
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 
 function openProject(project: ProjectInfo) {
@@ -74,13 +86,13 @@ function onProjectCreated(projectName: string) {
 <template>
   <div class="home-page">
     <div class="page-header">
-      <p class="page-hint">我的项目</p>
-      <button class="add-btn" title="新建项目" @click="showCreateDialog = true">+</button>
+      <p class="page-hint">{{ $t('home.myProjects') }}</p>
+      <button class="add-btn" :title="$t('home.createProject')" @click="showCreateDialog = true">+</button>
     </div>
 
     <!-- 可滚动内容区 -->
     <div class="scroll-content">
-      <p v-if="loading" class="loading-text">扫描中...</p>
+      <p v-if="loading" class="loading-text">{{ $t('common.scanning') }}</p>
 
       <TransitionGroup v-else name="card" tag="div" class="card-grid">
         <ProjectCard
@@ -111,6 +123,8 @@ function onProjectCreated(projectName: string) {
     />
 
   </div>
+
+  <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.home" @close="showGuide = false" />
 </template>
 
 <style scoped>

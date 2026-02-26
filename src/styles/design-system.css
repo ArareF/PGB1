@@ -38,6 +38,7 @@
   --color-primary-700: #2D5A8A;
   --color-primary-800: #1E3F66;
   --color-primary-900: #102A4C;
+  --color-primary:     var(--color-primary-500);
 
   /* 中性色 Neutral — 去蓝化中性灰 */
   --color-neutral-0:    #F0F1F3;
@@ -458,6 +459,7 @@
   --progress-scaled:      var(--color-info);
   --progress-done:        var(--color-epic);
   --progress-uploaded:    var(--color-success);
+  --progress-outdated:    var(--color-orange);
 
   /* 标签状态色 */
   --tag-status-pending-bg:    var(--color-neutral-400);
@@ -471,6 +473,7 @@
   --tag-progress-scaled-bg:   var(--progress-scaled);
   --tag-progress-done-bg:     var(--progress-done);
   --tag-progress-uploaded-bg: var(--progress-uploaded);
+  --tag-progress-outdated-bg: var(--progress-outdated);
 
   /* 功能色语义应用 */
   --action-primary:       var(--color-primary-500);
@@ -840,9 +843,10 @@ html {
   width: 24px;
   height: 24px;
   border-radius: var(--radius-sm);
-  border: 2px solid var(--border-medium);
+  border: 2px solid var(--border-heavy);
   background: var(--glass-subtle-bg);
   backdrop-filter: blur(var(--glass-subtle-blur));
+  box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;
   justify-content: center;

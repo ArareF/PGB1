@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { useI18n } from 'vue-i18n'
 import { useSettings } from '../composables/useSettings'
 import type { MaterialInfo } from '../composables/useMaterials'
 import SequencePreview from './SequencePreview.vue'
+
+const { t } = useI18n()
 
 const { settings } = useSettings()
 
@@ -25,15 +28,15 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
-/** 进度状态中文映射 */
+/** 进度状态映射 */
 function progressLabel(progress: string): string {
   const map: Record<string, string> = {
-    none: '未开始',
-    original: '原件',
-    scaled: '已缩放',
-    done: '已输出',
-    uploaded: '已上传',
-    broken: '请检查',
+    none: t('materialCard.notStarted'),
+    original: t('materialCard.original'),
+    scaled: t('materialCard.scaled'),
+    done: t('materialCard.done'),
+    uploaded: t('materialCard.uploaded'),
+    broken: t('materialCard.broken'),
   }
   return map[progress] ?? progress
 }
@@ -58,8 +61,9 @@ function progressLabel(progress: string): string {
         <!-- 序列帧：Canvas 动画预览 -->
         <SequencePreview
           v-if="material.material_type === 'sequence'"
-          :key="`${material.path}-${material.fps ?? settings?.preview.defaultFps ?? 24}`"
+          :key="`${material.path}-${material.name}-${material.fps ?? settings?.preview.defaultFps ?? 24}`"
           :folder-path="material.path"
+          :base-name="material.name"
           :fps="material.fps ?? settings?.preview.defaultFps ?? 24"
           :max-width="200"
           :transparent="settings?.preview.backgroundTransparent ?? false"
@@ -235,9 +239,10 @@ function progressLabel(progress: string): string {
   width: 24px;
   height: 24px;
   border-radius: var(--radius-sm);
-  border: 2px solid var(--border-medium);
+  border: 2px solid var(--border-heavy);
   background: var(--glass-subtle-bg);
   backdrop-filter: blur(var(--glass-subtle-blur));
+  box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;
   justify-content: center;

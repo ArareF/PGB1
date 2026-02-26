@@ -1528,51 +1528,36 @@ pub fn load_settings<R: Runtime>(app_handle: AppHandle<R>) -> Result<AppSettings
 
     if config_path.exists() {
         let content = fs::read_to_string(&config_path).map_err(|e| format!("读取设置失败: {}", e))?;
-        let settings: AppSettings = serde_json::from_str(&content).map_err(|e| format!("解析设置失败: {}", e))?;
+        let mut settings: AppSettings = serde_json::from_str(&content).map_err(|e| format!("解析设置失败: {}", e))?;
+
+        // 迁移修复：旧版本 GUI→CLI 互推可能产生 \bin\bin\ 双层路径
+        let cli = &settings.workflow.texture_packer_cli_path;
+        if cli.contains(r"\bin\bin\") || cli.contains("/bin/bin/") {
+            settings.workflow.texture_packer_cli_path =
+                cli.replace(r"\bin\bin\", r"\bin\").replace("/bin/bin/", "/bin/");
+            log::warn!("迁移修复：TP CLI 路径 \\bin\\bin\\ → \\bin\\");
+            let _ = save_settings_to_file(&config_dir, &settings);
+        }
+
         return Ok(settings);
     }
 
-    // 首次运行：自动探测工具路径
-    let mut settings = AppSettings::default();
-    
-    // 探测 Imagine
-    let imagine_probes = [
-        "C:\\Program Files\\Imagine\\Imagine.exe",
-        "C:\\Program Files (x86)\\Imagine\\Imagine.exe",
-    ];
-    for p in &imagine_probes {
-        if Path::new(p).exists() {
-            settings.workflow.imagine_path = p.to_string();
-            break;
-        }
-    }
-    // 尝试用户目录下的 Local/Programs (常见安装位置)
-    if settings.workflow.imagine_path.is_empty() {
-        if let Some(local_appdata) = std::env::var_os("LOCALAPPDATA") {
-            let p = Path::new(&local_appdata).join("Programs\\Imagine\\Imagine.exe");
-            if p.exists() {
-                settings.workflow.imagine_path = p.to_string_lossy().to_string();
-            }
-        }
-    }
-
-    // 探测 TexturePacker
-    let tp_probes = [
-        "C:\\Program Files\\CodeAndWeb\\TexturePacker\\bin\\TexturePacker.exe",
-        "C:\\Program Files (x86)\\CodeAndWeb\\TexturePacker\\bin\\TexturePacker.exe",
-    ];
-    for p in &tp_probes {
-        if Path::new(p).exists() {
-            settings.workflow.texture_packer_cli_path = p.to_string();
-            settings.workflow.texture_packer_gui_path = p.to_string(); // 通常是同一个 exe
-            break;
-        }
-    }
-
-    // 自动保存初始配置
+    // 首次运行：创建默认配置（工具路径探测交给前端 OnboardingDialog）
+    let settings = AppSettings::default();
     save_settings(app_handle, settings.clone())?;
 
     Ok(settings)
+}
+
+/// 纯写文件，不触发 autolaunch 等副作用（供迁移修复使用）
+fn save_settings_to_file(config_dir: &Path, settings: &AppSettings) -> Result<(), String> {
+    if !config_dir.exists() {
+        fs::create_dir_all(config_dir).map_err(|e| format!("创建配置目录失败: {}", e))?;
+    }
+    let config_path = config_dir.join("app_settings.json");
+    let json = serde_json::to_string_pretty(settings).map_err(|e| format!("序列化设置失败: {}", e))?;
+    fs::write(&config_path, json).map_err(|e| format!("写入设置文件失败: {}", e))?;
+    Ok(())
 }
 
 /// 保存应用设置
@@ -1583,20 +1568,14 @@ pub fn save_settings<R: Runtime>(app_handle: AppHandle<R>, settings: AppSettings
         .app_config_dir()
         .map_err(|e| format!("无法获取配置目录: {}", e))?;
 
-    if !config_dir.exists() {
-        fs::create_dir_all(&config_dir).map_err(|e| format!("创建配置目录失败: {}", e))?;
-    }
-
-    let config_path = config_dir.join("app_settings.json");
-    let json = serde_json::to_string_pretty(&settings).map_err(|e| format!("序列化设置失败: {}", e))?;
-    fs::write(&config_path, json).map_err(|e| format!("写入设置文件失败: {}", e))?;
+    save_settings_to_file(&config_dir, &settings)?;
 
     // 同步开机自启注册表
     use tauri_plugin_autostart::ManagerExt;
     let autolaunch = app_handle.autolaunch();
     if settings.general.auto_start {
         autolaunch.enable().map_err(|e| format!("设置开机自启失败: {}", e))?;
-    } else {
+    } else if autolaunch.is_enabled().unwrap_or(false) {
         autolaunch.disable().map_err(|e| format!("取消开机自启失败: {}", e))?;
     }
 
@@ -1695,6 +1674,8 @@ pub fn start_conversion<R: Runtime>(
         _watcher: watcher,
         texture_packer_cli: PathBuf::from(request.texture_packer_cli_path),
         texture_packer_gui: PathBuf::from(request.texture_packer_gui_path),
+        tp_scale: request.tp_scale,
+        tp_webp_quality: request.tp_webp_quality,
     });
 
     Ok(())
@@ -1707,7 +1688,7 @@ pub async fn execute_sequence_conversion<R: Runtime>(
     state: State<'_, ConversionState>,
     sequences: Vec<ConversionSequenceRequest>,
 ) -> Result<(), String> {
-    let (done_path, cli_path, gui_path, fps_map) = {
+    let (done_path, cli_path, gui_path, fps_map, tp_scale, tp_webp_quality) = {
         let state_lock = state.lock().map_err(|e| e.to_string())?;
         let session = state_lock.as_ref().ok_or("未启动转换会话")?;
         (
@@ -1715,6 +1696,8 @@ pub async fn execute_sequence_conversion<R: Runtime>(
             session.texture_packer_cli.clone(),
             session.texture_packer_gui.clone(),
             session.sequence_fps_map.clone(),
+            session.tp_scale,
+            session.tp_webp_quality,
         )
     };
 
@@ -1743,10 +1726,10 @@ pub async fn execute_sequence_conversion<R: Runtime>(
             .arg("--data").arg(&data_path)
             .arg("--format").arg("cocos2d-x")
             .arg("--texture-format").arg("webp")
-            .arg("--webp-quality").arg("80")
-            .arg("--opt").arg("RGB888")
+            .arg("--webp-quality").arg(tp_webp_quality.to_string())
+            .arg("--opt").arg(if name.to_lowercase().ends_with("normal") { "RGBA8888" } else { "RGB888" })
             .arg("--size-constraints").arg("AnySize")
-            .arg("--scale").arg("0.5")
+            .arg("--scale").arg(tp_scale.to_string())
             .arg("--multipack")
             .arg("--save").arg(&tps_path);
 
@@ -1761,8 +1744,8 @@ pub async fn execute_sequence_conversion<R: Runtime>(
             let marker = "<key>globalSpriteSettings</key>";
             let patched = if let Some(pos) = content.find(marker) {
                 let (before, after) = content.split_at(pos + marker.len());
-                // 在 after 中将第一个 <double>1</double> 替换为 0.5
-                let after_patched = after.replacen("<double>1</double>", "<double>0.5</double>", 1);
+                // 在 after 中将第一个 <double>1</double> 替换为用户设定的 tp_scale
+                let after_patched = after.replacen("<double>1</double>", &format!("<double>{}</double>", tp_scale), 1);
                 format!("{}{}", before, after_patched)
             } else {
                 content
@@ -4125,31 +4108,44 @@ pub async fn open_daily_report(app_handle: tauri::AppHandle) -> Result<(), Strin
     .build()
     .map_err(|e| format!("创建日报窗口失败: {}", e))?;
 
-    // 后台等待 Google Docs 加载完成后滚动到底部（不阻塞命令返回）
+    // 后台轮询：等 Google Docs 编辑器就绪后发送 Ctrl+End 滚到底部
+    // Google Docs canvas 编辑器只响应真实系统按键，DOM scroll / 合成 KeyboardEvent 均无效
+    // 策略：每 3 秒尝试一次（聚焦窗口 → 点击编辑区 → Ctrl+End），最多 10 次（~30 秒）
+    // 页面未加载完时按键无副作用，加载完后自动生效
     tauri::async_runtime::spawn(async move {
-        // 初始等待 2 秒让页面开始加载
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        // 轮询找到 Google Docs 真实滚动容器后执行滚动（最多等待 10 秒）
-        let script = r#"
-            (function scroll(retries) {
-                var el = document.querySelector('.kix-appview-editor-scroller');
-                if (el) {
-                    el.scrollTop = el.scrollHeight;
-                } else if (retries > 0) {
-                    setTimeout(function() { scroll(retries - 1); }, 500);
-                }
-            })(20);
-        "#;
-        let _ = window.eval(script);
+        // 首次等待 3 秒让页面开始加载
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+        for _ in 0..10 {
+            let _ = window.set_focus();
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            let _ = window.eval(
+                "var e = document.querySelector('.kix-appview-editor'); if(e) e.click();"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            #[cfg(target_os = "windows")]
+            {
+                send_ctrl_end();
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
     });
 
     Ok(())
 }
 
 /// 测试提醒弹窗（设置页用）
+/// 必须 spawn 到 async runtime：sync 命令在线程池调 WebviewWindowBuilder::build()
+/// 会 run_on_main_thread 等主线程，而主线程正阻塞等命令返回 → 死锁
 #[tauri::command]
 pub fn test_reminder(app_handle: tauri::AppHandle, reminder_type: String) -> Result<(), String> {
-    crate::scheduler::create_reminder_window(&app_handle, &reminder_type)
+    let app = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = crate::scheduler::create_reminder_window(&app, &reminder_type) {
+            log::error!("创建提醒窗口失败: {}", e);
+        }
+    });
+    Ok(())
 }
 
 /// 加载本地打卡记录
@@ -4241,39 +4237,49 @@ pub fn schedule_overtime_reminder(
 }
 
 /// 显示加班设置弹窗
+/// 必须 spawn 到 async runtime（同 test_reminder，防止 build() 主线程死锁）
 #[tauri::command]
 pub fn show_overtime_dialog(app_handle: tauri::AppHandle) -> Result<(), String> {
-    use tauri::Manager;
+    let app = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        use tauri::Manager;
 
-    let label = "reminder-overtime-setting";
+        let label = "reminder-overtime-setting";
 
-    // 如果已存在，聚焦
-    if let Some(existing) = app_handle.get_webview_window(label) {
-        let _ = existing.set_focus();
-        return Ok(());
-    }
+        // 如果已存在，聚焦
+        if let Some(existing) = app.get_webview_window(label) {
+            let _ = existing.show();
+            let _ = existing.set_focus();
+            return;
+        }
 
-    let window = tauri::WebviewWindowBuilder::new(
-        &app_handle,
-        label,
-        tauri::WebviewUrl::App("/overtime".into()),
-    )
-    .title("PGB1")
-    .inner_size(400.0, 200.0)
-    .resizable(false)
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .center()
-    .build()
-    .map_err(|e| format!("创建加班设置窗口失败: {}", e))?;
+        let window = match tauri::WebviewWindowBuilder::new(
+            &app,
+            label,
+            tauri::WebviewUrl::App("/overtime".into()),
+        )
+        .title("PGB1")
+        .inner_size(400.0, 200.0)
+        .resizable(false)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .center()
+        .build()
+        {
+            Ok(w) => w,
+            Err(e) => {
+                log::error!("创建加班设置窗口失败: {}", e);
+                return;
+            }
+        };
 
-    #[cfg(target_os = "windows")]
-    {
-        use window_vibrancy::apply_acrylic;
-        let _ = apply_acrylic(&window, Some((0, 0, 0, 1)));
-    }
-
+        #[cfg(target_os = "windows")]
+        {
+            use window_vibrancy::apply_acrylic;
+            let _ = apply_acrylic(&window, Some((0, 0, 0, 1)));
+        }
+    });
     Ok(())
 }
 
@@ -5160,32 +5166,46 @@ pub fn set_default_ae_file(project_path: String, file_name: Option<String>) -> R
     Ok(())
 }
 
-/// 递归扫描目录，寻找 Unity 游戏启动程序
+/// 递归扫描目录，寻找游戏原型启动程序（支持 Unity / Godot）
 ///
-/// 策略：Unity 构建必然包含 `UnityCrashHandler64.exe`，与主 exe 在同一目录。
-/// 递归遍历 root_dir，找到含该 Crash Handler 的那一层，返回同目录中另一个 .exe 的路径。
-/// 不依赖文件夹名称，任意深度均可识别。
+/// 检测策略（按优先级）：
+/// 1. Unity — 目录含 `UnityCrashHandler64.exe`，返回同目录另一个 .exe
+/// 2. Godot — 目录含 `.pck`，返回同名 `.exe`（跳过 `.console.exe` 调试版）
+///
+/// 递归遍历 root_dir，不依赖文件夹名称，任意深度均可识别。
 #[tauri::command]
-pub fn find_unity_game_exe(root_dir: String) -> Result<Option<String>, String> {
-    const CRASH_HANDLER: &str = "UnityCrashHandler64.exe";
+pub fn find_game_exe(root_dir: String) -> Result<Option<String>, String> {
+    const UNITY_CRASH_HANDLER: &str = "unitycrashhandler64.exe";
 
-    fn walk(dir: &Path, crash_handler_lower: &str) -> Option<PathBuf> {
+    fn walk(dir: &Path) -> Option<PathBuf> {
         let entries: Vec<_> = match std::fs::read_dir(dir) {
             Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
             Err(_) => return None,
         };
 
-        // 当前目录是否含 UnityCrashHandler64.exe（大小写不敏感）
-        let has_crash_handler = entries.iter().any(|e| {
-            e.file_name().to_string_lossy().to_lowercase() == crash_handler_lower
-        });
+        let names_lower: Vec<(String, &std::fs::DirEntry)> = entries
+            .iter()
+            .map(|e| (e.file_name().to_string_lossy().to_lowercase(), e))
+            .collect();
 
-        if has_crash_handler {
-            // 同目录内找另一个 .exe
-            for e in &entries {
-                let name = e.file_name().to_string_lossy().to_lowercase();
-                if name.ends_with(".exe") && name != crash_handler_lower {
-                    return Some(e.path());
+        // --- Unity 检测：UnityCrashHandler64.exe 指纹 ---
+        let has_unity = names_lower.iter().any(|(n, _)| n == UNITY_CRASH_HANDLER);
+        if has_unity {
+            for (name, entry) in &names_lower {
+                if name.ends_with(".exe") && name != UNITY_CRASH_HANDLER {
+                    return Some(entry.path());
+                }
+            }
+        }
+
+        // --- Godot 检测：.pck 同名配对 ---
+        for (name, _) in &names_lower {
+            if name.ends_with(".pck") {
+                let stem = &name[..name.len() - 4]; // 去掉 ".pck"
+                let target_exe = format!("{}.exe", stem);
+                // 匹配同名 .exe（排除 .console.exe 调试版）
+                if let Some((_, exe_entry)) = names_lower.iter().find(|(n, _)| *n == target_exe) {
+                    return Some(exe_entry.path());
                 }
             }
         }
@@ -5194,7 +5214,7 @@ pub fn find_unity_game_exe(root_dir: String) -> Result<Option<String>, String> {
         for e in &entries {
             if let Ok(ft) = e.file_type() {
                 if ft.is_dir() {
-                    if let Some(found) = walk(&e.path(), crash_handler_lower) {
+                    if let Some(found) = walk(&e.path()) {
                         return Some(found);
                     }
                 }
@@ -5208,8 +5228,7 @@ pub fn find_unity_game_exe(root_dir: String) -> Result<Option<String>, String> {
     if !root.exists() {
         return Ok(None);
     }
-    let crash_handler_lower = CRASH_HANDLER.to_lowercase();
-    Ok(walk(root, &crash_handler_lower).map(|p| p.to_string_lossy().to_string()))
+    Ok(walk(root).map(|p| p.to_string_lossy().to_string()))
 }
 
 /// 用系统关联程序打开指定文件（如 .tps → TexturePacker）
@@ -5777,4 +5796,73 @@ pub fn rename_project(project_path: String, new_name: String) -> Result<ProjectI
         default_ae_file: config.default_ae_file,
         app_icon,
     })
+}
+
+/// 通过 Win32 SendInput 发送真实 Ctrl+End 按键
+/// Google Docs canvas 编辑器只响应真实系统按键，合成 DOM KeyboardEvent 无效
+#[cfg(target_os = "windows")]
+fn send_ctrl_end() {
+    use windows::Win32::UI::Input::KeyboardAndMouse::*;
+
+    const VK_CONTROL_U16: u16 = 0x11; // VK_CONTROL
+    const VK_END_U16: u16 = 0x23;     // VK_END
+
+    let inputs = [
+        // Ctrl down
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VIRTUAL_KEY(VK_CONTROL_U16),
+                    wScan: 0,
+                    dwFlags: KEYBD_EVENT_FLAGS(0),
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+        // End down
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VIRTUAL_KEY(VK_END_U16),
+                    wScan: 0,
+                    dwFlags: KEYBD_EVENT_FLAGS(0),
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+        // End up
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VIRTUAL_KEY(VK_END_U16),
+                    wScan: 0,
+                    dwFlags: KEYEVENTF_KEYUP,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+        // Ctrl up
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VIRTUAL_KEY(VK_CONTROL_U16),
+                    wScan: 0,
+                    dwFlags: KEYEVENTF_KEYUP,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+    ];
+
+    unsafe {
+        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    }
 }

@@ -1,6 +1,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
+import i18n from '../i18n'
 
 export type CalendarRegion = 'auto' | 'CN' | 'JP' | 'none'
 
@@ -38,6 +39,8 @@ const lunchEndTime = ref<string | null>(null)    // "13:00"
 const holidayLabel = ref<string | null>(null)
 const hasClockIn = ref(false)   // 今天已执行上班打卡
 const hasClockOut = ref(false)  // 今天已执行下班打卡
+const actualClockInTime = ref<string | null>(null)   // 实际出勤时间 "HH:MM"
+const actualClockOutTime = ref<string | null>(null)  // 实际退勤时间 "HH:MM"
 
 // 番茄钟状态
 export type PomodoroPhase = 'idle' | 'work' | 'work-done' | 'break' | 'break-done'
@@ -81,10 +84,18 @@ export function reloadConfig() {
 
 async function loadAttendanceRecord() {
   try {
-    const record = await invoke<{ last_clock_in: string | null; last_clock_out: string | null }>('load_attendance_record')
+    const record = await invoke<{
+      last_clock_in: string | null
+      last_clock_out: string | null
+      actual_clock_in_time: string | null
+      actual_clock_out_time: string | null
+    }>('load_attendance_record')
     const today = dateToISO(new Date())
     hasClockIn.value = record.last_clock_in === today
     hasClockOut.value = record.last_clock_out === today
+    // 仅当日期匹配时使用实际时间（跨天后清零）
+    actualClockInTime.value = hasClockIn.value ? (record.actual_clock_in_time ?? null) : null
+    actualClockOutTime.value = hasClockOut.value ? (record.actual_clock_out_time ?? null) : null
   } catch { /* 静默 */ }
 }
 
@@ -181,12 +192,12 @@ async function loadHoliday(date: Date) {
 
   if (region === 'CN') {
     const todayType = await fetchTimorType(date)
-    if (todayType === 1) { holidayLabel.value = '休息日 🎉'; return }
-    if (todayType === 2) { holidayLabel.value = '调休'; return }
+    if (todayType === 1) { holidayLabel.value = i18n.global.t('status.holiday'); return }
+    if (todayType === 2) { holidayLabel.value = i18n.global.t('status.workday'); return }
     const tomorrow = new Date(date)
     tomorrow.setDate(tomorrow.getDate() + 1)
     const tomorrowType = await fetchTimorType(tomorrow)
-    holidayLabel.value = tomorrowType === 1 ? '明天休 🎉' : null
+    holidayLabel.value = tomorrowType === 1 ? i18n.global.t('status.tomorrowOff') : null
     return
   }
 
@@ -195,7 +206,7 @@ async function loadHoliday(date: Date) {
   const todayStr = dateToISO(date)
   const holidays = await fetchNagerHolidays(date.getFullYear(), countryCode)
   if (holidays.has(todayStr)) {
-    holidayLabel.value = '休息日 🎉'
+    holidayLabel.value = i18n.global.t('status.holiday')
     return
   }
   const tomorrow = new Date(date)
@@ -205,7 +216,7 @@ async function loadHoliday(date: Date) {
   const tomorrowHolidays = tomorrow.getFullYear() !== date.getFullYear()
     ? await fetchNagerHolidays(tomorrow.getFullYear(), countryCode)
     : holidays
-  holidayLabel.value = tomorrowHolidays.has(tomorrowStr) ? '明天休 🎉' : null
+  holidayLabel.value = tomorrowHolidays.has(tomorrowStr) ? i18n.global.t('status.tomorrowOff') : null
 }
 
 function tick() {
@@ -292,8 +303,10 @@ export function useStatusBar() {
 
   const workedMinutes = computed(() => {
     if (!hasClockIn.value || hasClockOut.value) return null
-    if (!clockInTime.value) return null
-    const start = parseTimeToday(clockInTime.value)
+    // 优先使用实际打卡时间，降级到配置时间
+    const effectiveTime = actualClockInTime.value || clockInTime.value
+    if (!effectiveTime) return null
+    const start = parseTimeToday(effectiveTime)
     const diff = now.value.getTime() - start.getTime()
     if (diff < 0) return null
     const raw = Math.floor(diff / 60_000)
@@ -333,8 +346,11 @@ export function useStatusBar() {
   )
 
   const dateStr = computed(() => {
-    const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-    return `${now.value.getMonth()+1}月${now.value.getDate()}日 ${days[now.value.getDay()]}`
+    const t = i18n.global.t
+    const dayKeys = ['status.sunday', 'status.monday', 'status.tuesday', 'status.wednesday', 'status.thursday', 'status.friday', 'status.saturday']
+    const dayName = t(dayKeys[now.value.getDay()])
+    const datePart = t('status.monthDay', { month: now.value.getMonth() + 1, day: now.value.getDate() })
+    return `${datePart} ${dayName}`
   })
 
   // ─── 番茄钟 ────────────────────────────────────────────────
@@ -352,10 +368,10 @@ export function useStatusBar() {
         // 倒计时结束，进入 done 状态并发送系统通知
         if (pomodoroPhase.value === 'work') {
           pomodoroPhase.value = 'work-done'
-          sendPomodoroNotification('专注结束', '工作时间到，点击开始休息')
+          sendPomodoroNotification(i18n.global.t('status.focusEndTitle'), i18n.global.t('status.focusEndBody'))
         } else if (pomodoroPhase.value === 'break') {
           pomodoroPhase.value = 'break-done'
-          sendPomodoroNotification('休息结束', '休息时间到，准备开始下一轮')
+          sendPomodoroNotification(i18n.global.t('status.breakEndTitle'), i18n.global.t('status.breakEndBody'))
         }
       }
     }, 1000)

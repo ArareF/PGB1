@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
 import type { FileEntry } from '../composables/useDirectoryFiles'
@@ -112,6 +113,7 @@ const emit = defineEmits<{
 }>()
 
 const { openInExplorer } = useDirectoryFiles()
+const { t } = useI18n()
 
 /** 从文件完整路径提取所在目录 */
 function getFolderPath(filePath: string): string {
@@ -163,7 +165,7 @@ watch(() => props.file, async (file) => {
     try {
       txtContent.value = await invoke<string>('read_text_file', { path: file.path })
     } catch (e) {
-      txtContent.value = '（读取失败）'
+      txtContent.value = t('fileDetail.readFailed')
       console.error('读取文本文件失败:', e)
     } finally {
       txtLoading.value = false
@@ -234,7 +236,7 @@ function startResize(e: MouseEvent) {
     <Transition name="file-sidebar">
       <div
         v-if="file"
-        class="file-detail-sidebar glass-strong"
+        class="file-detail-sidebar"
         :class="{ 'is-resizing': isResizing }"
         :style="{ width: currentWidth + '%' }"
       >
@@ -243,7 +245,7 @@ function startResize(e: MouseEvent) {
 
         <!-- 标题 -->
         <div class="sidebar-header">
-          <span class="sidebar-title">详情</span>
+          <span class="sidebar-title">{{ $t('fileDetail.detail') }}</span>
         </div>
 
         <!-- 内容区 -->
@@ -302,13 +304,13 @@ function startResize(e: MouseEvent) {
 
           <!-- TXT 文本预览 -->
           <div v-else-if="fileType === 'text'" class="preview-text-wrap">
-            <p v-if="txtLoading" class="txt-loading">读取中...</p>
+            <p v-if="txtLoading" class="txt-loading">{{ $t('common.loading') }}</p>
             <pre v-else class="txt-content">{{ txtContent }}</pre>
           </div>
 
           <!-- PSD/PSB 预览 -->
           <div v-else-if="fileType === 'psd'" class="preview-psd-wrap">
-            <p v-if="psdThumbLoading" class="txt-loading">读取缩略图...</p>
+            <p v-if="psdThumbLoading" class="txt-loading">{{ $t('fileDetail.loadingThumbnail') }}</p>
             <img
               v-else-if="psdThumbnail"
               :src="psdThumbnail"
@@ -324,7 +326,7 @@ function startResize(e: MouseEvent) {
                 <span class="file-ext">{{ file.extension.toUpperCase() }}</span>
               </div>
             </div>
-            <button class="open-file-btn" @click="openFile">用 Photoshop 打开</button>
+            <button class="open-file-btn" @click="openFile">{{ $t('fileDetail.openInPhotoshop') }}</button>
           </div>
 
           <!-- PDF 预览 -->
@@ -344,25 +346,25 @@ function startResize(e: MouseEvent) {
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
               </svg>
-              <span class="file-ext">{{ file.extension.toUpperCase() || '文件' }}</span>
+              <span class="file-ext">{{ file.extension.toUpperCase() || $t('fileDetail.file') }}</span>
             </div>
-            <button class="open-file-btn" @click="openFile">打开文件</button>
+            <button class="open-file-btn" @click="openFile">{{ $t('fileDetail.openFile') }}</button>
           </div>
 
           <!-- 基本信息（文本类不显示） -->
           <div v-if="fileType !== 'text'" class="sidebar-section">
-            <p class="section-title">基本信息</p>
+            <p class="section-title">{{ $t('fileDetail.basicInfo') }}</p>
             <div class="info-list">
               <div class="info-row">
-                <span class="info-label">文件名</span>
+                <span class="info-label">{{ $t('fileDetail.fileName') }}</span>
                 <span class="info-value">{{ file.name }}</span>
               </div>
               <div class="info-row">
-                <span class="info-label">类型</span>
-                <span class="info-value">{{ file.extension.toUpperCase() || '未知' }}</span>
+                <span class="info-label">{{ $t('fileDetail.type') }}</span>
+                <span class="info-value">{{ file.extension.toUpperCase() || $t('fileDetail.unknown') }}</span>
               </div>
               <div class="info-row">
-                <span class="info-label">大小</span>
+                <span class="info-label">{{ $t('fileDetail.size') }}</span>
                 <span class="info-value">{{ formatSize(file.size_bytes) }}</span>
               </div>
             </div>
@@ -370,7 +372,7 @@ function startResize(e: MouseEvent) {
 
           <!-- 版本列表（仅预览视频使用） -->
           <div v-if="versions && versions.length > 0" class="sidebar-section">
-            <p class="section-title">版本历史</p>
+            <p class="section-title">{{ $t('fileDetail.versionHistory') }}</p>
             <div class="version-list">
               <div
                 v-for="(v, i) in versions"
@@ -382,7 +384,7 @@ function startResize(e: MouseEvent) {
               >
                 <div class="version-card-left">
                   <span class="version-name">
-                    {{ i === versions.length - 1 ? '最新版本' : `版本 ${i + 1}` }}
+                    {{ i === versions.length - 1 ? $t('fileDetail.latestVersion') : $t('fileDetail.versionN', { n: i + 1 }) }}
                   </span>
                   <span class="version-meta">{{ formatSize(v.size_bytes) }}</span>
                 </div>
@@ -390,7 +392,7 @@ function startResize(e: MouseEvent) {
                   <span class="version-ext">{{ v.extension.toUpperCase() }}</span>
                   <button
                     class="version-folder-btn"
-                    title="打开所在文件夹"
+                    :title="$t('common.openContainingFolder')"
                     @click.stop="openInExplorer(getFolderPath(v.path))"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -420,6 +422,12 @@ function startResize(e: MouseEvent) {
   padding: var(--floating-main-padding);
   overflow: hidden;
   flex-shrink: 0;
+  /* 手动复刻 glass-strong 视觉，不用 backdrop-filter：
+     与 main-content(glass-medium) 相邻时，双 backdrop-filter
+     在 WebView2 + Windows Acrylic 下产生白色闪烁伪影 */
+  background: var(--glass-strong-bg);
+  border: var(--glass-strong-border);
+  box-shadow: var(--glass-strong-shadow);
 }
 
 .file-detail-sidebar.is-resizing {

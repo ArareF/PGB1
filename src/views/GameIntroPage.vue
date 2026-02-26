@@ -10,7 +10,11 @@ import { useDirectoryFiles, type FileEntry } from '../composables/useDirectoryFi
 import NormalCard from '../components/NormalCard.vue'
 import FileDetailSidebar from '../components/FileDetailSidebar.vue'
 import { useRubberBandSelect } from '../composables/useRubberBandSelect'
+import { useI18n } from 'vue-i18n'
+import PageGuideOverlay from '../components/PageGuideOverlay.vue'
+import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const { setNavigation } = useNavigation()
@@ -20,12 +24,13 @@ const { files, loading, loadFiles, openInExplorer } = useDirectoryFiles()
 const projectId = route.params.projectId as string
 
 let dirPath = ''
+const showGuide = ref(false)
 
 /** 侧边栏选中文件 */
 const selectedFile = ref<FileEntry | null>(null)
 const sidebarWidth = ref(30)
 
-/** Unity 游戏启动程序路径（null = 未检测到） */
+/** 游戏原型启动程序路径（null = 未检测到，支持 Unity / Godot） */
 const gameExePath = ref<string | null>(null)
 
 const scrollRef = ref<HTMLElement | null>(null)
@@ -159,14 +164,11 @@ async function handleFileDrop(paths: string[]) {
   }
 }
 
-/** 递归扫描 00_Game Design & Doc，寻找 Unity 游戏启动程序
- *  策略：依赖 UnityCrashHandler64.exe 作为 Unity 构建的唯一指纹，
- *  不假设文件夹名称或层级深度。
- */
-async function scanUnityGameExe() {
+/** 递归扫描 00_Game Design & Doc，寻找游戏原型启动程序（Unity / Godot） */
+async function scanGameExe() {
   if (!dirPath) return
   try {
-    const exePath = await invoke<string | null>('find_unity_game_exe', { rootDir: dirPath })
+    const exePath = await invoke<string | null>('find_game_exe', { rootDir: dirPath })
     gameExePath.value = exePath ?? null
   } catch {
     gameExePath.value = null
@@ -176,19 +178,20 @@ async function scanUnityGameExe() {
 /** 注册/更新顶部导航配置 */
 function refreshNav() {
   const actions = [
-    { id: 'open-folder', label: '打开文件夹', handler: () => { if (dirPath) openInExplorer(dirPath) } },
+    { id: 'open-folder', label: t('common.openFolder'), handler: () => { if (dirPath) openInExplorer(dirPath) } },
     ...(gameExePath.value
-      ? [{ id: 'launch-game', label: '启动原型', handler: () => { invoke('open_file', { path: gameExePath.value! }) } }]
+      ? [{ id: 'launch-game', label: t('gameIntro.launchPrototype'), handler: () => { invoke('open_file', { path: gameExePath.value! }) } }]
       : []
     ),
   ]
   setNavigation({
-    title: '游戏介绍',
+    title: t('gameIntro.title'),
     showBackButton: true,
     onBack: () => router.push({ name: 'project', params: { projectId } }),
     actions,
     moreMenuItems: [
-      { id: 'refresh', label: '刷新', handler: () => { if (dirPath) loadFiles(dirPath) } },
+      { id: 'refresh', label: t('common.refresh'), handler: () => { if (dirPath) loadFiles(dirPath) } },
+      { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
     ],
   })
 }
@@ -202,7 +205,7 @@ onMounted(async () => {
   if (project) {
     dirPath = `${project.path}\\00_Game Design & Doc`
     await loadFiles(dirPath)
-    await scanUnityGameExe()
+    await scanGameExe()
     if (gameExePath.value) refreshNav()
   }
 
@@ -233,22 +236,22 @@ onUnmounted(() => {
   <div class="game-intro-page" :class="{ 'drag-over': isDragOver }" @click="onMainClick">
     <!-- 固定小标题栏 -->
     <div class="sub-title-bar">
-      <span class="sub-title">游戏设计文档</span>
+      <span class="sub-title">{{ $t('gameIntro.docTitle') }}</span>
       <div class="view-buttons">
-        <button class="view-btn" @click="() => { if (dirPath) loadFiles(dirPath) }">刷新</button>
+        <button class="view-btn" @click="() => { if (dirPath) loadFiles(dirPath) }">{{ $t('common.refresh') }}</button>
         <button
           class="view-btn"
           :class="{ active: isMultiSelect }"
           @click="toggleMultiSelect"
         >
-          {{ isMultiSelect ? '多选 ✓' : '多选' }}
+          {{ isMultiSelect ? $t('common.multiSelectOn') : $t('common.multiSelect') }}
         </button>
         <button
           v-if="isMultiSelect"
           class="view-btn"
           @click="toggleSelectAll"
         >
-          {{ isAllSelected ? '取消全选' : '全选' }}
+          {{ isAllSelected ? $t('common.deselectAll') : $t('common.selectAll') }}
         </button>
       </div>
     </div>
@@ -260,9 +263,9 @@ onUnmounted(() => {
       @mousedown="onContainerMouseDown"
       @scroll="onContainerScroll"
     >
-      <p v-if="loading" class="loading-text">扫描中...</p>
+      <p v-if="loading" class="loading-text">{{ $t('common.scanning') }}</p>
 
-      <p v-else-if="files.length === 0" class="empty-text">暂无文件</p>
+      <p v-else-if="files.length === 0" class="empty-text">{{ $t('gameIntro.noFiles') }}</p>
 
       <TransitionGroup v-else name="card" tag="div" class="card-grid">
         <NormalCard
@@ -298,7 +301,7 @@ onUnmounted(() => {
           <polyline points="17 8 12 3 7 8" />
           <line x1="12" y1="3" x2="12" y2="15" />
         </svg>
-        <span>拖放文件到此处导入</span>
+        <span>{{ $t('gameIntro.dropHint') }}</span>
       </div>
     </div>
   </div>
@@ -316,6 +319,8 @@ onUnmounted(() => {
       }"
     />
   </Teleport>
+
+  <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.gameIntro" @close="showGuide = false" />
 </template>
 
 <style scoped>

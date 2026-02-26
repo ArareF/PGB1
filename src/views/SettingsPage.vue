@@ -11,6 +11,8 @@ import { useScale } from '../composables/useScale'
 import type { AppSettings } from '../composables/useSettings'
 import { reloadConfig as reloadStatusBarConfig } from '../composables/useStatusBar'
 import { APP_NAME, APP_VERSION, APP_DEVELOPER } from '../config/app'
+import PageGuideOverlay from '../components/PageGuideOverlay.vue'
+import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,6 +63,8 @@ let initialUsername = ''
 
 // ─── 测试打卡状态 ───────────────────────────────────────────
 const clockTesting = ref(false)
+const showGuide = ref(false)
+const guideIsAttendance = ref(false)
 const clockTestStep = ref('')
 const clockTestMessage = ref('')
 const clockTestResult = ref<'success' | 'error' | ''>('')
@@ -106,10 +110,19 @@ async function init() {
     activeTab.value = 'attendance'
   }
 
+  // 新手引导完成后跳转过来，自动弹出出勤配置指引
+  if (route.query.guide === 'attendance') {
+    guideIsAttendance.value = true
+    showGuide.value = true
+  }
+
   setNavigation({
     title: t('settings.title'),
     showBackButton: true,
     onBack: () => router.back(),
+    moreMenuItems: [
+      { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
+    ],
   })
 }
 
@@ -275,6 +288,9 @@ async function onLanguageChange(e: Event) {
     title: t('settings.title'),
     showBackButton: true,
     onBack: () => router.back(),
+    moreMenuItems: [
+      { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
+    ],
   })
 }
 </script>
@@ -619,6 +635,12 @@ async function onLanguageChange(e: Event) {
       {{ $t('common.loading') }}
     </div>
   </div>
+
+  <PageGuideOverlay
+    :show="showGuide"
+    :annotations="guideIsAttendance ? PAGE_GUIDE_ANNOTATIONS.settingsAttendance : PAGE_GUIDE_ANNOTATIONS.settings"
+    @close="showGuide = false; guideIsAttendance = false"
+  />
 </template>
 
 <style scoped>

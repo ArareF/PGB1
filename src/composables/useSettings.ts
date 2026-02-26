@@ -6,6 +6,8 @@ export interface WorkflowSettings {
   imaginePath: string
   texturePackerCliPath: string
   texturePackerGuiPath: string
+  tpScale: number
+  tpWebpQuality: number
 }
 
 export interface TranslationSettings {
@@ -21,6 +23,8 @@ export interface GeneralSettings {
   projectRootDir: string
   uiScale: number  // UI 缩放比例（1.0 = 100%，默认 1.0）
   autoStart: boolean
+  language: 'zh-CN' | 'en'
+  onboarded: boolean
 }
 
 export interface PreviewSettings {

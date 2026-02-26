@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { useSettings } from '../composables/useSettings'
+
+useI18n()
 
 const props = defineProps<{ show?: boolean }>()
 
@@ -61,21 +64,21 @@ async function handleCreate() {
 <template>
   <Teleport to="body">
     <Transition name="dialog">
-    <div v-if="props.show !== false" class="dialog-overlay" @click.self="$emit('cancel')">
+    <div v-if="props.show !== false" class="dialog-overlay">
       <div class="dialog-content glass-strong">
-        <p class="dialog-title">新建项目</p>
+        <p class="dialog-title">{{ $t('createProject.title') }}</p>
 
         <div class="dialog-body">
-          <label class="field-label">项目名称</label>
+          <label class="field-label">{{ $t('createProject.projectName') }}</label>
           <input
             v-model="projectName"
             class="field-input"
             type="text"
-            placeholder="如 218_NewGame"
+            :placeholder="$t('createProject.projectNamePlaceholder')"
             @keydown.enter="handleCreate"
           />
 
-          <label class="field-label">截止日期（可选）</label>
+          <label class="field-label">{{ $t('createProject.deadline') }}</label>
           <input
             v-model="deadline"
             class="field-input"
@@ -93,10 +96,10 @@ async function handleCreate() {
             :disabled="!canCreate"
             @click="handleCreate"
           >
-            {{ creating ? '创建中...' : '创建' }}
+            {{ creating ? $t('createProject.creating') : $t('createProject.create') }}
           </button>
           <button class="dialog-btn dialog-btn-secondary" @click="$emit('cancel')">
-            取消
+            {{ $t('common.cancel') }}
           </button>
         </div>
       </div>

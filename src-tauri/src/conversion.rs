@@ -18,6 +18,9 @@ pub struct ConversionSession {
     /// 外部工具路径
     pub texture_packer_cli: PathBuf,
     pub texture_packer_gui: PathBuf,
+    /// TP 预设参数
+    pub tp_scale: f64,
+    pub tp_webp_quality: u32,
 }
 
 pub type ConversionState = Arc<Mutex<Option<ConversionSession>>>;

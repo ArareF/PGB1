@@ -76,7 +76,7 @@ pub fn run() {
             commands::rename_material,
             commands::delete_material,
             commands::read_text_file,
-            commands::find_unity_game_exe,
+            commands::find_game_exe,
             commands::open_file,
             commands::rename_sequence_fps,
             commands::set_default_ae_file,
@@ -236,6 +236,9 @@ pub fn run() {
             });
 
             // 同步开机自启状态（以配置文件为准，修复重装后注册表丢失的情况）
+            // 仅 release 构建执行：dev 构建注册的是 debug 二进制路径，
+            // 会导致开机启动一个连不上 Vite 的幽灵实例
+            #[cfg(not(debug_assertions))]
             {
                 use tauri_plugin_autostart::ManagerExt;
                 let settings_path = app.path().app_config_dir()

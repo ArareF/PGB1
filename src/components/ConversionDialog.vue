@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { MaterialInfo } from '../composables/useMaterials'
 import MaterialCard from './MaterialCard.vue'
 
@@ -7,6 +8,8 @@ const props = defineProps<{
   taskPath: string
   materials: MaterialInfo[]
 }>()
+
+useI18n()
 
 const emit = defineEmits<{
   close: []
@@ -105,24 +108,24 @@ onMounted(() => {
 <template>
   <Teleport to="body">
     <Transition name="dialog">
-    <div class="dialog-overlay" @click.self="emit('close')">
+    <div class="dialog-overlay">
       <div class="dialog-content glass-strong">
         <div class="dialog-header">
-          <p class="dialog-title">格式转换选择</p>
-          <p class="dialog-subtitle">选择待转换的素材，序列帧需指定帧率</p>
+          <p class="dialog-title">{{ $t('convert.selectTitle') }}</p>
+          <p class="dialog-subtitle">{{ $t('convert.selectDesc') }}</p>
         </div>
 
         <div class="dialog-body">
           <div class="selection-controls">
             <button class="ghost-btn" @click="toggleSelectAll">
-              {{ selectedPaths.size === (pendingImages.length + pendingSequences.length) ? '取消全选' : '全选' }}
+              {{ selectedPaths.size === (pendingImages.length + pendingSequences.length) ? $t('common.deselectAll') : $t('common.selectAll') }}
             </button>
           </div>
 
           <div class="scroll-area custom-scroll">
             <!-- 静帧分区 -->
             <div v-if="pendingImages.length > 0" class="section">
-              <p class="section-label">静帧素材 ({{ pendingImages.length }})</p>
+              <p class="section-label">{{ $t('convert.imageSection') }} ({{ pendingImages.length }})</p>
               <div class="material-grid">
                 <MaterialCard
                   v-for="m in pendingImages"
@@ -138,7 +141,7 @@ onMounted(() => {
 
             <!-- 序列帧分区 -->
             <div v-if="pendingSequences.length > 0" class="section">
-              <p class="section-label">序列帧素材 ({{ pendingSequences.length }})</p>
+              <p class="section-label">{{ $t('convert.sequenceSection') }} ({{ pendingSequences.length }})</p>
               <div class="material-grid">
                 <div
                   v-for="m in pendingSequences"
@@ -169,21 +172,21 @@ onMounted(() => {
             </div>
 
             <div v-if="pendingImages.length === 0 && pendingSequences.length === 0" class="empty-state">
-              暂无需要转换的素材（已全部完成转换）
+              {{ $t('convert.allConverted') }}
             </div>
           </div>
         </div>
 
         <div class="dialog-actions">
           <button class="dialog-btn secondary" @click="emit('close')">
-            取消
+            {{ $t('common.cancel') }}
           </button>
           <button
             class="dialog-btn primary"
             :disabled="!canStart"
             @click="handleStart"
           >
-            开始制作
+            {{ $t('convert.startMaking') }}
           </button>
         </div>
       </div>

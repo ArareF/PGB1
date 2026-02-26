@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+useI18n()
+
 const props = defineProps<{
   fileCount: number
   show?: boolean
@@ -13,21 +17,19 @@ defineEmits<{
 <template>
   <Teleport to="body">
     <Transition name="dialog">
-    <div v-if="props.show !== false" class="dialog-overlay" @click.self="$emit('cancel')">
+    <div v-if="props.show !== false" class="dialog-overlay">
       <div class="dialog-content glass-strong">
-        <p class="dialog-title">上传确认</p>
+        <p class="dialog-title">{{ $t('uploadConfirm.title') }}</p>
         <div class="dialog-body">
-          <p class="dialog-text">
-            检测到您拖拽了 <strong>{{ fileCount }}</strong> 个文件
-          </p>
-          <p class="dialog-hint">是否已成功上传到网盘？</p>
+          <p class="dialog-text" v-html="$t('uploadConfirm.dragDetected', { count: `<strong>${fileCount}</strong>` })"></p>
+          <p class="dialog-hint">{{ $t('uploadConfirm.uploadQuestion') }}</p>
         </div>
         <div class="dialog-actions">
           <button class="dialog-btn dialog-btn-primary" @click="$emit('confirm')">
-            是，已上传
+            {{ $t('uploadConfirm.yesUploaded') }}
           </button>
           <button class="dialog-btn dialog-btn-secondary" @click="$emit('cancel')">
-            取消
+            {{ $t('common.cancel') }}
           </button>
         </div>
       </div>

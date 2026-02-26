@@ -2,9 +2,11 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import type { NavAction } from '../composables/useNavigation'
 import { useNavigation } from '../composables/useNavigation'
+import { useI18n } from 'vue-i18n'
 import StatusBar from './StatusBar.vue'
 
 const { title, showBackButton, actions, goBack, routeDirection } = useNavigation()
+useI18n()
 
 // 与页面切换同向：前进从右，返回从左
 const navTransition = computed(() =>
@@ -111,12 +113,12 @@ function onActionsWheel(e: WheelEvent) {
 <template>
   <header class="title-bar" data-tauri-drag-region>
     <!-- 左侧悬浮岛：返回按钮 + 标题 -->
-    <div ref="leftIslandRef" class="title-bar-left glass-medium" :class="{ 'has-back': showBackButton }">
+    <div ref="leftIslandRef" class="title-bar-left" :class="{ 'has-back': showBackButton }">
       <Transition :name="navTransition">
         <button
           v-if="showBackButton"
           class="back-btn"
-          title="返回"
+          :title="$t('common.back')"
           @click="goBack"
         >
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -124,9 +126,11 @@ function onActionsWheel(e: WheelEvent) {
           </svg>
         </button>
       </Transition>
-      <Transition :name="navTransition">
-        <span :key="title" class="title-text">{{ title }}</span>
-      </Transition>
+      <div class="title-text-wrap">
+        <Transition :name="navTransition">
+          <span :key="title" class="title-text">{{ title }}</span>
+        </Transition>
+      </div>
     </div>
 
     <!-- 中部悬浮岛：状态栏 + 快捷功能区 -->
@@ -141,7 +145,7 @@ function onActionsWheel(e: WheelEvent) {
               :key="action.id"
               class="action-btn"
               :class="{ 'action-btn--active': action.active }"
-              :title="action.onLongPress ? action.label + '（长按选择版本）' : action.label"
+              :title="action.onLongPress ? action.label + $t('common.longPressHint') : action.label"
               :disabled="action.disabled"
               @pointerdown="onActionPointerDown($event, action)"
               @pointerup="onActionPointerUp"
@@ -182,14 +186,25 @@ function onActionsWheel(e: WheelEvent) {
   border-radius: var(--floating-navbar-radius);
   flex-shrink: 0;
   height: var(--floating-navbar-height);
-  overflow: hidden;
+  overflow: clip;
   margin-top: var(--spacing-3);
   position: relative;
+  /* 手动复刻 glass-medium 视觉，不用 backdrop-filter：
+     与 title-bar-center(glass-medium) 相邻，双 backdrop-filter
+     在 WebView2 + Acrylic 下 gap 区域产生白色闪烁 */
+  background: var(--glass-medium-bg);
+  border: var(--glass-medium-border);
+  box-shadow: var(--glass-medium-shadow);
 }
 
 /* 有返回按钮时去掉左侧 padding，按钮紧贴边缘 */
 .title-bar-left.has-back {
   padding-left: 0;
+}
+
+.title-text-wrap {
+  position: relative;
+  overflow: hidden;
 }
 
 .title-text {
@@ -241,10 +256,10 @@ function onActionsWheel(e: WheelEvent) {
   overflow-x: auto;
   flex-shrink: 1;
   min-width: 0;
-  /* overflow-x:auto 强制 overflow-y:auto，会裁切 translateY(-2px) 的绘制区域。
-     padding-block 在 border edge 和内容之间建立缓冲区，hover 上浮后仍在 padding 内不被裁切。
+  /* overflow-x:auto 强制 overflow-y:auto，会裁切 box-shadow 和 translateY(-2px) 的绘制区域。
+     padding-block 在 border edge 和内容之间建立缓冲区，hover 阴影（向上~4px/向下~8px）不被裁切。
      顶底对称确保按钮视觉居中不变。 */
-  padding-block: 4px;
+  padding-block: 6px;
 }
 
 .title-bar-actions::-webkit-scrollbar {
@@ -282,6 +297,7 @@ function onActionsWheel(e: WheelEvent) {
               color var(--duration-fast) var(--ease-out);
   white-space: nowrap;
   flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .action-btn:hover:not(:disabled) {
@@ -289,7 +305,7 @@ function onActionsWheel(e: WheelEvent) {
   color: var(--text-primary);
   border-color: var(--border-medium);
   transform: translateY(-2px);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.30);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
 .action-btn:active:not(:disabled) {
@@ -312,7 +328,7 @@ function onActionsWheel(e: WheelEvent) {
   background: color-mix(in srgb, var(--color-primary-500) 25%, transparent);
   color: var(--color-primary-500);
   border-color: color-mix(in srgb, var(--color-primary-500) 50%, transparent);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25),
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25),
               inset 0 0 0 1px color-mix(in srgb, var(--color-primary-500) 40%, transparent);
   transform: translateY(-2px);
 }

@@ -1,7 +1,7 @@
 # PGB1 代码索引
 
 > 全量源代码文件职责说明，按目录分组。新会话快速了解代码现状用。
-> 最后更新: 2026-02-24（v2.3.0：完成 i18n 国际化，vue-i18n@10 + zh-CN/en 双语切换）
+> 最后更新: 2026-02-25（v2.4.0：新手引导重构 — 4步精简流程 + scan_app_shortcuts 工具路径探测）
 
 ---
 
@@ -9,14 +9,14 @@
 
 | 目录 | 文件数 | 总行数 | 备注 |
 |------|--------|--------|------|
-| src/components/ | 17 | ~4020 | UI 组件（删除 TaskListDialog.vue、ScalingDialog.vue 死代码） |
+| src/components/ | 19 | ~4540 | UI 组件（新增 OnboardingDialog.vue、PageGuideOverlay.vue） |
 | src/composables/ | 9 | ~700 | 逻辑组件（useStatusBar ~430 行，useScale 简化为 ~25 行） |
 | src/views/ | 12 | ~5200 | 页面 |
 | src/styles/ | 3 | ~790 | CSS 设计系统（新增 --text-2xs / --glass-light-blur / --panel-blur token） |
-| src/i18n + src/locales/ | 3 | ~920 | 国际化：i18n 实例 + zh-CN/en locale 文件 |
-| src/其他 | 7 | ~130 | 入口、路由、配置、布局 |
-| src-tauri/src/ | 7 | ~6150 | Rust 后端（共 61 个命令） |
-| **合计** | **51** | **~16200** | |
+| src/i18n + src/locales/ | 3 | ~1100 | 国际化：i18n 实例 + zh-CN/en locale 文件（含 onboarding/pageGuide namespace） |
+| src/其他 | 8 | ~250 | 入口、路由、配置（含 onboarding.ts）、布局 |
+| src-tauri/src/ | 7 | ~6850 | Rust 后端（共 61 个命令） |
+| **合计** | **54** | **~17700** | |
 
 ---
 
@@ -25,11 +25,12 @@
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `src/main.ts` | 10 | 应用入口，初始化 Vue 3 + Router + i18n，加载样式 |
-| `src/App.vue` | 37 | 根组件，initTheme()，加载 settings 后 initScale(uiScale) + 设置 locale，渲染 MainLayout |
+| `src/App.vue` | ~65 | 根组件，initTheme()，加载 settings 后 initScale(uiScale) + 设置 locale。首次启动检测 `onboarded`，未引导时显示 OnboardingDialog，引导完成后渲染 MainLayout。**引导→设置跳转**：`onOnboardingComplete(mode)` 接收打卡模式，mode !== 'off' 时 `router.push` 到设置页出勤 Tab 并触发出勤配置指引 |
 | `src/i18n/index.ts` | 12 | vue-i18n 实例：`legacy:false`, 默认 zh-CN，fallback zh-CN |
-| `src/locales/zh-CN.ts` | ~465 | 中文 locale（22 个 namespace，300+ key） |
-| `src/locales/en.ts` | ~450 | 英文 locale（结构与 zh-CN 完全对齐） |
+| `src/locales/zh-CN.ts` | ~470 | 中文 locale（22 个 namespace，300+ key，含 onboarding 新增 projectDirHint/autoDetected/toolNotFound） |
+| `src/locales/en.ts` | ~455 | 英文 locale（结构与 zh-CN 完全对齐） |
 | `src/config/app.ts` | 8 | 软件元信息 SSOT：`APP_NAME`、`APP_VERSION`、`APP_DEVELOPER` |
+| `src/config/onboarding.ts` | ~90 | 引导数据 SSOT：`PageIntro`/`GuideAnnotation` 接口，`PAGE_INTROS`（9 页介绍，仅被 PageGuideOverlay 的更多菜单消费），`PAGE_GUIDE_ANNOTATIONS`（各页面批注坐标，含 `settingsAttendance` 出勤引导专用批注） |
 | `src/router/index.ts` | 52 | 9 条路由：`/` → HomePage, `/project/:id` → ProjectPage, `/project/:id/task/:taskId` → TaskPage, game-intro, materials, **`/project/:id/task-list` → TaskListPage**, `/reminder/:type` → ReminderPage, `/overtime` → OvertimePage, `/translator` → TranslatorPage |
 | `src/vite-env.d.ts` | 1 | Vite 类型声明 |
 
@@ -63,6 +64,8 @@
 | `CreateProjectDialog.vue` | 209 | — (emits: created, cancel) | **新建项目弹窗**（项目名+截止日期输入）。日期标准化（支持 20260616 / 2026-06-16 格式），调用 create_project 命令，Teleport to body。`show?: boolean` prop 控制内部 `v-if`，完整进出动画（遮罩 opacity + 内容 translateY/scale） |
 | `EditProjectDialog.vue` | ~210 | `project: ProjectInfo, mode: 'rename'\|'deadline'\|'delete'` (emits: updated, deleted, cancel) | **项目管理弹窗**，通过 mode 复用三种操作。rename：输入框预填项目名，调用 rename_project；deadline：输入框预填截止日期+日期标准化，调用 update_project_deadline；delete：红色确认弹窗，调用 delete_project（移入回收站），Teleport to body。`show?: boolean` prop 控制内部 `v-if`，完整进出动画（遮罩 opacity + 内容 translateY/scale） |
 | `AttendanceDialog.vue` | ~210 | — (emits: close) | **日报打卡设置弹窗**（考勤时间+日报时间+URL+账号密码），密码存 Windows Credential Manager，保存后自动调用 reschedule_attendance，Teleport to body |
+| `OnboardingDialog.vue` | ~350 | `show: boolean` (emits: complete[mode]) | **首次引导步骤式弹窗**。4 步：语言选择→项目目录→工具路径→打卡模式。**步骤校验**：项目目录必填、工具路径需 Imagine + TP CLI，未填好"下一步"按钮灰化。**工具路径探测**：onMounted 调用 `scan_app_shortcuts` 扫描 Imagine 和 TexturePacker（CLI/GUI 互推）。完成时 emit 携带打卡模式值，App.vue 据此决定是否跳转设置页。Teleport to body |
+| `PageGuideOverlay.vue` | ~125 | `show: boolean, annotations: GuideAnnotation[]` (emits: close) | **通用页面指引遮罩**。Teleport to body，全屏半透明遮罩 + fixed 定位批注气泡（支持上下左右箭头），点击任意处关闭。`white-space: pre` 支持 `\n` 手动换行，不自动断行。各页面通过 `PAGE_GUIDE_ANNOTATIONS[pageId]` 传入批注数据 |
 | `NormalizationDialog.vue` | ~240 | `taskPath` | **规范化预览弹窗**，扫描并识别静帧（去 _01）与序列帧（归类），展示变更预览，支持一键执行，Teleport to body。`show?: boolean` prop 控制内部 `v-if`，完整进出动画（遮罩 opacity + 内容 translateY/scale） |
 | `ConversionDialog.vue` | ~410 | `taskPath, materials` | **格式转换选择弹窗**，分区列出未转换的静帧与序列帧，序列帧强制要求输入帧率，提交后开启后端转换会话，Teleport to body。`show?: boolean` prop 控制内部 `v-if`，完整进出动画（遮罩 opacity + 内容 translateY/scale） |
 
@@ -95,10 +98,10 @@
 | `TaskListPage.vue` | ~270 | 中 | **任务管理页面**（路由页面版，替代弹窗）。通过 `route.params.projectId` + `route.query.projectPath/enabledTasks` 接收参数。三 Tab：任务启用/模板编辑/时光机。确定/取消均返回 ProjectPage |
 | `TaskPage.vue` | ~1900 | **高** | 素材浏览主页面。**树形视图分组**：普通任务按缩放比例分组（原始/[100]/[70]/[50]）；**Prototype 任务两级分组**：先按子分类（symbol/big_win/…），再按缩放比例子分组（原始/[100]/…），均用 section-label/group-label 渲染。名称视图平铺。**Phase 5a**：多选+拖拽上传+nextcloud 复制。**Phase 5b**：规范化。**Phase 5c**：缩放。**Phase 5d**：格式转换。**侧边栏**（手动 glass，不用 `glass-strong`，避免 backdrop-filter 兄弟冲突）：通用（重命名/删除）；序列帧专属：帧率行内联编辑 + [修改] 按钮；底部 `.sidebar-action-btn` 无 backdrop-filter。**sidebar-dialog**（重命名/删除弹窗）：手动 glass-strong（在 Teleport 到 #content-row 的侧边栏内，与 main-content 同层）。**03_preview 预览视频区块**：页面底部，按 baseName 分组（去 _01/_02 版本号后缀），每组一张卡片，截帧缩略图+上传状态标签（已上传/待更新/未上传）+版本数，点击打开 FileDetailSidebar（版本列表可切换），拖拽导出最新版，拖拽后弹确认弹窗复制到 nextcloud/preview/（breakdown 到 preview/breakdown/）。sidebar 过渡同时动画 `transform + width` 消除主内容区突变；useRubberBandSelect 集成（isEnabled=isMultiSelect） |
 | `ScalePage.vue` | ~465 | **中** | **素材缩放执行页面**（Phase 5c）。控制面板 Teleport 到 #content-row，手动 glass-medium（无 backdrop-filter，与 main-content 同层兄弟）；useRubberBandSelect（isEnabled=ref(true)，始终开启）。`imageMaterials` 过滤条件：`material_type=image && progress!='uploaded' && scales.length===0`（只显示完全未缩放的素材）。缩放比例是标注器：用户选中卡片 → 选比例 → 点"应用"标注到 scaleMap → 执行批量缩放 |
-| `ConvertPage.vue` | ~670 | **中** | **格式转换执行页面**（Phase 5d）。控制面板 Teleport 到 #content-row，手动 glass-medium（无 backdrop-filter，与 main-content 同层兄弟）。静帧默认全选，序列帧需手动标注 FPS 才算「已注释」。监听 `sequence-conversion-failed` / `conversion-organized` 事件；useRubberBandSelect（isEnabled=ref(true)，始终开启） |
-| `GameIntroPage.vue` | ~220 | 低 | 浏览 00_Game Design & Doc 目录，支持 FileDetailSidebar。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场；多选开关 + 全选 + useRubberBandSelect（isEnabled=isMultiSelect）+ 多选批量拖拽。**Unity 检测**：mount 时调用 `find_unity_game_exe` 递归扫描，找到 exe 则顶部导航动态插入「启动原型」按钮（`refreshNav()` 模式，同 ProjectPage） |
+| `ConvertPage.vue` | ~780 | **中** | **格式转换执行页面**（Phase 5d）。控制面板 Teleport 到 #content-row，手动 glass-medium（无 backdrop-filter，与 main-content 同层兄弟）。静帧默认全选，序列帧需手动标注 FPS 才算「已注释」。**TP 预设折叠面板**：侧边栏"开始制作"按钮上方，可展开收起，包含 Scale（f64）和 WebP Quality（u32）输入框，失焦时保存到全局设置。invoke `start_conversion` 时传 `tp_scale` / `tp_webp_quality`。监听 `sequence-conversion-failed` / `conversion-organized` 事件；useRubberBandSelect（isEnabled=ref(true)，始终开启） |
+| `GameIntroPage.vue` | ~220 | 低 | 浏览 00_Game Design & Doc 目录，支持 FileDetailSidebar。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场；多选开关 + 全选 + useRubberBandSelect（isEnabled=isMultiSelect）+ 多选批量拖拽。**游戏原型检测**：mount 时调用 `find_game_exe` 递归扫描（Unity / Godot），找到 exe 则顶部导航动态插入「启动原型」按钮（`refreshNav()` 模式，同 ProjectPage） |
 | `MaterialsPage.vue` | ~260 | 中 | 4 个分组素材库（01_Preproduction / 02_Production / 03_Render_VFX/VFX/PSD / 05_Outside）。**空目录也渲染分组**（显示"将文件拖入此处"提示），新建项目时可直接拖入；目录不存在时 import_files 自动创建。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场；多选开关 + 全选（跨 group/subGroup 收集 allFiles）+ useRubberBandSelect |
-| `SettingsPage.vue` | ~990 | **高** | **全局设置页面**。多 Tab 导航（工作流、通用设置、关于）。内置本地编辑副本 `editSettings`。汇总了打卡设置、TP/Imagine 工具路径、语言切换、UI 缩放控制等。保存时调用不同的 API 分发生效。 |
+| `SettingsPage.vue` | ~1010 | **高** | **全局设置页面**。5 Tab 导航（工作流、翻译、日报打卡、通用设置、关于）。内置本地编辑副本 `editSettings`。**出勤引导**：`route.query.guide === 'attendance'` 时自动弹出 `settingsAttendance` 专属批注（新手引导跳转触发）。**开机自启修复**：`save_settings` 中 `autolaunch.disable()` 前先 `is_enabled()` 检查，避免条目不存在时 OS error 2。 |
 | `ReminderPage.vue` | ~260 | 中 | **日报打卡提醒弹窗**，支持 clock-in/clock-out/daily-report/overtime 四种类型 |
 | `OvertimePage.vue` | ~140 | 低 | **加班时间设置弹窗**（快捷按钮 +30分/+1小时/+2小时 + 自定义输入） |
 | `TranslatorPage.vue` | ~250 | 低 | **翻译悬浮窗**（独立 400×500 WebviewWindow，always_on_top）。顶部胶囊拖拽条 + 毛玻璃输入框 + 语言对选择器[中英/中日/英日] + 翻译/撤回。Ctrl+Enter 触发。调用 `translate_text` → Gemini API |
@@ -123,11 +126,11 @@
 |------|------|------|
 | `main.rs` | 6 | 应用入口 |
 | `lib.rs` | ~230 | Tauri 初始化、命令注册（61 个）、插件注册（opener/drag/dialog/clipboard/notification/**autostart**）、Windows Acrylic 毛玻璃、调度器初始化 + 补打检测、hotkey 全局快捷键初始化、**启动时同步 autolaunch 状态** |
-| `models.rs` | ~485 | 数据模型（24 个 struct + 3 个 enum）。ProjectConfig 新增 default_ae_file 字段。新增 PreviewVideoEntry（含 upload_status）。新增 **PreviewSettings**（default_fps/background_transparent），AppSettings 加 preview 字段。`GeneralSettings.ui_scale` 默认值 `1.0`（首次运行不再使用自动缩放）。`GeneralSettings.auto_start: bool`（开机自启，默认 false） |
-| `commands.rs` | ~5020 | 61 个命令实现 + 辅助函数（含 regex_strip_version 辅助函数）。新增 psd crate 依赖 + base64 依赖。新增 **`copy_icon_to_cache(src_path, icon_id)`**：读取任意格式图片 → `image` crate 解码 → 写入 `shortcut_icons/{icon_id}.png`，与 extract_exe_icon / fetch_favicon 存储一致。新增 **`collect_scales_for_proto_sequence`**：Prototype 序列帧专用 scale 收集（在 `[an-XX-YY]/{sub_name}/` 下查找，修复普通版函数少查一层的 Bug）。新增 **`find_unity_game_exe(root_dir)`**：递归遍历目录树，以 `UnityCrashHandler64.exe` 为指纹定位 Unity 构建，返回同目录另一个 exe 的路径 |
+| `models.rs` | ~495 | 数据模型（24 个 struct + 3 个 enum）。ProjectConfig 新增 default_ae_file 字段。新增 PreviewVideoEntry（含 upload_status）。新增 **PreviewSettings**（default_fps/background_transparent），AppSettings 加 preview 字段。`GeneralSettings.ui_scale` 默认值 `1.0`（首次运行不再使用自动缩放）。`GeneralSettings.auto_start: bool`（开机自启，默认 false）。**WorkflowSettings** 新增 `tp_scale: f64`（默认 0.5）/ `tp_webp_quality: u32`（默认 80）。**StartConversionRequest** 新增同名字段 |
+| `commands.rs` | ~5830 | 61 个命令实现 + 辅助函数（含 regex_strip_version、**send_ctrl_end**）。psd + base64 依赖。**`copy_icon_to_cache`**、**`collect_scales_for_proto_sequence`**（Prototype 序列帧专用 scale 收集）、**`find_game_exe`**（递归游戏原型检测，支持 Unity / Godot）。**`send_ctrl_end()`**（Win32 SendInput 发送真实 Ctrl+End 按键，Google Docs canvas 专用）。**`load_settings`** 首次运行仅创建空默认值（工具路径探测已移至前端 OnboardingDialog） |
 | `hotkey.rs` | ~143 | **全局快捷键**：`start_hotkey_listener`（独立线程 Win32 消息循环）、`do_toggle_window`、`parse_shortcut`。支持计算器键（0xB7） |
-| `scheduler.rs` | ~175 | **考勤调度器**：AttendanceScheduler、create_reminder_window（400×200 毛玻璃置顶弹窗，**visible(false) 创建**，由 ReminderPage onMounted 调 show()）、calc_duration_until |
-| `conversion.rs` | ~137 | **转换管理**：ConversionSession 状态管理、`bring_window_to_front`（Win32 API）、`handle_file_event`（监控 01_scale/ 递归）。**双路径支持**：普通任务 `[XX]/file.webp`，Prototype `[XX]/{subcat}/file.webp`，目标分别为 `[img-XX]/` 和 `[img-XX]/{subcat}/` |
+| `scheduler.rs` | ~190 | **考勤调度器**：AttendanceScheduler、create_reminder_window（400×200 毛玻璃置顶弹窗，**visible(false) 创建** + Rust 侧 500ms 延迟 show() 双保险，由 ReminderPage onMounted 调 show()）、calc_duration_until |
+| `conversion.rs` | ~140 | **转换管理**：ConversionSession 状态管理（含 `tp_scale`/`tp_webp_quality` TP 预设参数）、`bring_window_to_front`（Win32 API）、`handle_file_event`（监控 01_scale/ 递归）。**双路径支持**：普通任务 `[XX]/file.webp`，Prototype `[XX]/{subcat}/file.webp`，目标分别为 `[img-XX]/` 和 `[img-XX]/{subcat}/` |
 
 ### 已注册命令
 
@@ -165,12 +168,12 @@
 | `execute_clock_action` | app_handle, action | String | **打卡自动化**：WebView 登录 → 导航到打刻 → 点击出勤/退勤 → 更新记录 |
 | `show_clock_webview` | app_handle | () | 前台显示打卡 WebView |
 | `close_clock_webview` | app_handle | () | 关闭打卡 WebView 窗口 |
-| `open_daily_report` | app_handle | () | WebView 打开日报 URL，后台 spawn 轮询滚动到底部（Google Docs `.kix-appview-editor-scroller`） |
-| `test_reminder` | app_handle, reminder_type | () | 设置页测试用：直接触发指定类型的提醒弹窗（复用 create_reminder_window） |
+| `open_daily_report` | app_handle | () | WebView 打开日报 URL，后台 spawn 轮询 Win32 SendInput Ctrl+End 滚动到底部（10 次 × 3 秒，Google Docs canvas 专用） |
+| `test_reminder` | app_handle, reminder_type | () | 设置页测试用：spawn 异步触发指定类型的提醒弹窗（避免 sync 命令死锁，复用 create_reminder_window） |
 | `load_attendance_record` | app_handle | AttendanceRecord | 加载本地打卡记录 |
 | `save_attendance_record` | app_handle, record | () | 保存本地打卡记录 |
 | `schedule_overtime_reminder` | app_handle, scheduler, minutes | () | 创建一次性加班定时提醒 |
-| `show_overtime_dialog` | app_handle | () | 创建加班时间设置弹窗 |
+| `show_overtime_dialog` | app_handle | () | spawn 异步创建加班时间设置弹窗（避免 sync 命令死锁） |
 | `reschedule_attendance` | app_handle, scheduler | () | 重置所有定时任务 |
 | `translate_text` | api_key, model, lang_a, lang_b, text | String | **翻译**：Rust 后端调用 Gemini API（reqwest）。支持中/英/日三语自动检测互译 |
 | `toggle_translator_window` | app_handle | () | 切换翻译窗口显示/隐藏 |
@@ -183,7 +186,7 @@
 | `rename_material` | task_path, base_name, new_base_name, material_type | () | 重命名素材所有版本（00_original/01_scale/**/02_done/**/nextcloud），序列帧同步重命名目录+内部帧文件 |
 | `delete_material` | task_path, base_name, material_type | () | 删除素材所有版本文件，序列帧用 remove_dir_all |
 | `read_text_file` | path | String | 读取文本文件内容（UTF-8），供 FileDetailSidebar TXT 预览用 |
-| `find_unity_game_exe` | root_dir | Option\<String\> | 递归遍历目录树，以 `UnityCrashHandler64.exe` 为 Unity 构建指纹，返回同目录另一 exe 的路径。不依赖文件夹名称，任意深度均可识别 |
+| `find_game_exe` | root_dir | Option\<String\> | 递归遍历目录树，检测游戏原型启动程序。Unity：`UnityCrashHandler64.exe` 指纹 → 同目录另一 exe；Godot：`.pck` 同名配对 → `{stem}.exe`（跳过 `.console.exe`）。任意深度均可识别 |
 | `open_file` | path | () | 用系统关联程序打开指定文件（ShellExecuteW "open"），.tps → TexturePacker，.aep → After Effects |
 | `rename_sequence_fps` | task_path, base_name, old_fps, new_fps | () | 修改序列帧帧率：重命名 02_done/[an-XX-{old}]/ → [an-XX-{new}]/（按 base_name 匹配精准定位） |
 | `set_default_ae_file` | project_path, file_name | () | 设置项目默认 AE 工程文件名，写入 .pgb1_project.json |
@@ -244,7 +247,7 @@
 
 **进度计算规则**：分母 = 无子任务的父任务数 + 所有子任务数（有子任务的父任务本身不计入）。无子任务父任务的完成判定 = nextcloud 目录全素材已上传（completed_tasks）；有子任务父任务的完成判定 = 所有子任务在 completed_subtasks 中
 
-**转换流程**：静帧 → 监控 01_scale/（递归）→ 检测新 .webp → 按所在 [XX] 目录名解析比例 → 移到 02_done/[img-XX]/。序列帧 → 从 00_original/ 读取 → TexturePacker CLI（--scale 0.5 --size-constraints AnySize --multipack）→ patch .tps globalSpriteSettings.scale（1→0.5）→ GUI 用户调整 → 检测 .webp 是否存在（否则删 .tps + emit `sequence-conversion-failed`）→ `parse_tps_scale` 锚定 globalSpriteSettings 读取实际 scale → 整理三件套到 02_done/[an-XX-YY]/
+**转换流程**：静帧 → 监控 01_scale/（递归）→ 检测新 .webp → 按所在 [XX] 目录名解析比例 → 移到 02_done/[img-XX]/。序列帧 → 从 00_original/ 读取 → TexturePacker CLI（--scale/--webp-quality/--opt 从全局设置 `tp_scale`/`tp_webp_quality` 读取，--opt 按序列帧名尾缀 "normal" 自动判定 RGBA8888/RGB888）→ patch .tps globalSpriteSettings.scale（1→tp_scale）→ GUI 用户调整 → 检测 .webp 是否存在（否则删 .tps + emit `sequence-conversion-failed`）→ `parse_tps_scale` 锚定 globalSpriteSettings 读取实际 scale → 整理三件套到 02_done/[an-XX-YY]/
 
 **考勤调度系统**：scheduler.rs 管理 3 个常驻定时任务（出勤/退勤/日报）+ 1 个临时加班任务。Arc\<Mutex\<AttendanceScheduler\>\> 作为 Tauri State 管理。提醒弹窗 = 独立 WebviewWindow（400×200 毛玻璃置顶），指向 Vue 路由 `/reminder/:type`
 

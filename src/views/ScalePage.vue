@@ -3,17 +3,22 @@ import { ref, computed, onMounted } from 'vue'
 import { useRubberBandSelect } from '../composables/useRubberBandSelect'
 import { useRoute, useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
+import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
 import { useMaterials } from '../composables/useMaterials'
 import type { MaterialInfo } from '../composables/useMaterials'
 import MaterialCard from '../components/MaterialCard.vue'
+import PageGuideOverlay from '../components/PageGuideOverlay.vue'
+import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const { setNavigation } = useNavigation()
 const { materials, loading, loadMaterials } = useMaterials()
 
 const taskId = route.params.taskId as string
+const showGuide = ref(false)
 
 // taskPath 从路由 query 获取（TaskPage 跳转时传入）
 const taskPath = route.query.taskPath as string
@@ -53,9 +58,13 @@ const { isSelecting, selectionRect, onContainerMouseDown, onContainerScroll } =
 const executing = ref(false)
 const error = ref<string | null>(null)
 
-// 只展示静帧，过滤掉已上传（不需要再缩放）
+// 只展示静帧，且排除已上传、以及已有任意缩放版本的素材
 const imageMaterials = computed(() =>
-  materials.value.filter(m => m.material_type === 'image' && m.progress !== 'uploaded')
+  materials.value.filter(m =>
+    m.material_type === 'image' &&
+    m.progress !== 'uploaded' &&
+    m.scales.length === 0
+  )
 )
 
 // 有标注的素材数量（用于按钮 disabled 判断）
@@ -63,11 +72,13 @@ const annotatedCount = computed(() => scaleMap.value.size)
 
 onMounted(async () => {
   setNavigation({
-    title: `缩放 · ${taskId}`,
+    title: `${t('scale.title')} · ${taskId}`,
     showBackButton: true,
     onBack: () => router.back(),
     actions: [],
-    moreMenuItems: [],
+    moreMenuItems: [
+      { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
+    ],
   })
   if (taskPath) {
     await loadMaterials(taskPath)
@@ -162,8 +173,8 @@ async function handleExecute() {
   @mousedown="onContainerMouseDown"
   @scroll="onContainerScroll"
 >
-    <p v-if="loading" class="hint-text">扫描中...</p>
-    <p v-else-if="imageMaterials.length === 0" class="hint-text">无静帧素材</p>
+    <p v-if="loading" class="hint-text">{{ $t('common.scanning') }}</p>
+    <p v-else-if="imageMaterials.length === 0" class="hint-text">{{ $t('scale.noImages') }}</p>
     <div v-else class="card-grid">
       <MaterialCard
         v-for="m in imageMaterials"
@@ -179,9 +190,9 @@ async function handleExecute() {
 
   <!-- 控制面板：Teleport 到 #content-row，作为独立毛玻璃板块 -->
   <Teleport to="#content-row">
-    <aside class="scale-control-panel glass-medium">
+    <aside class="scale-control-panel">
       <div class="panel-body">
-        <p class="panel-title">缩放比例</p>
+        <p class="panel-title">{{ $t('scale.scaleRatio') }}</p>
 
         <div class="scale-options">
           <button
@@ -200,7 +211,7 @@ async function handleExecute() {
             <input
               type="text"
               class="custom-input"
-              placeholder="自定义"
+              :placeholder="$t('scale.custom')"
               :value="customScale"
               @input="handleCustomInput"
             />
@@ -213,21 +224,21 @@ async function handleExecute() {
           :disabled="selectedPaths.size === 0 || finalScale <= 0"
           @click="applyScale"
         >
-          应用到选中 ({{ selectedPaths.size }})
+          {{ $t('scale.applyToSelected') }} ({{ selectedPaths.size }})
         </button>
       </div>
 
       <div class="panel-footer">
         <div v-if="error" class="error-msg">{{ error }}</div>
-        <div v-if="executing" class="executing-hint">执行中...</div>
+        <div v-if="executing" class="executing-hint">{{ $t('common.executing') }}</div>
         <div class="footer-actions">
-          <button class="cancel-btn" :disabled="executing" @click="router.back()">取消</button>
+          <button class="cancel-btn" :disabled="executing" @click="router.back()">{{ $t('common.cancel') }}</button>
           <button
             class="execute-btn"
             :disabled="annotatedCount === 0 || executing"
             @click="handleExecute"
           >
-            {{ executing ? '执行中...' : `开始缩放 (${annotatedCount})` }}
+            {{ executing ? $t('common.executing') : `${$t('scale.startScale')} (${annotatedCount})` }}
           </button>
         </div>
       </div>
@@ -246,6 +257,8 @@ async function handleExecute() {
       }"
     />
   </Teleport>
+
+  <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.scale" @close="showGuide = false" />
 </template>
 
 <style scoped>
@@ -272,6 +285,9 @@ async function handleExecute() {
 
 <!-- Teleport 出去的面板用非 scoped style，否则 scoped hash 不会附加到 Teleport 目标 -->
 <style>
+/* 手动复刻 glass-medium 视觉，不用 backdrop-filter：
+   Teleport 到 #content-row 后与 main-content(glass-medium) 成兄弟，
+   双 backdrop-filter 在 WebView2 + Acrylic 下 gap 区域产生白色闪烁 */
 .scale-control-panel {
   width: 220px;
   flex-shrink: 0;
@@ -280,6 +296,9 @@ async function handleExecute() {
   flex-direction: column;
   justify-content: space-between;
   overflow: hidden;
+  background: var(--glass-medium-bg);
+  border: var(--glass-medium-border);
+  box-shadow: var(--glass-medium-shadow);
 }
 
 .scale-control-panel .panel-body {

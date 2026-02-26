@@ -92,7 +92,12 @@ impl AttendanceScheduler {
     }
 }
 
-/// 每日定时循环：计算到目标时间的 Duration，sleep，触发，循环
+/// 每日定时循环：分段 sleep + 墙钟校验，免疫系统休眠导致的单调时钟漂移。
+///
+/// 原理：`tokio::time::sleep` 基于单调时钟（Windows `QueryPerformanceCounter`），
+/// 系统休眠/睡眠期间单调时钟暂停，导致长 sleep 实际等待远超目标墙钟时间。
+/// 改为每段最多 30 秒，醒来后用 `chrono::Local::now()` 重新校验，
+/// 系统唤醒后最多 30 秒即可检测到目标时间已过并触发提醒。
 async fn daily_timer_loop(app: AppHandle, time_str: &str, reminder_type: &str) {
     loop {
         let duration = match calc_duration_until(time_str) {
@@ -104,7 +109,23 @@ async fn daily_timer_loop(app: AppHandle, time_str: &str, reminder_type: &str) {
             }
         };
 
-        tokio::time::sleep(duration).await;
+        // 记录目标墙钟时间
+        let wall_target = chrono::Local::now()
+            + chrono::Duration::from_std(duration).unwrap_or(chrono::Duration::zero());
+
+        // 分段 sleep：每段最多 30 秒，每段醒来用墙钟校验
+        loop {
+            let now = chrono::Local::now();
+            if now >= wall_target {
+                break;
+            }
+            let remaining = (wall_target - now)
+                .to_std()
+                .unwrap_or(std::time::Duration::from_secs(30));
+            let chunk = remaining.min(std::time::Duration::from_secs(30));
+            tokio::time::sleep(chunk).await;
+        }
+
         let _ = create_reminder_window(&app, reminder_type);
 
         // 等待 60 秒后进入下一轮循环（避免同一分钟内重复触发）
@@ -144,8 +165,9 @@ fn calc_duration_until(time_str: &str) -> Option<std::time::Duration> {
 pub fn create_reminder_window(app: &AppHandle, reminder_type: &str) -> Result<(), String> {
     let label = format!("reminder-{}", reminder_type);
 
-    // 如果同名窗口已存在，聚焦
+    // 如果同名窗口已存在，显示并聚焦
     if let Some(existing) = app.get_webview_window(&label) {
+        let _ = existing.show();
         let _ = existing.set_focus();
         return Ok(());
     }
@@ -170,6 +192,18 @@ pub fn create_reminder_window(app: &AppHandle, reminder_type: &str) -> Result<()
         use window_vibrancy::apply_acrylic;
         let _ = apply_acrylic(&window, Some((0, 0, 0, 1)));
     }
+
+    // 后备机制：Rust 侧延迟显示窗口
+    // 前端 ReminderPage.vue onMounted 也会调 show()，这里做双保险
+    // 防止 visible(false) 下 WebView2 未执行前端 JS 的情况
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        if let Some(w) = app_clone.get_webview_window(&label) {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    });
 
     Ok(())
 }

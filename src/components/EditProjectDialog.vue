@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import type { ProjectInfo } from '../composables/useProjects'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   project: ProjectInfo
@@ -22,14 +25,14 @@ const errorMsg = ref('')
 const loading = ref(false)
 
 const title = computed(() => {
-  if (props.mode === 'rename') return '重命名项目'
-  if (props.mode === 'deadline') return '修改截止日期'
-  return '删除项目'
+  if (props.mode === 'rename') return t('editProject.renameTitle')
+  if (props.mode === 'deadline') return t('editProject.deadlineTitle')
+  return t('editProject.deleteTitle')
 })
 
 const confirmLabel = computed(() => {
-  if (props.mode === 'delete') return loading.value ? '删除中...' : '确认删除'
-  return loading.value ? '保存中...' : '保存'
+  if (props.mode === 'delete') return loading.value ? t('editProject.deleting') : t('editProject.confirmDelete')
+  return loading.value ? t('editProject.saving') : t('editProject.save')
 })
 
 /** 将用户输入的日期标准化为 YYYY-MM-DD */
@@ -79,7 +82,7 @@ async function handleConfirm() {
 <template>
   <Teleport to="body">
     <Transition name="dialog" appear>
-    <div class="dialog-overlay" @click.self="$emit('cancel')">
+    <div class="dialog-overlay">
       <div class="dialog-content glass-strong">
         <p class="dialog-title">{{ title }}</p>
 
@@ -87,13 +90,13 @@ async function handleConfirm() {
           <!-- 重命名 / 截止日期：输入框 -->
           <template v-if="mode !== 'delete'">
             <label class="field-label">
-              {{ mode === 'rename' ? '新项目名称' : '截止日期' }}
+              {{ mode === 'rename' ? $t('editProject.newName') : $t('editProject.deadlineLabel') }}
             </label>
             <input
               v-model="inputValue"
               class="field-input"
               type="text"
-              :placeholder="mode === 'rename' ? '如 218_NewGame' : 'YYYY-MM-DD'"
+              :placeholder="mode === 'rename' ? $t('createProject.projectNamePlaceholder') : 'YYYY-MM-DD'"
               autofocus
               @keydown.enter="handleConfirm"
               @keydown.esc="$emit('cancel')"
@@ -103,9 +106,9 @@ async function handleConfirm() {
           <!-- 删除：警告文案 -->
           <template v-else>
             <p class="delete-warning">
-              确定要删除项目 <strong>{{ project.name }}</strong> 吗？
+              {{ $t('editProject.deleteWarning', { name: project.name }) }}
             </p>
-            <p class="delete-danger">项目目录将移入回收站，可从回收站恢复。</p>
+            <p class="delete-danger">{{ $t('editProject.deleteDanger') }}</p>
           </template>
 
           <p v-if="errorMsg" class="error-text">{{ errorMsg }}</p>
@@ -121,7 +124,7 @@ async function handleConfirm() {
             {{ confirmLabel }}
           </button>
           <button class="dialog-btn dialog-btn-secondary" @click="$emit('cancel')">
-            取消
+            {{ $t('common.cancel') }}
           </button>
         </div>
       </div>

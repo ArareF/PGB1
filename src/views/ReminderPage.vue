@@ -24,7 +24,11 @@ let unlisten: UnlistenFn | null = null
 
 onMounted(async () => {
   // 路由渲染完成后再显示窗口，消除闪烁（窗口创建时 visible(false)）
-  await getCurrentWindow().show()
+  try {
+    await getCurrentWindow().show()
+  } catch (e) {
+    console.error('reminder window show() failed:', e)
+  }
 
   unlisten = await listen<{ step: string; message: string }>('clock-progress', (event) => {
     const { step, message } = event.payload

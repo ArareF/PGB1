@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
@@ -22,9 +22,14 @@ const { openInExplorer } = useDirectoryFiles()
 
 const showCreateDialog = ref(false)
 const showGuide = ref(false)
+const projectRootDir = ref('')
 
-// 排序模式
-const sortMode = ref<'default' | 'deadline' | 'priority'>('default')
+// 排序模式（localStorage 持久化）
+const SORT_MODE_KEY = 'pgb1-home-sort'
+const sortMode = ref<'default' | 'deadline' | 'priority'>(
+  (localStorage.getItem(SORT_MODE_KEY) as 'default' | 'deadline' | 'priority') ?? 'default'
+)
+watch(sortMode, val => localStorage.setItem(SORT_MODE_KEY, val))
 
 // 判断项目是否已完成
 function isProjectComplete(p: ProjectInfo): boolean {
@@ -46,7 +51,17 @@ function isProjectComplete(p: ProjectInfo): boolean {
   return total > 0 && done >= total
 }
 
-const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
+// 优先度排序：high(0) > medium(1) > null/无(2) > low(3)
+const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 3 }
+
+// 仅识别标准日期格式（YYYY-MM-DD），忽略文字备注（如"转交了"）
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+function parseDeadline(deadline: string | null | undefined): Date | null {
+  if (!deadline || !DATE_PATTERN.test(deadline)) return null
+  const d = new Date(deadline)
+  return isNaN(d.getTime()) ? null : d
+}
 
 const sortedProjects = computed(() => {
   const list = [...projects.value]
@@ -54,26 +69,30 @@ const sortedProjects = computed(() => {
 
   if (sortMode.value === 'priority') {
     return list.sort((a, b) => {
-      const ao = a.priority ? (PRIORITY_ORDER[a.priority] ?? 3) : 3
-      const bo = b.priority ? (PRIORITY_ORDER[b.priority] ?? 3) : 3
+      const ao = a.priority ? (PRIORITY_ORDER[a.priority] ?? 2) : 2
+      const bo = b.priority ? (PRIORITY_ORDER[b.priority] ?? 2) : 2
       if (ao !== bo) return ao - bo
       return a.name.localeCompare(b.name)
     })
   }
 
-  // deadline 排序
+  // deadline 排序：优先度最优先，其次按截止日期
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return list.sort((a, b) => {
+    // 第一键：优先度
+    const ao = a.priority ? (PRIORITY_ORDER[a.priority] ?? 2) : 2
+    const bo = b.priority ? (PRIORITY_ORDER[b.priority] ?? 2) : 2
+    if (ao !== bo) return ao - bo
+    // 第二键：有效日期在前，无有效日期（含文字备注）沉底
+    const aDate = parseDeadline(a.deadline)
+    const bDate = parseDeadline(b.deadline)
+    if (!!aDate !== !!bDate) return aDate ? -1 : 1
+    if (!aDate || !bDate) return a.name.localeCompare(b.name)
+    // 同优先度 + 同有日期：按完成状态，再按日期
     const aComplete = isProjectComplete(a)
     const bComplete = isProjectComplete(b)
     if (aComplete !== bComplete) return aComplete ? 1 : -1
-    if (aComplete && bComplete) return a.name.localeCompare(b.name)
-    const aDate = a.deadline ? new Date(a.deadline) : null
-    const bDate = b.deadline ? new Date(b.deadline) : null
-    if (!aDate && !bDate) return a.name.localeCompare(b.name)
-    if (!aDate) return 1
-    if (!bDate) return -1
     const aOverdue = aDate < today
     const bOverdue = bDate < today
     if (aOverdue !== bOverdue) return aOverdue ? -1 : 1
@@ -116,10 +135,6 @@ setNavigation({
   showBackButton: false,
   actions: [],
   moreMenuItems: [
-    { id: 'open-root', label: t('home.openProjectFolder'), handler: async () => {
-      const s = await loadSettings()
-      if (s?.general.projectRootDir) openInExplorer(s.general.projectRootDir)
-    }},
     { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
   ],
 })
@@ -128,9 +143,11 @@ function onVisibilityChange() {
   if (document.visibilityState === 'visible') loadProjects()
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadProjects()
   document.addEventListener('visibilitychange', onVisibilityChange)
+  const s = await loadSettings()
+  if (s?.general.projectRootDir) projectRootDir.value = s.general.projectRootDir
 })
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
@@ -150,6 +167,16 @@ function onProjectCreated(projectName: string) {
   <div class="home-page">
     <div class="page-header">
       <p class="page-hint">{{ $t('home.myProjects') }}</p>
+      <button
+        v-if="projectRootDir"
+        class="folder-btn"
+        :title="$t('home.openProjectFolder')"
+        @click="openInExplorer(projectRootDir)"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+        </svg>
+      </button>
       <div class="sort-tabs">
         <button
           v-for="mode in (['default', 'deadline', 'priority'] as const)"

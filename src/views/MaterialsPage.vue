@@ -510,26 +510,7 @@ onUnmounted(() => {
   gap: var(--spacing-2);
 }
 
-/* .group-label → design-system.css 公共类 */
-
-.folder-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: var(--transition-bg);
-}
-
-.folder-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
+/* .group-label, .folder-btn → design-system.css 公共类 */
 
 .card-grid {
   display: grid;

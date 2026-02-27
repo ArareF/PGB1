@@ -178,7 +178,6 @@ async function scanGameExe() {
 /** 注册/更新顶部导航配置 */
 function refreshNav() {
   const actions = [
-    { id: 'open-folder', label: t('common.openFolder'), handler: () => { if (dirPath) openInExplorer(dirPath) } },
     ...(gameExePath.value
       ? [{ id: 'launch-game', label: t('gameIntro.launchPrototype'), handler: () => { invoke('open_file', { path: gameExePath.value! }) } }]
       : []
@@ -237,6 +236,15 @@ onUnmounted(() => {
     <!-- 固定小标题栏 -->
     <div class="sub-title-bar">
       <span class="sub-title">{{ $t('gameIntro.docTitle') }}</span>
+      <button
+        class="folder-btn"
+        :title="$t('common.openFolder')"
+        @click="openInExplorer(dirPath)"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+        </svg>
+      </button>
       <div class="view-buttons">
         <button class="view-btn" @click="() => { if (dirPath) loadFiles(dirPath) }">{{ $t('common.refresh') }}</button>
         <button

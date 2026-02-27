@@ -572,11 +572,11 @@ export default {
   },
 
   priority: {
-    high: '高',
-    medium: '中',
-    low: '低',
-    clearPriority: '清除优先度',
-    setPriority: '设置优先度',
+    high: '急',
+    medium: '高',
+    normal: '普',
+    low: '停',
+    setPriority: '优先度',
   },
 
 }

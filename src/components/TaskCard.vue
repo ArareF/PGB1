@@ -39,8 +39,9 @@ async function toggleMenu() {
   }
 }
 
-function setPriority(value: string | null) {
+function setPriority(option: string) {
   showMenu.value = false
+  const value = option === 'normal' ? null : option
   emit('action', props.task, 'priority', value)
 }
 
@@ -92,9 +93,9 @@ function formatSize(bytes: number): string {
     <div class="task-name-row">
       <span
         v-if="task.priority"
-        class="priority-tag"
-        :class="`priority-tag--${task.priority}`"
-      >{{ $t(`priority.${task.priority}`) }}</span>
+        class="priority-dot"
+        :class="`priority-dot--${task.priority}`"
+      />
       <span class="task-name">{{ task.name }}</span>
     </div>
 
@@ -113,10 +114,10 @@ function formatSize(bytes: number): string {
     >
       ···
     </button>
-  </button>
 
-  <!-- 下拉菜单 — Teleport to body，避免父级 backdrop-filter 干扰毛玻璃 -->
-  <Teleport to="body">
+    <!-- 下拉菜单 — Teleport to body，避免父级 backdrop-filter 干扰毛玻璃 -->
+    <!-- Teleport 在 button 内部，使组件保持单根节点，兼容 TransitionGroup 动画 -->
+    <Teleport to="body">
     <Transition name="card-menu">
       <div v-if="showMenu" class="card-menu glass-medium" :style="menuStyle" @click.stop>
         <!-- 优先度选择器 -->
@@ -124,22 +125,18 @@ function formatSize(bytes: number): string {
           <span class="menu-priority-label">{{ $t('priority.setPriority') }}</span>
           <div class="menu-priority-pills">
             <button
-              v-for="p in ['high', 'medium', 'low']"
+              v-for="p in ['high', 'medium', 'normal', 'low']"
               :key="p"
               class="priority-pill"
-              :class="[`priority-pill--${p}`, { 'is-active': task.priority === p }]"
+              :class="[`priority-pill--${p}`, { 'is-active': p === 'normal' ? !task.priority : task.priority === p }]"
               @mousedown.prevent="setPriority(p)"
             >{{ $t(`priority.${p}`) }}</button>
-            <button
-              v-if="task.priority"
-              class="priority-pill priority-pill--clear"
-              @mousedown.prevent="setPriority(null)"
-            >✕</button>
           </div>
         </div>
       </div>
     </Transition>
-  </Teleport>
+    </Teleport>
+  </button>
 </template>
 
 <style scoped>
@@ -181,21 +178,17 @@ function formatSize(bytes: number): string {
   text-overflow: ellipsis;
 }
 
-/* Priority 标签（小胶囊） */
-.priority-tag {
+/* Priority 圆点（纯色小圆，无文字） */
+.priority-dot {
   flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 6px;
-  font-size: 11px;
-  font-weight: var(--font-semibold);
-  border-radius: var(--radius-tag);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
 }
 
-.priority-tag--high   { background: var(--priority-high-bg);   color: var(--priority-high-text); }
-.priority-tag--medium { background: var(--priority-medium-bg); color: var(--priority-medium-text); }
-.priority-tag--low    { background: var(--priority-low-bg);    color: var(--priority-low-text); }
+.priority-dot--high   { background: var(--priority-high-dot); }
+.priority-dot--medium { background: var(--priority-medium-dot); }
+.priority-dot--low    { background: var(--priority-low-dot); }
 
 .task-bottom {
   display: flex;

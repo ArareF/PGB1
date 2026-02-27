@@ -540,10 +540,10 @@ export default {
   },
 
   priority: {
-    high: 'High',
-    medium: 'Med',
-    low: 'Low',
-    clearPriority: 'Clear',
+    high: 'Urgent',
+    medium: 'High',
+    normal: 'Normal',
+    low: 'Hold',
     setPriority: 'Priority',
   },
 }

@@ -475,7 +475,7 @@
   --tag-progress-uploaded-bg: var(--progress-uploaded);
   --tag-progress-outdated-bg: var(--progress-outdated);
 
-  /* Priority 优先度标签 */
+  /* Priority 优先度 — 菜单选择器胶囊（半透明背景） */
   --priority-high-bg:       color-mix(in srgb, var(--color-danger) 18%, transparent);
   --priority-high-text:     var(--color-danger-light);
   --priority-high-active:   color-mix(in srgb, var(--color-danger) 35%, transparent);
@@ -487,6 +487,11 @@
   --priority-low-bg:        color-mix(in srgb, var(--color-success) 18%, transparent);
   --priority-low-text:      var(--color-success-light);
   --priority-low-active:    color-mix(in srgb, var(--color-success) 35%, transparent);
+
+  /* Priority 优先度 — 卡片圆点（纯实色，高对比度） */
+  --priority-high-dot:      var(--color-danger);
+  --priority-medium-dot:    var(--color-warning);
+  --priority-low-dot:       var(--color-success);
 
   /* 功能色语义应用 */
   --action-primary:       var(--color-primary-500);
@@ -651,7 +656,7 @@
   /* 文字颜色 — 高对比近白 */
   --text-primary:         #E2E4E8;
   --text-secondary:       #8A8D96;
-  --text-tertiary:        #4A4D54;
+  --text-tertiary:        #6B6E77;
   --text-inverse:         #0C0D10;
   --text-link:            var(--color-primary-300);
   --text-link-hover:      #8ECFFF;
@@ -763,6 +768,26 @@ html {
   color: var(--text-primary);
 }
 
+/* 副标题行旁的打开文件夹图标按钮（各页面 sub-title-bar 共用） */
+.folder-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: var(--transition-bg);
+  flex-shrink: 0;
+}
+.folder-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 /** 内容区一级分区标题（静帧/序列帧等类型标题） */
 .section-label {
   font-size: var(--text-3xl);
@@ -836,6 +861,10 @@ html {
 .card-leave-to {
   opacity: 0;
   transform: scale(0.95);
+}
+/* 排序重排时的 FLIP 位移动画 */
+.card-move {
+  transition: transform var(--duration-normal) var(--ease-out);
 }
 
 /* ─── 框选覆盖层 ────────────────────────────────────────── */

@@ -93,8 +93,9 @@ async function loadIcon() {
 onMounted(loadIcon)
 watch(() => props.project.app_icon, loadIcon)
 
-async function setPriority(value: string | null) {
+async function setPriority(option: string) {
   showMenu.value = false
+  const value = option === 'normal' ? null : option
   await invoke('set_project_priority', { projectPath: props.project.path, priority: value })
   emit('refresh')
 }
@@ -133,9 +134,9 @@ async function setPriority(value: string | null) {
       <div class="card-name-row">
         <span
           v-if="project.priority"
-          class="priority-tag"
-          :class="`priority-tag--${project.priority}`"
-        >{{ $t(`priority.${project.priority}`) }}</span>
+          class="priority-dot"
+          :class="`priority-dot--${project.priority}`"
+        />
         <span class="card-name">{{ project.name }}</span>
       </div>
       <span class="card-deadline">
@@ -174,17 +175,12 @@ async function setPriority(value: string | null) {
             <span class="menu-priority-label">{{ $t('priority.setPriority') }}</span>
             <div class="menu-priority-pills">
               <button
-                v-for="p in ['high', 'medium', 'low']"
+                v-for="p in ['high', 'medium', 'normal', 'low']"
                 :key="p"
                 class="priority-pill"
-                :class="[`priority-pill--${p}`, { 'is-active': project.priority === p }]"
+                :class="[`priority-pill--${p}`, { 'is-active': p === 'normal' ? !project.priority : project.priority === p }]"
                 @mousedown.prevent="setPriority(p)"
               >{{ $t(`priority.${p}`) }}</button>
-              <button
-                v-if="project.priority"
-                class="priority-pill priority-pill--clear"
-                @mousedown.prevent="setPriority(null)"
-              >✕</button>
             </div>
           </div>
           <div class="menu-divider" />
@@ -365,22 +361,17 @@ async function setPriority(value: string | null) {
   min-width: 0;
 }
 
-/* Priority 标签（小胶囊） */
-.priority-tag {
+/* Priority 圆点（纯色小圆，无文字） */
+.priority-dot {
   flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 6px;
-  font-size: 11px;
-  font-weight: var(--font-semibold);
-  border-radius: var(--radius-tag);
-  letter-spacing: 0.02em;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
 }
 
-.priority-tag--high   { background: var(--priority-high-bg);   color: var(--priority-high-text); }
-.priority-tag--medium { background: var(--priority-medium-bg); color: var(--priority-medium-text); }
-.priority-tag--low    { background: var(--priority-low-bg);    color: var(--priority-low-text); }
+.priority-dot--high   { background: var(--priority-high-dot); }
+.priority-dot--medium { background: var(--priority-medium-dot); }
+.priority-dot--low    { background: var(--priority-low-dot); }
 
 </style>
 
@@ -466,18 +457,13 @@ async function setPriority(value: string | null) {
 
 .priority-pill--high   { background: var(--priority-high-bg);   color: var(--priority-high-text); }
 .priority-pill--medium { background: var(--priority-medium-bg); color: var(--priority-medium-text); }
+.priority-pill--normal { background: var(--bg-hover);           color: var(--text-secondary); }
 .priority-pill--low    { background: var(--priority-low-bg);    color: var(--priority-low-text); }
 
 .priority-pill--high.is-active   { background: var(--priority-high-active); }
 .priority-pill--medium.is-active { background: var(--priority-medium-active); }
+.priority-pill--normal.is-active { background: var(--bg-active); color: var(--text-primary); }
 .priority-pill--low.is-active    { background: var(--priority-low-active); }
-
-.priority-pill--clear {
-  flex: 0 0 24px;
-  background: var(--bg-hover);
-  color: var(--text-secondary);
-}
-.priority-pill--clear:hover { background: var(--bg-active); }
 
 .menu-divider {
   height: 1px;

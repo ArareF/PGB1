@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
@@ -26,17 +26,22 @@ let projectPath = ''
 const enabledTasks = ref<string[]>([])
 const showGuide = ref(false)
 
-// 排序模式
-const sortMode = ref<'default' | 'priority'>('default')
+// 排序模式（localStorage 持久化）
+const SORT_MODE_KEY = 'pgb1-project-sort'
+const sortMode = ref<'default' | 'priority'>(
+  (localStorage.getItem(SORT_MODE_KEY) as 'default' | 'priority') ?? 'default'
+)
+watch(sortMode, val => localStorage.setItem(SORT_MODE_KEY, val))
 
-const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
+// 优先度排序：high(0) > medium(1) > null/无(2) > low(3)
+const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 3 }
 
 const sortedTasks = computed(() => {
   const list = [...tasks.value]
   if (sortMode.value === 'default') return list
   return list.sort((a, b) => {
-    const ao = a.priority ? (PRIORITY_ORDER[a.priority] ?? 3) : 3
-    const bo = b.priority ? (PRIORITY_ORDER[b.priority] ?? 3) : 3
+    const ao = a.priority ? (PRIORITY_ORDER[a.priority] ?? 2) : 2
+    const bo = b.priority ? (PRIORITY_ORDER[b.priority] ?? 2) : 2
     if (ao !== bo) return ao - bo
     return a.name.localeCompare(b.name)
   })
@@ -104,7 +109,6 @@ function refreshNav() {
     onBack: () => router.push({ name: 'home' }),
     actions: buildNavActions(),
     moreMenuItems: [
-      { id: 'open-folder', label: t('project.openProjectFolder'), handler: () => { if (projectPath) openInExplorer(projectPath) } },
       { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
     ],
   })
@@ -211,6 +215,15 @@ onUnmounted(() => {
     <!-- 固定小标题栏 -->
     <div class="sub-title-bar">
       <span class="sub-title">{{ $t('project.tasks') }}</span>
+      <button
+        class="folder-btn"
+        :title="$t('project.openProjectFolder')"
+        @click="openInExplorer(projectPath)"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+        </svg>
+      </button>
       <div class="sort-tabs">
         <button
           v-for="mode in (['default', 'priority'] as const)"

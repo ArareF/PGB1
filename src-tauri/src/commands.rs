@@ -2672,6 +2672,18 @@ const PROTOTYPE_SUBCATEGORIES: [&str; 7] = [
     "total_win",
 ];
 
+/// PSD/ 下固定的 8 个子目录（每个项目统一，与任务列表无关）
+const PSD_SUBCATEGORIES: [&str; 8] = [
+    "big_win",
+    "feature_buy",
+    "infoboard",
+    "loading_bonus",
+    "main_ui",
+    "spin_button",
+    "symbols",
+    "total_win",
+];
+
 /// 加载全局任务清单（不存在则创建默认模板）
 #[tauri::command]
 pub fn load_global_tasks(root_dir: String) -> Result<GlobalTaskConfig, String> {
@@ -3152,20 +3164,25 @@ pub fn create_project(
         return Err(format!("同名项目已存在: {}", trimmed_name));
     }
 
-    // 创建标准 6 目录骨架
-    let dirs_to_create: Vec<PathBuf> = vec![
+    // 创建标准目录骨架
+    let vfx_base = project_dir.join("03_Render_VFX").join("VFX");
+    let mut dirs_to_create: Vec<PathBuf> = vec![
         project_dir.join("00_Game Design & Doc"),
         project_dir.join("01_Preproduction"),
         project_dir.join("02_Production"),
-        project_dir.join("03_Render_VFX").join("VFX").join("Export"),
-        project_dir.join("03_Render_VFX").join("VFX").join("nextcloud"),
-        project_dir.join("03_Render_VFX").join("VFX").join("nextcloud").join("preview"),
-        project_dir.join("03_Render_VFX").join("VFX").join("nextcloud").join("preview").join("breakdown"),
-        project_dir.join("03_Render_VFX").join("VFX").join("PSD"),
-        project_dir.join("03_Render_VFX").join("VFX").join("AE"),
+        vfx_base.join("Export"),
+        vfx_base.join("nextcloud"),
+        vfx_base.join("nextcloud").join("preview"),
+        vfx_base.join("nextcloud").join("preview").join("breakdown"),
+        vfx_base.join("AE"),
         project_dir.join("04_Trailer"),
         project_dir.join("05_Outside"),
     ];
+    // PSD/ 下 8 个固定子目录（与任务列表无关）
+    let psd_base = vfx_base.join("PSD");
+    for cat in &PSD_SUBCATEGORIES {
+        dirs_to_create.push(psd_base.join(cat));
+    }
 
     for dir in &dirs_to_create {
         fs::create_dir_all(dir).map_err(|e| format!("创建目录失败 {}: {}", dir.display(), e))?;

@@ -612,7 +612,6 @@ function updateNavigation() {
       { id: 'convert', label: t('task.convert'), handler: () => router.push({ name: 'convert', params: { projectId, taskId }, query: { taskPath: taskFolderPath } }) },
     ],
     moreMenuItems: [
-      { id: 'open-task-folder', label: t('task.openTaskFolder'), handler: () => { if (taskFolderPath) openInExplorer(taskFolderPath) } },
       { id: 'open-nextcloud', label: t('task.openNextcloudFolder'), handler: () => { if (nextcloudPath) openInExplorer(nextcloudPath) } },
       { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
     ],
@@ -1066,6 +1065,15 @@ onUnmounted(() => {
       <!-- 小标题栏 -->
       <div class="sub-title-bar">
         <span class="sub-title">{{ $t('task.materialList') }}</span>
+        <button
+          class="folder-btn"
+          :title="$t('task.openTaskFolder')"
+          @click="openInExplorer(taskFolderPath)"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+        </button>
         <div class="view-buttons">
           <button
             class="view-btn"

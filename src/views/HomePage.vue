@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
@@ -22,6 +22,65 @@ const { openInExplorer } = useDirectoryFiles()
 
 const showCreateDialog = ref(false)
 const showGuide = ref(false)
+
+// 排序模式
+const sortMode = ref<'default' | 'deadline' | 'priority'>('default')
+
+// 判断项目是否已完成
+function isProjectComplete(p: ProjectInfo): boolean {
+  const enabled = p.enabled_tasks
+  const parentTasks = enabled.filter(t => !t.includes('/'))
+  let total = 0, done = 0
+  const completedSubs = new Set(p.completed_subtasks)
+  const completedT = new Set(p.completed_tasks)
+  for (const parent of parentTasks) {
+    const children = enabled.filter(t => t.startsWith(parent + '/'))
+    if (children.length === 0) {
+      total++
+      if (completedT.has(parent)) done++
+    } else {
+      total += children.length
+      done += children.filter(c => completedSubs.has(c)).length
+    }
+  }
+  return total > 0 && done >= total
+}
+
+const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
+
+const sortedProjects = computed(() => {
+  const list = [...projects.value]
+  if (sortMode.value === 'default') return list
+
+  if (sortMode.value === 'priority') {
+    return list.sort((a, b) => {
+      const ao = a.priority ? (PRIORITY_ORDER[a.priority] ?? 3) : 3
+      const bo = b.priority ? (PRIORITY_ORDER[b.priority] ?? 3) : 3
+      if (ao !== bo) return ao - bo
+      return a.name.localeCompare(b.name)
+    })
+  }
+
+  // deadline 排序
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return list.sort((a, b) => {
+    const aComplete = isProjectComplete(a)
+    const bComplete = isProjectComplete(b)
+    if (aComplete !== bComplete) return aComplete ? 1 : -1
+    if (aComplete && bComplete) return a.name.localeCompare(b.name)
+    const aDate = a.deadline ? new Date(a.deadline) : null
+    const bDate = b.deadline ? new Date(b.deadline) : null
+    if (!aDate && !bDate) return a.name.localeCompare(b.name)
+    if (!aDate) return 1
+    if (!bDate) return -1
+    const aOverdue = aDate < today
+    const bOverdue = bDate < today
+    if (aOverdue !== bOverdue) return aOverdue ? -1 : 1
+    return aDate.getTime() - bDate.getTime()
+  })
+})
+
 const editTarget = ref<ProjectInfo | null>(null)
 const editMode = ref<'rename' | 'deadline' | 'delete' | null>(null)
 
@@ -45,6 +104,10 @@ function onProjectDeleted(_path: string) {
 function closeEditDialog() {
   editTarget.value = null
   editMode.value = null
+}
+
+function onProjectRefresh() {
+  loadProjects()
 }
 
 /* 注册主页导航配置 */
@@ -87,6 +150,15 @@ function onProjectCreated(projectName: string) {
   <div class="home-page">
     <div class="page-header">
       <p class="page-hint">{{ $t('home.myProjects') }}</p>
+      <div class="sort-tabs">
+        <button
+          v-for="mode in (['default', 'deadline', 'priority'] as const)"
+          :key="mode"
+          class="sort-tab"
+          :class="{ 'is-active': sortMode === mode }"
+          @click="sortMode = mode"
+        >{{ $t(`home.sort${mode.charAt(0).toUpperCase() + mode.slice(1)}`) }}</button>
+      </div>
       <button class="add-btn" :title="$t('home.createProject')" @click="showCreateDialog = true">+</button>
     </div>
 
@@ -96,12 +168,13 @@ function onProjectCreated(projectName: string) {
 
       <TransitionGroup v-else name="card" tag="div" class="card-grid">
         <ProjectCard
-          v-for="(project, i) in projects"
+          v-for="(project, i) in sortedProjects"
           :key="project.name"
           :style="{ '--delay': i * 40 + 'ms' }"
           :project="project"
           @click="openProject"
           @action="onProjectAction"
+          @refresh="onProjectRefresh"
         />
       </TransitionGroup>
     </div>
@@ -186,5 +259,35 @@ function onProjectCreated(projectName: string) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--card-project-width), 1fr));
   gap: var(--gap-card);
+}
+
+.sort-tabs {
+  display: flex;
+  gap: var(--spacing-1);
+  margin-left: auto;
+}
+
+.sort-tab {
+  height: 28px;
+  padding: 0 var(--spacing-3);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.sort-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.sort-tab.is-active {
+  color: var(--color-primary-300);
+  background: color-mix(in srgb, var(--color-primary-500) 12%, transparent);
+  border-color: var(--color-primary-700);
 }
 </style>

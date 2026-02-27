@@ -475,6 +475,19 @@
   --tag-progress-uploaded-bg: var(--progress-uploaded);
   --tag-progress-outdated-bg: var(--progress-outdated);
 
+  /* Priority 优先度标签 */
+  --priority-high-bg:       color-mix(in srgb, var(--color-danger) 18%, transparent);
+  --priority-high-text:     var(--color-danger-light);
+  --priority-high-active:   color-mix(in srgb, var(--color-danger) 35%, transparent);
+
+  --priority-medium-bg:     color-mix(in srgb, var(--color-warning) 18%, transparent);
+  --priority-medium-text:   var(--color-warning-light);
+  --priority-medium-active: color-mix(in srgb, var(--color-warning) 35%, transparent);
+
+  --priority-low-bg:        color-mix(in srgb, var(--color-success) 18%, transparent);
+  --priority-low-text:      var(--color-success-light);
+  --priority-low-active:    color-mix(in srgb, var(--color-success) 35%, transparent);
+
   /* 功能色语义应用 */
   --action-primary:       var(--color-primary-500);
   --action-primary-hover: var(--color-primary-600);

@@ -118,6 +118,23 @@ pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
 
     let mut tasks = Vec::new();
 
+    // 读取项目配置，获取任务优先度 Map
+    let task_priorities: std::collections::HashMap<String, String> = {
+        let config_path = project_dir.join(".pgb1_project.json");
+        fs::read_to_string(&config_path)
+            .ok()
+            .and_then(|s| {
+                #[derive(serde::Deserialize, Default)]
+                struct PriorityOnly {
+                    #[serde(default)]
+                    task_priorities: std::collections::HashMap<String, String>,
+                }
+                serde_json::from_str::<PriorityOnly>(&s).ok()
+            })
+            .map(|c| c.task_priorities)
+            .unwrap_or_default()
+    };
+
     let entries =
         fs::read_dir(&export_path).map_err(|e| format!("无法读取 Export 目录: {}", e))?;
 
@@ -157,6 +174,7 @@ pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
         // 任务卡片大小：显示已上传到 nextcloud 的文件大小
         let size_bytes = calc_dir_size(&nc_task_dir);
 
+        let priority = task_priorities.get(&task_name.to_lowercase()).cloned();
         tasks.push(TaskInfo {
             name: task_name,
             path: path.to_string_lossy().to_string(),
@@ -166,7 +184,7 @@ pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
             material_uploaded,
             video_total,
             video_uploaded,
-            priority: None,
+            priority,
         });
     }
 

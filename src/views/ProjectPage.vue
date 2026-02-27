@@ -25,6 +25,34 @@ let projectPath = ''
 
 const enabledTasks = ref<string[]>([])
 const showGuide = ref(false)
+
+// 排序模式
+const sortMode = ref<'default' | 'priority'>('default')
+
+const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
+
+const sortedTasks = computed(() => {
+  const list = [...tasks.value]
+  if (sortMode.value === 'default') return list
+  return list.sort((a, b) => {
+    const ao = a.priority ? (PRIORITY_ORDER[a.priority] ?? 3) : 3
+    const bo = b.priority ? (PRIORITY_ORDER[b.priority] ?? 3) : 3
+    if (ao !== bo) return ao - bo
+    return a.name.localeCompare(b.name)
+  })
+})
+
+// 处理 TaskCard 的优先度 action
+async function onTaskAction(task: TaskInfo, _action: 'priority', value: string | null) {
+  if (!projectPath) return
+  await invoke('set_task_priority', {
+    projectPath,
+    taskName: task.name,
+    priority: value,
+  })
+  await loadTasks(projectPath)
+}
+
 const completedSubtasks = ref<string[]>([])
 const defaultAeFile = ref<string | null>(null)
 
@@ -183,6 +211,15 @@ onUnmounted(() => {
     <!-- 固定小标题栏 -->
     <div class="sub-title-bar">
       <span class="sub-title">{{ $t('project.tasks') }}</span>
+      <div class="sort-tabs">
+        <button
+          v-for="mode in (['default', 'priority'] as const)"
+          :key="mode"
+          class="sort-tab"
+          :class="{ 'is-active': sortMode === mode }"
+          @click="sortMode = mode"
+        >{{ $t(`project.sort${mode.charAt(0).toUpperCase() + mode.slice(1)}`) }}</button>
+      </div>
     </div>
 
     <!-- 可滚动内容区 -->
@@ -191,12 +228,13 @@ onUnmounted(() => {
 
       <TransitionGroup v-else name="card" tag="div" class="card-grid">
         <TaskCard
-          v-for="(task, i) in tasks"
+          v-for="(task, i) in sortedTasks"
           :key="task.name"
           :style="{ '--delay': i * 40 + 'ms' }"
           :task="task"
           :subtask-progress="taskSubtaskProgress[task.name.toLowerCase()]"
           @click="openTask"
+          @action="onTaskAction"
         />
       </TransitionGroup>
     </div>
@@ -261,6 +299,40 @@ onUnmounted(() => {
 }
 
 /* AE 工程选择下拉面板（Teleport to body，需要全局样式） */
+
+.sub-title-bar {
+  gap: var(--spacing-3);
+}
+
+.sort-tabs {
+  display: flex;
+  gap: var(--spacing-1);
+  margin-left: auto;
+}
+
+.sort-tab {
+  height: 26px;
+  padding: 0 var(--spacing-3);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.sort-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.sort-tab.is-active {
+  color: var(--color-primary-300);
+  background: color-mix(in srgb, var(--color-primary-500) 12%, transparent);
+  border-color: var(--color-primary-700);
+}
 </style>
 
 <style>

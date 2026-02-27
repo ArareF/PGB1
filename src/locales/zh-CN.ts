@@ -49,6 +49,9 @@ export default {
     createProject: '新建项目',
     openProjectFolder: '打开项目文件夹',
     appSettings: '程序设置',
+    sortDefault: '默认',
+    sortDeadline: '截止日期',
+    sortPriority: '优先度',
   },
 
   project: {
@@ -66,6 +69,8 @@ export default {
     renameProject: '重命名',
     editDeadline: '修改截止日期',
     deleteProject: '删除项目',
+    sortDefault: '默认',
+    sortPriority: '优先度',
   },
 
   task: {
@@ -564,6 +569,14 @@ export default {
     // 出勤引导（新手引导完成后跳转）
     attConfig: '在这里设置上下班时间、网址和账号密码',
     attMore: '每个页面不懂的地方，都可以在这里查看指引',
+  },
+
+  priority: {
+    high: '高',
+    medium: '中',
+    low: '低',
+    clearPriority: '清除优先度',
+    setPriority: '设置优先度',
   },
 
 }

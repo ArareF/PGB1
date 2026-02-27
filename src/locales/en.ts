@@ -49,6 +49,9 @@ export default {
     createProject: 'New Project',
     openProjectFolder: 'Open Project Folder',
     appSettings: 'Settings',
+    sortDefault: 'Default',
+    sortDeadline: 'Deadline',
+    sortPriority: 'Priority',
   },
 
   project: {
@@ -66,6 +69,8 @@ export default {
     renameProject: 'Rename',
     editDeadline: 'Edit Deadline',
     deleteProject: 'Delete Project',
+    sortDefault: 'Default',
+    sortPriority: 'Priority',
   },
 
   task: {
@@ -532,5 +537,13 @@ export default {
     settingsContent: 'Right panel: detailed config for current tab',
     attConfig: 'Set your work hours, attendance URL, and login credentials here',
     attMore: 'You can find a page guide here whenever you need help',
+  },
+
+  priority: {
+    high: 'High',
+    medium: 'Med',
+    low: 'Low',
+    clearPriority: 'Clear',
+    setPriority: 'Priority',
   },
 }

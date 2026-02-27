@@ -88,6 +88,7 @@ pub fn scan_projects(root_dir: String) -> Result<Vec<ProjectInfo>, String> {
             deadline: config.deadline,
             default_ae_file: config.default_ae_file,
             app_icon,
+            priority: config.priority,
             tasks,
             task_count,
             enabled_tasks,
@@ -165,6 +166,7 @@ pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
             material_uploaded,
             video_total,
             video_uploaded,
+            priority: None,
         });
     }
 
@@ -357,6 +359,8 @@ fn load_or_create_config(project_path: &Path) -> Result<ProjectConfig, String> {
         completed_subtasks: Vec::new(),
         upload_prompted_tasks: Vec::new(),
         default_ae_file: None,
+        priority: None,
+        task_priorities: std::collections::HashMap::new(),
     };
 
     let json =
@@ -3160,6 +3164,8 @@ pub fn create_project(
         completed_subtasks: Vec::new(),
         upload_prompted_tasks: Vec::new(),
         default_ae_file: None,
+        priority: None,
+        task_priorities: std::collections::HashMap::new(),
     };
 
     let config_path = project_dir.join(".pgb1_project.json");
@@ -3180,6 +3186,7 @@ pub fn create_project(
         completed_tasks: Vec::new(),
         default_ae_file: None,
         app_icon: None,
+        priority: None,
     })
 }
 
@@ -5795,6 +5802,7 @@ pub fn rename_project(project_path: String, new_name: String) -> Result<ProjectI
         completed_tasks: Vec::new(),
         default_ae_file: config.default_ae_file,
         app_icon,
+        priority: config.priority,
     })
 }
 

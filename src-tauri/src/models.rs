@@ -20,6 +20,12 @@ pub struct ProjectConfig {
     /// 默认打开的 AE 工程文件名（仅文件名，不含路径）
     #[serde(default)]
     pub default_ae_file: Option<String>,
+    /// 项目优先度（"high" / "medium" / "low"），null 表示无
+    #[serde(default)]
+    pub priority: Option<String>,
+    /// 任务优先度 Map（task_name_lower → priority）
+    #[serde(default)]
+    pub task_priorities: std::collections::HashMap<String, String>,
 }
 
 /// 返回给前端的项目信息
@@ -47,6 +53,8 @@ pub struct ProjectInfo {
     pub default_ae_file: Option<String>,
     /// AppIcon 文件的绝对路径（来自 01_Preproduction/，名含 appicon，优先 PNG 其次 PSD/PSB）
     pub app_icon: Option<String>,
+    /// 项目优先度（来自 ProjectConfig.priority）
+    pub priority: Option<String>,
 }
 
 /// 返回给前端的任务信息
@@ -68,6 +76,8 @@ pub struct TaskInfo {
     pub video_total: u32,
     /// 已上传预览视频数（存在于 nextcloud/preview/ 中）
     pub video_uploaded: u32,
+    /// 任务优先度（来自项目 .pgb1_project.json 的 task_priorities）
+    pub priority: Option<String>,
 }
 
 /// 通用文件/目录条目（普通卡片用）

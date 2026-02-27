@@ -5892,3 +5892,37 @@ fn send_ctrl_end() {
         SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
     }
 }
+
+/// 设置项目优先度（"high"/"medium"/"low" 或 null 清除）
+#[tauri::command]
+pub fn set_project_priority(project_path: String, priority: Option<String>) -> Result<(), String> {
+    let config_path = std::path::Path::new(&project_path).join(".pgb1_project.json");
+    let content = fs::read_to_string(&config_path)
+        .map_err(|e| format!("读取配置失败: {}", e))?;
+    let mut config: crate::models::ProjectConfig = serde_json::from_str(&content)
+        .map_err(|e| format!("解析配置失败: {}", e))?;
+    config.priority = priority;
+    let json = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("序列化失败: {}", e))?;
+    fs::write(&config_path, json).map_err(|e| format!("写入失败: {}", e))?;
+    Ok(())
+}
+
+/// 设置任务优先度（"high"/"medium"/"low" 或 null 清除）
+#[tauri::command]
+pub fn set_task_priority(project_path: String, task_name: String, priority: Option<String>) -> Result<(), String> {
+    let config_path = std::path::Path::new(&project_path).join(".pgb1_project.json");
+    let content = fs::read_to_string(&config_path)
+        .map_err(|e| format!("读取配置失败: {}", e))?;
+    let mut config: crate::models::ProjectConfig = serde_json::from_str(&content)
+        .map_err(|e| format!("解析配置失败: {}", e))?;
+    let key = task_name.to_lowercase();
+    match priority {
+        Some(p) => { config.task_priorities.insert(key, p); }
+        None    => { config.task_priorities.remove(&key); }
+    }
+    let json = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("序列化失败: {}", e))?;
+    fs::write(&config_path, json).map_err(|e| format!("写入失败: {}", e))?;
+    Ok(())
+}

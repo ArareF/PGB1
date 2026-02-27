@@ -86,6 +86,8 @@ pub fn run() {
             commands::scan_preview_videos,
             commands::copy_preview_to_nextcloud,
             commands::extract_psd_thumbnail,
+            commands::set_project_priority,
+            commands::set_task_priority,
             commands::get_file_mtime,
         ])
         .setup(|app| {

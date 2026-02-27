@@ -14,6 +14,7 @@ export interface ProjectInfo {
   completed_tasks: string[]
   default_ae_file: string | null
   app_icon: string | null
+  priority: string | null
 }
 
 export function useProjects() {

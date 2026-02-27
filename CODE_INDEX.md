@@ -9,9 +9,9 @@
 
 | 目录 | 文件数 | 总行数 | 备注 |
 |------|--------|--------|------|
-| src/components/ | 19 | ~4540 | UI 组件（新增 OnboardingDialog.vue、PageGuideOverlay.vue） |
+| src/components/ | 19 | ~4800 | UI 组件（新增 OnboardingDialog.vue、PageGuideOverlay.vue） |
 | src/composables/ | 9 | ~700 | 逻辑组件（useStatusBar ~430 行，useScale 简化为 ~25 行） |
-| src/views/ | 12 | ~5200 | 页面 |
+| src/views/ | 12 | ~5400 | 页面 |
 | src/styles/ | 3 | ~790 | CSS 设计系统（新增 --text-2xs / --glass-light-blur / --panel-blur token） |
 | src/i18n + src/locales/ | 3 | ~1100 | 国际化：i18n 实例 + zh-CN/en locale 文件（含 onboarding/pageGuide namespace） |
 | src/其他 | 8 | ~250 | 入口、路由、配置（含 onboarding.ts）、布局 |
@@ -48,8 +48,8 @@
 
 | 文件 | 行数 | Props | 职责 |
 |------|------|-------|------|
-| `ProjectCard.vue` | ~380 | `project: ProjectInfo` | 项目卡片（图标+名称+截止日期+进度条）。根元素为 `<div>`（非 `<button>`，避免嵌套）。**AppIcon**：`onMounted` 读 `project.app_icon`，PNG 用 `convertFileSrc`，PSD/PSB 调 `getPsdThumbnail(128px)`，无图标降级为 SVG 占位。进度条计算：无子任务的父任务用 `completed_tasks`，有子任务的父任务用 `completed_subtasks`，分母 = 无子任务父任务数 + 所有子任务数。**Hover 菜单**：右上角 ··· 按钮（opacity 过渡），展开重命名/修改截止日期/删除三项，emit `action` 事件。**菜单 Teleport to body**：避免父级 `glass-subtle` 的 `backdrop-filter` 创建合成层导致子级毛玻璃失效，菜单使用 `glass-medium` 类 + `position: fixed` + 动态坐标（`menuBtnRef.getBoundingClientRect()`），`z-index: var(--z-dropdown)`。菜单样式在全局（非 scoped）`<style>` 块。**动画**：`···` 按钮 hover 出现加 `scale(0.85→1)` 动画；卡片下拉菜单加 `<Transition name="card-menu">` |
-| `TaskCard.vue` | ~135 | `task, subtaskProgress?` | 任务卡片（名称+动态进度标签+大小）。**有子任务**：未开始 0/N（灰）/ 进行中 X/N（黄）/ 已完成（绿）。**无子任务（叶子任务）**：未开始（灰）/ 制作中（蓝，有素材未全上传）/ 已完成（绿），不显示数字。大小取 nextcloud 目录 |
+| `ProjectCard.vue` | ~490 | `project: ProjectInfo` | 项目卡片（图标+名称+截止日期+进度条）。根元素为 `<div>`（非 `<button>`，避免嵌套）。**AppIcon**：`onMounted` 读 `project.app_icon`，PNG 用 `convertFileSrc`，PSD/PSB 调 `getPsdThumbnail(128px)`，无图标降级为 SVG 占位。进度条计算：无子任务的父任务用 `completed_tasks`，有子任务的父任务用 `completed_subtasks`，分母 = 无子任务父任务数 + 所有子任务数。**Hover 菜单**：右上角 ··· 按钮（opacity 过渡），展开重命名/修改截止日期/删除三项，emit `action` 事件。**菜单 Teleport to body**：避免父级 `glass-subtle` 的 `backdrop-filter` 创建合成层导致子级毛玻璃失效，菜单使用 `glass-medium` 类 + `position: fixed` + 动态坐标（`menuBtnRef.getBoundingClientRect()`），`z-index: var(--z-dropdown)`。菜单样式在全局（非 scoped）`<style>` 块。**动画**：`···` 按钮 hover 出现加 `scale(0.85→1)` 动画；卡片下拉菜单加 `<Transition name="card-menu">`。**优先度标签**：名称前 priority-tag（高/中/低彩色胶囊，v-if="project.priority"）；菜单顶部内联 priority-pill 行，直接调用 set_project_priority + emit refresh |
+| `TaskCard.vue` | ~265 | `task, subtaskProgress?` | 任务卡片（名称+动态进度标签+大小）。**有子任务**：未开始 0/N（灰）/ 进行中 X/N（黄）/ 已完成（绿）。**无子任务（叶子任务）**：未开始（灰）/ 制作中（蓝，有素材未全上传）/ 已完成（绿），不显示数字。大小取 nextcloud 目录。**右上角 ··· 菜单**：Teleport to body，同款 ProjectCard 菜单机制；仅含优先度选择器，emit action(task, 'priority', value) 给 ProjectPage 处理；**优先度标签**：名称前彩色胶囊 |
 | `MaterialCard.vue` | ~245 | `material, multiSelect?, checked?` | 素材卡片（序列帧=SequencePreview, 静帧=img, 进度标签+大小）。序列帧角标显示 fps（转换后才显示，转换前隐藏）。SequencePreview `:key` 绑定 `${path}-${fps}`，fps 变化时强制重挂使动画速度即时更新。fps 和 transparent 从 `useSettings().settings.preview` 读取 |
 | `NormalCard.vue` | ~237 | `file: FileEntry` | 普通文件卡片（游戏介绍/项目素材页用）。视频文件 onMounted canvas 截帧；PSD/PSB 文件调用 `usePsdThumbnail`（256px）异步加载真实缩略图，失败降级为 PS 图标；PDF 文件显示红色 PDF 图标；multiSelect?/checked? props + data-path + card-checkbox-shared 多选三件套 |
 | `SequencePreview.vue` | ~110 | `folderPath, fps?, maxWidth?, transparent?` | Canvas 序列帧动画播放器，mount 后自动循环播放，LRU 缓存。`transparent=true` 时 clearRect 透明背景 + 棋盘格 CSS，否则黑色背景 |
@@ -93,8 +93,8 @@
 
 | 文件 | 行数 | 复杂度 | 职责 |
 |------|------|--------|------|
-| `HomePage.vue` | ~170 | 低 | 项目列表 + [+] 新建项目按钮 + CreateProjectDialog 集成，点击跳转项目页。更多菜单：「打开项目文件夹」+ 「程序设置」。接收 ProjectCard 的 action 事件，控制 EditProjectDialog 的显示和 mode，操作完成后调用 loadProjects 刷新。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场。**布局**：`.home-page { height:100%; overflow:hidden }` + `.page-header`（固定副标题行）+ `.scroll-content { flex:1; overflow-y:auto }`（与其他页面统一滚动架构） |
-| `ProjectPage.vue` | ~360 | 中 | 任务列表 + 快捷功能（游戏介绍/项目素材/打开AE/任务列表）。「打开AE」单击打最新（或默认）.aep，**长按弹出锚定式下拉面板**（Teleport to body，`position:fixed` 锚定按钮位置，外部点击关闭，与 StatusBar 配置面板同款风格），选择后设为默认并打开（持久化到 .pgb1_project.json），有默认时按钮蓝色强调。计算子任务进度传给 TaskCard。「任务列表」跳转 TaskListPage（传 projectPath + enabledTasks query）。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场 |
+| `HomePage.vue` | ~240 | 低 | 项目列表 + [+] 新建项目按钮 + CreateProjectDialog 集成，点击跳转项目页。更多菜单：「打开项目文件夹」+ 「程序设置」。接收 ProjectCard 的 action 事件，控制 EditProjectDialog 的显示和 mode，操作完成后调用 loadProjects 刷新。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场。**布局**：`.home-page { height:100%; overflow:hidden }` + `.page-header`（固定副标题行）+ `.scroll-content { flex:1; overflow-y:auto }`（与其他页面统一滚动架构）。**排序控件**：page-header 右侧三档切换（默认/截止日期/优先度），`sortedProjects` computed 驱动；截止日期排序：未完成逾期 → 未完成未到期（近→远）→ 已完成；处理 ProjectCard @refresh 事件重载列表 |
+| `ProjectPage.vue` | ~420 | 中 | 任务列表 + 快捷功能（游戏介绍/项目素材/打开AE/任务列表）。「打开AE」单击打最新（或默认）.aep，**长按弹出锚定式下拉面板**（Teleport to body，`position:fixed` 锚定按钮位置，外部点击关闭，与 StatusBar 配置面板同款风格），选择后设为默认并打开（持久化到 .pgb1_project.json），有默认时按钮蓝色强调。计算子任务进度传给 TaskCard。「任务列表」跳转 TaskListPage（传 projectPath + enabledTasks query）。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场。**排序控件**：sub-title-bar 右侧两档切换（默认/优先度），`sortedTasks` computed 驱动；onTaskAction 接收 TaskCard action 事件，invoke set_task_priority 后刷新 |
 | `TaskListPage.vue` | ~270 | 中 | **任务管理页面**（路由页面版，替代弹窗）。通过 `route.params.projectId` + `route.query.projectPath/enabledTasks` 接收参数。三 Tab：任务启用/模板编辑/时光机。确定/取消均返回 ProjectPage |
 | `TaskPage.vue` | ~1900 | **高** | 素材浏览主页面。**树形视图分组**：普通任务按缩放比例分组（原始/[100]/[70]/[50]）；**Prototype 任务两级分组**：先按子分类（symbol/big_win/…），再按缩放比例子分组（原始/[100]/…），均用 section-label/group-label 渲染。名称视图平铺。**Phase 5a**：多选+拖拽上传+nextcloud 复制。**Phase 5b**：规范化。**Phase 5c**：缩放。**Phase 5d**：格式转换。**侧边栏**（手动 glass，不用 `glass-strong`，避免 backdrop-filter 兄弟冲突）：通用（重命名/删除）；序列帧专属：帧率行内联编辑 + [修改] 按钮；底部 `.sidebar-action-btn` 无 backdrop-filter。**sidebar-dialog**（重命名/删除弹窗）：手动 glass-strong（在 Teleport 到 #content-row 的侧边栏内，与 main-content 同层）。**03_preview 预览视频区块**：页面底部，按 baseName 分组（去 _01/_02 版本号后缀），每组一张卡片，截帧缩略图+上传状态标签（已上传/待更新/未上传）+版本数，点击打开 FileDetailSidebar（版本列表可切换），拖拽导出最新版，拖拽后弹确认弹窗复制到 nextcloud/preview/（breakdown 到 preview/breakdown/）。sidebar 过渡同时动画 `transform + width` 消除主内容区突变；useRubberBandSelect 集成（isEnabled=isMultiSelect） |
 | `ScalePage.vue` | ~465 | **中** | **素材缩放执行页面**（Phase 5c）。控制面板 Teleport 到 #content-row，手动 glass-medium（无 backdrop-filter，与 main-content 同层兄弟）；useRubberBandSelect（isEnabled=ref(true)，始终开启）。`imageMaterials` 过滤条件：`material_type=image && progress!='uploaded' && scales.length===0`（只显示完全未缩放的素材）。缩放比例是标注器：用户选中卡片 → 选比例 → 点"应用"标注到 scaleMap → 执行批量缩放 |
@@ -191,6 +191,8 @@
 | `rename_sequence_fps` | task_path, base_name, old_fps, new_fps | () | 修改序列帧帧率：重命名 02_done/[an-XX-{old}]/ → [an-XX-{new}]/（按 base_name 匹配精准定位） |
 | `set_default_ae_file` | project_path, file_name | () | 设置项目默认 AE 工程文件名，写入 .pgb1_project.json |
 | `update_project_deadline` | project_path, deadline? | () | 更新项目截止日期，写入 .pgb1_project.json |
+| `set_project_priority` | project_path, priority? | () | 设置项目优先度写入 .pgb1_project.json |
+| `set_task_priority` | project_path, task_name, priority? | () | 设置任务优先度写入 .pgb1_project.json 的 task_priorities Map |
 | `delete_project` | project_path | () | 将项目目录**移入回收站**（Windows SHFileOperationW + FOF_ALLOWUNDO），含安全检查（.pgb1_project.json 必须存在） |
 | `rename_project` | project_path, new_name | ProjectInfo | 重命名项目目录（fs::rename）+ 更新 .pgb1_project.json 的 project_name 字段，返回新的 ProjectInfo |
 | `scan_preview_videos` | task_path, nextcloud_preview_path | Vec\<PreviewVideoEntry\> | 扫描 03_preview/，对比 nextcloud/preview/（及 breakdown/）判断每个文件的上传状态（uploaded/outdated/none） |
@@ -202,9 +204,9 @@
 
 | 模型 | 用途 |
 |------|------|
-| `ProjectConfig` | .pgb1_project.json 文件结构（enabled_tasks, archived_tasks, completed_subtasks, upload_prompted_tasks, **default_ae_file**） |
-| `ProjectInfo` | 项目信息 DTO（含 completed_tasks, **default_ae_file**, **app_icon**） |
-| `TaskInfo` | 任务信息 DTO（含 material_total, material_uploaded, **video_total, video_uploaded**，大小取 nextcloud 目录） |
+| `ProjectConfig` | .pgb1_project.json 文件结构（enabled_tasks, archived_tasks, completed_subtasks, upload_prompted_tasks, **default_ae_file**）。新增 priority: Option\<String\>；task_priorities: HashMap\<String,String\>（任务优先度 Map） |
+| `ProjectInfo` | 项目信息 DTO（含 completed_tasks, **default_ae_file**, **app_icon**）。新增 priority: Option\<String\> |
+| `TaskInfo` | 任务信息 DTO（含 material_total, material_uploaded, **video_total, video_uploaded**，大小取 nextcloud 目录）。新增 priority: Option\<String\> |
 | `FileEntry` | 文件/目录条目 DTO |
 | `PreviewVideoEntry` | 预览视频文件条目 DTO（name, path, extension, size_bytes, **upload_status**） |
 | `MaterialInfo` | 素材信息 DTO（含 scales: Vec\<u32\>、fps: Option\<u32\>） |

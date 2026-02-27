@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
 import type { ProjectInfo } from '../composables/useProjects'
 
@@ -29,9 +29,10 @@ async function toggleMenu() {
   }
 }
 
-defineEmits<{
+const emit = defineEmits<{
   click: [project: ProjectInfo]
   action: [project: ProjectInfo, action: 'rename' | 'deadline' | 'delete']
+  refresh: []
 }>()
 
 // 分母：无子任务的父任务数 + 所有子任务数（有子任务的父任务本身不计入）
@@ -91,6 +92,12 @@ async function loadIcon() {
 
 onMounted(loadIcon)
 watch(() => props.project.app_icon, loadIcon)
+
+async function setPriority(value: string | null) {
+  showMenu.value = false
+  await invoke('set_project_priority', { projectPath: props.project.path, priority: value })
+  emit('refresh')
+}
 </script>
 
 <template>
@@ -123,7 +130,14 @@ watch(() => props.project.app_icon, loadIcon)
 
     <!-- 右侧信息 -->
     <div class="card-info">
-      <span class="card-name">{{ project.name }}</span>
+      <div class="card-name-row">
+        <span
+          v-if="project.priority"
+          class="priority-tag"
+          :class="`priority-tag--${project.priority}`"
+        >{{ $t(`priority.${project.priority}`) }}</span>
+        <span class="card-name">{{ project.name }}</span>
+      </div>
       <span class="card-deadline">
         {{ project.deadline ?? $t('project.noDeadline') }}
       </span>
@@ -156,6 +170,24 @@ watch(() => props.project.app_icon, loadIcon)
     <Teleport to="body">
       <Transition name="card-menu">
         <div v-if="showMenu" class="card-menu glass-medium" :style="menuStyle" @click.stop>
+          <div class="menu-priority-section">
+            <span class="menu-priority-label">{{ $t('priority.setPriority') }}</span>
+            <div class="menu-priority-pills">
+              <button
+                v-for="p in ['high', 'medium', 'low']"
+                :key="p"
+                class="priority-pill"
+                :class="[`priority-pill--${p}`, { 'is-active': project.priority === p }]"
+                @mousedown.prevent="setPriority(p)"
+              >{{ $t(`priority.${p}`) }}</button>
+              <button
+                v-if="project.priority"
+                class="priority-pill priority-pill--clear"
+                @mousedown.prevent="setPriority(null)"
+              >✕</button>
+            </div>
+          </div>
+          <div class="menu-divider" />
           <button class="menu-item" @mousedown.prevent="$emit('action', project, 'rename')">
             {{ $t('project.renameProject') }}
           </button>
@@ -325,6 +357,30 @@ watch(() => props.project.app_icon, loadIcon)
   color: var(--text-primary);
 }
 
+/* 名称行（标签 + 名字横排） */
+.card-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+/* Priority 标签（小胶囊） */
+.priority-tag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  border-radius: var(--radius-tag);
+  letter-spacing: 0.02em;
+}
+
+.priority-tag--high   { background: var(--priority-high-bg);   color: var(--priority-high-text); }
+.priority-tag--medium { background: var(--priority-medium-bg); color: var(--priority-medium-text); }
+.priority-tag--low    { background: var(--priority-low-bg);    color: var(--priority-low-text); }
 
 </style>
 
@@ -376,5 +432,56 @@ watch(() => props.project.app_icon, loadIcon)
 .card-menu-leave-to {
   transform: translateY(-6px) scale(0.95);
   opacity: 0;
+}
+
+/* 优先度选择器区域（Teleport to body 内，需全局作用域） */
+.menu-priority-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  padding: var(--spacing-2) var(--spacing-3);
+}
+
+.menu-priority-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.menu-priority-pills {
+  display: flex;
+  gap: var(--spacing-1);
+}
+
+.priority-pill {
+  flex: 1;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-tag);
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.priority-pill--high   { background: var(--priority-high-bg);   color: var(--priority-high-text); }
+.priority-pill--medium { background: var(--priority-medium-bg); color: var(--priority-medium-text); }
+.priority-pill--low    { background: var(--priority-low-bg);    color: var(--priority-low-text); }
+
+.priority-pill--high.is-active   { background: var(--priority-high-active); }
+.priority-pill--medium.is-active { background: var(--priority-medium-active); }
+.priority-pill--low.is-active    { background: var(--priority-low-active); }
+
+.priority-pill--clear {
+  flex: 0 0 24px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.priority-pill--clear:hover { background: var(--bg-active); }
+
+.menu-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: 0 var(--spacing-2);
 }
 </style>

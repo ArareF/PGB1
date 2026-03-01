@@ -94,6 +94,11 @@ pub fn handle_file_event<R: Runtime>(
             Some(subcat_name) => done_path.join(format!("[img-{}]", scale)).join(subcat_name),
             None => done_path.join(format!("[img-{}]", scale)),
         };
+        // 事件载荷：Prototype 携带 subcat 前缀（"subcat/stem"），与前端 images map key 对齐
+        let event_name = match &subcat {
+            Some(sub) => format!("{}/{}", sub, stem),
+            None => stem.clone(),
+        };
         let app_handle_clone = app_handle.clone();
         let source = path.clone();
         let dest = target_dir.join(&file_name);
@@ -109,7 +114,7 @@ pub fn handle_file_event<R: Runtime>(
             if let Err(e) = fs::rename(&source, &dest) {
                 log::warn!("自动整理失败 ({}): {}", stem, e);
             } else {
-                let _ = app_handle_clone.emit("conversion-organized", stem);
+                let _ = app_handle_clone.emit("conversion-organized", event_name);
             }
         });
     }

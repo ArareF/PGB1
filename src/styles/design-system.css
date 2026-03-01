@@ -867,6 +867,143 @@ html {
   transition: transform var(--duration-normal) var(--ease-out);
 }
 
+/* ─── 侧边栏操作按钮（TaskPage + FileDetailSidebar 共用） ── */
+.sidebar-actions {
+  position: absolute;
+  bottom: var(--spacing-4);
+  left: var(--spacing-4);
+  display: flex;
+  gap: var(--spacing-3);
+  pointer-events: none;
+}
+
+.sidebar-action-btn {
+  pointer-events: all;
+  padding: var(--spacing-2) var(--spacing-4);
+  border: var(--glass-medium-border);
+  border-radius: var(--radius-button);
+  background: var(--glass-medium-bg);
+  /* 不用 backdrop-filter，避免与父级 glass 容器 compositor 冲突 */
+  color: var(--text-secondary);
+  font-size: var(--text-2xl);
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: var(--transition-all);
+}
+
+.sidebar-action-btn:hover {
+  color: var(--text-primary);
+}
+
+.sidebar-action-btn.danger:hover {
+  background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 50%, transparent);
+  color: var(--color-danger);
+}
+
+/* ─── 侧边栏内联操作弹窗（TaskPage + FileDetailSidebar 共用） */
+.sidebar-dialog-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-backdrop);
+  backdrop-filter: blur(var(--glass-light-blur));
+  -webkit-backdrop-filter: blur(var(--glass-light-blur));
+  border-radius: var(--floating-main-radius);
+}
+
+/* 手动复刻 glass-strong 视觉，不用 backdrop-filter：
+   在 Teleport 到 #content-row 的侧边栏内，与 main-content 同层 */
+.sidebar-dialog {
+  width: calc(100% - var(--spacing-8) * 2);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  background: var(--glass-strong-bg);
+  border: var(--glass-strong-border);
+  box-shadow: var(--glass-strong-shadow);
+}
+
+.sidebar-dialog-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-heading);
+  color: var(--text-primary);
+}
+
+.sidebar-dialog-desc {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.sidebar-dialog-input {
+  width: 100%;
+  height: var(--button-height);
+  padding: 0 var(--spacing-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-medium);
+  background: var(--glass-bg-subtle);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.sidebar-dialog-input:focus {
+  border-color: var(--color-primary);
+}
+
+.sidebar-dialog-actions {
+  display: flex;
+  gap: var(--spacing-3);
+  justify-content: flex-end;
+}
+
+.sidebar-dialog-btn {
+  height: var(--button-md-height);
+  padding: 0 var(--spacing-6);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-medium);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-weight: var(--font-bold);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.sidebar-dialog-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-dialog-btn.primary {
+  background: color-mix(in srgb, var(--color-primary-500) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary-500) 40%, transparent);
+  color: var(--color-primary-500);
+}
+
+.sidebar-dialog-btn.primary:hover {
+  background: color-mix(in srgb, var(--color-primary-500) 25%, transparent);
+}
+
+.sidebar-dialog-btn.danger {
+  background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+  color: var(--color-danger);
+}
+
+.sidebar-dialog-btn.danger:hover {
+  background: color-mix(in srgb, var(--color-danger) 25%, transparent);
+}
+
 /* ─── 框选覆盖层 ────────────────────────────────────────── */
 .rubber-band-overlay {
   position: fixed;

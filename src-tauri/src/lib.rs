@@ -83,6 +83,8 @@ pub fn run() {
             commands::update_project_deadline,
             commands::delete_project,
             commands::rename_project,
+            commands::rename_file,
+            commands::delete_file,
             commands::scan_preview_videos,
             commands::copy_preview_to_nextcloud,
             commands::extract_psd_thumbnail,

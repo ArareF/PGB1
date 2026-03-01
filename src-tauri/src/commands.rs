@@ -964,9 +964,10 @@ fn find_webp_in_proto_subdirs(dir: &Path, base_name: &str, sub_name: &str, prefi
                 if sub_dir.exists() {
                     if let Ok(files) = fs::read_dir(&sub_dir) {
                         for file in files.flatten() {
-                            let fname = file.file_name();
-                            let fname_str = fname.to_string_lossy();
-                            if fname_str.starts_with(base_name) && fname_str.ends_with(".webp") {
+                            let fpath = file.path();
+                            let stem = fpath.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                            let ext = fpath.extension().and_then(|e| e.to_str()).unwrap_or("");
+                            if stem == base_name && ext == "webp" {
                                 return true;
                             }
                         }
@@ -1176,9 +1177,8 @@ fn determine_progress_sequence(
 fn find_file_in_dir(dir: &Path, base_name: &str) -> bool {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if name_str.starts_with(base_name) {
+            let stem = entry.path().file_stem().and_then(|s| s.to_str().map(String::from)).unwrap_or_default();
+            if stem == base_name {
                 return true;
             }
         }
@@ -1223,9 +1223,10 @@ fn find_webp_in_subdirs(dir: &Path, base_name: &str, prefix: &str) -> bool {
             if prefix.is_empty() || dir_name.starts_with(&format!("[{}-", prefix)) {
                 if let Ok(files) = fs::read_dir(&path) {
                     for file in files.flatten() {
-                        let fname = file.file_name();
-                        let fname_str = fname.to_string_lossy();
-                        if fname_str.starts_with(base_name) && fname_str.ends_with(".webp") {
+                        let fpath = file.path();
+                        let stem = fpath.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                        let ext = fpath.extension().and_then(|e| e.to_str()).unwrap_or("");
+                        if stem == base_name && ext == "webp" {
                             return true;
                         }
                     }
@@ -1394,33 +1395,46 @@ pub fn scan_material_versions(
     let task_dir = Path::new(&task_path);
     let mut versions = Vec::new();
 
-    // 00_original
+    // Prototype 素材 name 格式为 "subcat/basename"，需拆分后分别处理
+    let (subcat, actual_base_name) = split_prototype_name(&base_name);
+
+    // 00_original（Prototype：进入 subcat 子目录）
     let original_dir = task_dir.join("00_original");
-    if original_dir.exists() {
-        collect_versions_flat(&original_dir, &base_name, "00_original", "原始", "", &mut versions);
+    let original_search_dir = if subcat.is_empty() {
+        original_dir
+    } else {
+        original_dir.join(&subcat)
+    };
+    if original_search_dir.exists() {
+        collect_versions_flat(&original_search_dir, &actual_base_name, "00_original", "原始", "", &mut versions);
     }
 
     // 01_scale — 子目录 [100], [70], [50] 等
     let scale_dir = task_dir.join("01_scale");
     if scale_dir.exists() {
-        collect_versions_in_scale_dirs(&scale_dir, &base_name, &mut versions);
+        collect_versions_in_scale_dirs(&scale_dir, &actual_base_name, &subcat, &mut versions);
     }
 
     // 02_done — 子目录 [img-XX] 或 [an-XX-YY]
     let done_dir = task_dir.join("02_done");
     let prefix = if material_type == "sequence" { "an" } else { "img" };
     if done_dir.exists() {
-        collect_versions_in_done_dirs(&done_dir, &base_name, prefix, &mut versions);
+        collect_versions_in_done_dirs(&done_dir, &actual_base_name, prefix, &subcat, &mut versions);
     }
 
-    // nextcloud
+    // nextcloud（Prototype：进入 subcat 子目录）
     let nextcloud_dir = task_dir
         .parent()
         .and_then(|p| p.parent())
         .map(|vfx| vfx.join("nextcloud").join(task_dir.file_name().unwrap_or_default()));
     if let Some(nc) = nextcloud_dir {
-        if nc.exists() {
-            collect_versions_flat(&nc, &base_name, "nextcloud", "已上传", "", &mut versions);
+        let nc_search_dir = if subcat.is_empty() {
+            nc
+        } else {
+            nc.join(&subcat)
+        };
+        if nc_search_dir.exists() {
+            collect_versions_flat(&nc_search_dir, &actual_base_name, "nextcloud", "已上传", "", &mut versions);
         }
     }
 
@@ -1482,6 +1496,7 @@ fn collect_versions_flat(
 fn collect_versions_in_scale_dirs(
     scale_dir: &Path,
     base_name: &str,
+    subcat: &str,
     versions: &mut Vec<MaterialVersion>,
 ) {
     if let Ok(entries) = fs::read_dir(scale_dir) {
@@ -1494,14 +1509,22 @@ fn collect_versions_in_scale_dirs(
                 .trim_start_matches('[')
                 .trim_end_matches(']')
                 .to_string();
-            collect_versions_flat(
-                &entry.path(),
-                base_name,
-                "01_scale",
-                "已缩放",
-                &scale,
-                versions,
-            );
+            // Prototype：在 [XX]/{subcat}/ 下查找；普通任务：直接在 [XX]/ 下查找
+            let search_dir = if subcat.is_empty() {
+                entry.path()
+            } else {
+                entry.path().join(subcat)
+            };
+            if search_dir.exists() {
+                collect_versions_flat(
+                    &search_dir,
+                    base_name,
+                    "01_scale",
+                    "已缩放",
+                    &scale,
+                    versions,
+                );
+            }
         }
     }
 }
@@ -1510,6 +1533,7 @@ fn collect_versions_in_done_dirs(
     done_dir: &Path,
     base_name: &str,
     prefix: &str,
+    subcat: &str,
     versions: &mut Vec<MaterialVersion>,
 ) {
     if let Ok(entries) = fs::read_dir(done_dir) {
@@ -1525,14 +1549,22 @@ fn collect_versions_in_done_dirs(
                 .trim_start_matches('[')
                 .trim_end_matches(']');
             let scale = inner.split('-').nth(1).unwrap_or("").to_string();
-            collect_versions_flat(
-                &entry.path(),
-                base_name,
-                "02_done",
-                "已完成",
-                &scale,
-                versions,
-            );
+            // Prototype：在 [img-XX]/{subcat}/ 下查找；普通任务：直接在 [img-XX]/ 下查找
+            let search_dir = if subcat.is_empty() {
+                entry.path()
+            } else {
+                entry.path().join(subcat)
+            };
+            if search_dir.exists() {
+                collect_versions_flat(
+                    &search_dir,
+                    base_name,
+                    "02_done",
+                    "已完成",
+                    &scale,
+                    versions,
+                );
+            }
         }
     }
 }
@@ -1984,7 +2016,7 @@ pub fn execute_normalize(items: Vec<NormalizePreviewItem>) -> Result<(), String>
 /// 执行缩放操作
 /// 使用 image crate 进行高质量缩放 (Lanczos3)
 #[tauri::command]
-pub fn execute_scaling(requests: Vec<ScaleRequest>) -> Result<(), String> {
+pub fn execute_scaling(app_handle: AppHandle, requests: Vec<ScaleRequest>) -> Result<(), String> {
     use image::GenericImageView;
     use image::codecs::jpeg::JpegEncoder;
     use image::codecs::png::PngEncoder;
@@ -1992,7 +2024,8 @@ pub fn execute_scaling(requests: Vec<ScaleRequest>) -> Result<(), String> {
     use std::fs::File;
     use std::io::BufWriter;
 
-    for req in requests {
+    let total = requests.len();
+    for (index, req) in requests.into_iter().enumerate() {
         let old_path = Path::new(&req.original_path);
         if !old_path.exists() {
             return Err(format!("原文件不存在: {}", req.original_path));
@@ -2058,6 +2091,13 @@ pub fn execute_scaling(requests: Vec<ScaleRequest>) -> Result<(), String> {
                     .map_err(|e| format!("保存失败: {}", e))?;
             }
         }
+
+        // 向前端报告进度
+        let _ = app_handle.emit("scaling-progress", serde_json::json!({
+            "current": index + 1,
+            "total": total,
+            "name": req.base_name,
+        }));
     }
 
     Ok(())
@@ -4106,6 +4146,113 @@ pub fn close_clock_webview(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 日报 WebView 初始化脚本（SSOT）
+/// scheduler 预热 + open_daily_report 共用此脚本
+/// 通过 initialization_script 注入，在页面 JS 运行前执行
+/// 抢先保存原生 replaceState 引用，绕过 Google CSP
+/// 两条件：readyState=complete + .kix-cursor-caret（编辑器可交互的最终信号）
+pub(crate) const DAILY_REPORT_INIT_JS: &str = r#"(function(){
+    var _rs=history.replaceState.bind(history);
+    var _t=setInterval(function(){
+        if(location.hash==='#pgb-ready'){clearInterval(_t);return}
+        var r=document.readyState==='complete';
+        var c=!!document.querySelector('.kix-cursor-caret');
+        var tag='#pgb-'+(+r)+(+c);
+        if(r&&c)tag='#pgb-ready';
+        if(location.hash!==tag){
+            try{_rs(null,'',location.href.split('#')[0]+tag)}catch(e){}
+        }
+    },500);
+})();"#;
+
+/// 后台轮询日报 WebView 就绪状态，就绪后聚焦并滚到文档末尾
+/// 预热命中时（hash 已为 #pgb-ready），跳过轮询直接执行滚动
+fn spawn_daily_report_scroll(window: tauri::WebviewWindow) {
+    tauri::async_runtime::spawn(async move {
+        // 提前提取 HWND raw（isize 满足 Send），不跨 await 点持有 HWND(*mut c_void)
+        #[cfg(target_os = "windows")]
+        let hwnd_raw: Option<isize> = window.hwnd().ok().map(|h| {
+            unsafe { *(&h as *const _ as *const isize) }
+        });
+
+        // 检查是否已就绪（预热场景：init_script 已跑完，hash 为 #pgb-ready）
+        let already_ready = window
+            .url()
+            .ok()
+            .and_then(|u| u.fragment().map(|f| f == "pgb-ready"))
+            .unwrap_or(false);
+
+        let detected = if already_ready {
+            eprintln!("[daily-report] 预热命中，页面已就绪");
+            true
+        } else {
+            eprintln!("[daily-report] 页面未就绪，开始轮询...");
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+            let mut iteration: u32 = 0;
+            let mut result = false;
+
+            // 无超时：Google Docs 加载时间不可预测，退出条件仅 #pgb-ready 或窗口关闭
+            loop {
+                iteration += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+                match window.url() {
+                    Err(e) => {
+                        eprintln!("[daily-report] 第{}次: url() 失败: {:?}，窗口已关闭", iteration, e);
+                        break;
+                    }
+                    Ok(url) => {
+                        let fragment = url.fragment().unwrap_or("(none)");
+                        eprintln!("[daily-report] 第{}次 hash: {}", iteration, fragment);
+
+                        if fragment == "pgb-ready" {
+                            eprintln!("[daily-report] 编辑器就绪！");
+                            result = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            result
+        };
+
+        // 就绪后的动作序列：JS focus → OS 聚焦 → Ctrl+End
+        if detected {
+            let _ = window.eval("var e=document.querySelector('.kix-appview-editor');if(e)e.focus()");
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+            #[cfg(target_os = "windows")]
+            {
+                use windows::Win32::Foundation::HWND;
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    ShowWindow, SW_RESTORE, SetWindowPos,
+                    HWND_TOPMOST, HWND_NOTOPMOST,
+                    SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SetForegroundWindow,
+                };
+                if let Some(raw) = hwnd_raw {
+                    unsafe {
+                        let hwnd = HWND(raw as *mut core::ffi::c_void);
+                        let _ = ShowWindow(hwnd, SW_RESTORE);
+                        let _ = SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+                        let _ = SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                        let _ = SetForegroundWindow(hwnd);
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+            #[cfg(target_os = "windows")]
+            {
+                send_ctrl_end();
+                eprintln!("[daily-report] send_ctrl_end() 已发送");
+            }
+        }
+
+        eprintln!("[daily-report] 后台检测任务结束");
+    });
+}
+
 /// 打开日报 WebView 窗口
 #[tauri::command]
 pub async fn open_daily_report(app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -4132,13 +4279,16 @@ pub async fn open_daily_report(app_handle: tauri::AppHandle) -> Result<(), Strin
 
     let label = "daily-report";
 
-    // 如果已存在，聚焦
+    // 如果已存在（包含预热创建的隐藏窗口），显示 + 聚焦 + 滚动
     if let Some(existing) = app_handle.get_webview_window(label) {
+        let _ = existing.show();
         let _ = existing.set_focus();
+        spawn_daily_report_scroll(existing);
         return Ok(());
     }
 
     let url = config.daily_report.url.clone();
+
     let window = tauri::WebviewWindowBuilder::new(
         &app_handle,
         label,
@@ -4147,31 +4297,12 @@ pub async fn open_daily_report(app_handle: tauri::AppHandle) -> Result<(), Strin
     .title("PGB1 日报")
     .inner_size(1200.0, 800.0)
     .center()
+    .initialization_script(DAILY_REPORT_INIT_JS)
     .build()
     .map_err(|e| format!("创建日报窗口失败: {}", e))?;
 
-    // 后台轮询：等 Google Docs 编辑器就绪后发送 Ctrl+End 滚到底部
-    // Google Docs canvas 编辑器只响应真实系统按键，DOM scroll / 合成 KeyboardEvent 均无效
-    // 策略：每 3 秒尝试一次（聚焦窗口 → 点击编辑区 → Ctrl+End），最多 10 次（~30 秒）
-    // 页面未加载完时按键无副作用，加载完后自动生效
-    tauri::async_runtime::spawn(async move {
-        // 首次等待 3 秒让页面开始加载
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-        for _ in 0..10 {
-            let _ = window.set_focus();
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            let _ = window.eval(
-                "var e = document.querySelector('.kix-appview-editor'); if(e) e.click();"
-            );
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            #[cfg(target_os = "windows")]
-            {
-                send_ctrl_end();
-            }
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-        }
-    });
+    // 后台轮询就绪状态 + 聚焦 + 滚到底部
+    spawn_daily_report_scroll(window);
 
     Ok(())
 }
@@ -5841,9 +5972,118 @@ pub fn rename_project(project_path: String, new_name: String) -> Result<ProjectI
     })
 }
 
+/// 重命名单个文件（保留扩展名，仅改基础名）
+#[tauri::command]
+pub fn rename_file(path: String, new_name: String) -> Result<(), String> {
+    let trimmed = new_name.trim();
+    if trimmed.is_empty() {
+        return Err("文件名不能为空".to_string());
+    }
+    const ILLEGAL_CHARS: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+    if trimmed.chars().any(|c| ILLEGAL_CHARS.contains(&c)) {
+        return Err("文件名包含非法字符".to_string());
+    }
+
+    let file_path = Path::new(&path);
+    if !file_path.exists() {
+        return Err(format!("文件不存在: {}", path));
+    }
+
+    let parent = file_path.parent().ok_or_else(|| "无法获取父目录".to_string())?;
+    let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+    let new_file_name = if ext.is_empty() {
+        trimmed.to_string()
+    } else {
+        format!("{}.{}", trimmed, ext)
+    };
+
+    let new_path = parent.join(&new_file_name);
+    if new_path.exists() {
+        return Err(format!("文件名「{}」已存在", new_file_name));
+    }
+
+    fs::rename(file_path, &new_path).map_err(|e| format!("重命名失败: {}", e))
+}
+
+/// 将单个文件移入 Windows 回收站（可恢复）
+#[tauri::command]
+pub fn delete_file(path: String) -> Result<(), String> {
+    use windows::Win32::UI::Shell::{SHFileOperationW, SHFILEOPSTRUCTW, FO_DELETE};
+    use windows::Win32::Foundation::HWND;
+    use windows::core::PCWSTR;
+
+    let file_path = Path::new(&path);
+    if !file_path.exists() {
+        return Err(format!("文件不存在: {}", path));
+    }
+
+    let mut wide: Vec<u16> = path.encode_utf16().collect();
+    wide.push(0); // 第一个 null
+    wide.push(0); // 双 null 结尾
+
+    let mut op = SHFILEOPSTRUCTW {
+        hwnd: HWND(std::ptr::null_mut()),
+        wFunc: FO_DELETE,
+        pFrom: PCWSTR(wide.as_ptr()),
+        pTo: PCWSTR::null(),
+        fFlags: 0x0040, // FOF_ALLOWUNDO — 移入回收站而非永久删除
+        fAnyOperationsAborted: windows::Win32::Foundation::BOOL(0),
+        hNameMappings: std::ptr::null_mut(),
+        lpszProgressTitle: PCWSTR::null(),
+    };
+
+    let result = unsafe { SHFileOperationW(&mut op) };
+    if result != 0 {
+        return Err(format!("移入回收站失败，错误码: {}", result));
+    }
+    if op.fAnyOperationsAborted.as_bool() {
+        return Err("操作被用户取消".to_string());
+    }
+    Ok(())
+}
+
 /// 通过 Win32 SendInput 发送真实 Ctrl+End 按键
 /// Google Docs canvas 编辑器只响应真实系统按键，合成 DOM KeyboardEvent 无效
 #[cfg(target_os = "windows")]
+/// 将光标移到 hwnd 窗口中央，发送大量鼠标滚轮向下事件滚到底部
+/// MOUSEEVENTF_WHEEL 事件送往光标下方的窗口，不需要键盘焦点，
+/// 比 Ctrl+End 键盘方案更可靠（绕过 WebView2 焦点链难题）
+#[cfg(target_os = "windows")]
+#[allow(dead_code)]
+unsafe fn scroll_to_bottom_via_wheel(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, SetCursorPos};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEINPUT, MOUSEEVENTF_WHEEL,
+    };
+
+    let mut rect = RECT::default();
+    if GetWindowRect(hwnd, &mut rect).is_err() {
+        return;
+    }
+    // 移到窗口中央（文档内容区），SetCursorPos 用屏幕像素坐标，多显示器也正确
+    let cx = (rect.left + rect.right) / 2;
+    let cy = (rect.top + rect.bottom) / 2;
+    let _ = SetCursorPos(cx, cy);
+
+    // WHEEL_DELTA = 120 per notch；负值 = 向下滚动
+    // 发送 500 次 × -120 = 总计 -60000，足以滚过数百页文档
+    let wheel_event = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: 0, dy: 0,
+                mouseData: (-120i32) as u32, // u32 存负数，Windows 按 i32 解释为向下
+                dwFlags: MOUSEEVENTF_WHEEL,
+                time: 0, dwExtraInfo: 0,
+            },
+        },
+    };
+    let batch = vec![wheel_event; 500];
+    SendInput(&batch, std::mem::size_of::<INPUT>() as i32);
+}
+
 fn send_ctrl_end() {
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
 

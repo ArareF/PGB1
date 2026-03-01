@@ -129,6 +129,30 @@ function onMainClick(e: MouseEvent) {
   }
 }
 
+async function onSidebarRename(newName: string) {
+  const file = selectedFile.value
+  if (!file) return
+  try {
+    await invoke('rename_file', { path: file.path, newName })
+    selectedFile.value = null
+    await refreshAll()
+  } catch (e) {
+    console.error('重命名失败:', e)
+  }
+}
+
+async function onSidebarDelete() {
+  const file = selectedFile.value
+  if (!file) return
+  try {
+    await invoke('delete_file', { path: file.path })
+    selectedFile.value = null
+    await refreshAll()
+  } catch (e) {
+    console.error('删除失败:', e)
+  }
+}
+
 /* 注册项目素材页导航配置 */
 setNavigation({
   title: t('materialsPage.title'),
@@ -424,8 +448,11 @@ onUnmounted(() => {
     <FileDetailSidebar
       :file="selectedFile"
       :width-percent="sidebarWidth"
+      allow-actions
       @close="selectedFile = null"
       @update:width-percent="sidebarWidth = $event"
+      @rename="onSidebarRename"
+      @delete="onSidebarDelete"
     />
   </div>
 

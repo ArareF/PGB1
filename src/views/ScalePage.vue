@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRubberBandSelect } from '../composables/useRubberBandSelect'
 import { useRoute, useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
 import { useMaterials } from '../composables/useMaterials'
@@ -57,6 +58,7 @@ const { isSelecting, selectionRect, onContainerMouseDown, onContainerScroll } =
 // 执行状态
 const executing = ref(false)
 const error = ref<string | null>(null)
+const scalingProgress = ref<{ current: number; total: number; name: string } | null>(null)
 
 // 只展示静帧，且排除已上传、以及已有任意缩放版本的素材
 const imageMaterials = computed(() =>
@@ -139,8 +141,15 @@ async function handleExecute() {
   if (annotatedCount.value === 0 || !taskPath) return
   executing.value = true
   error.value = null
+  scalingProgress.value = null
+
+  let unlisten: UnlistenFn | null = null
 
   try {
+    unlisten = await listen<{ current: number; total: number; name: string }>('scaling-progress', (event) => {
+      scalingProgress.value = event.payload
+    })
+
     const requests: { original_path: string; target_dir: string; scale_percent: number; base_name: string }[] = []
 
     scaleMap.value.forEach((scale, path) => {
@@ -160,7 +169,9 @@ async function handleExecute() {
     error.value = String(e)
     console.error('执行缩放失败:', e)
   } finally {
+    unlisten?.()
     executing.value = false
+    scalingProgress.value = null
   }
 }
 </script>
@@ -230,7 +241,16 @@ async function handleExecute() {
 
       <div class="panel-footer">
         <div v-if="error" class="error-msg">{{ error }}</div>
-        <div v-if="executing" class="executing-hint">{{ $t('common.executing') }}</div>
+        <div v-if="executing && scalingProgress" class="scaling-progress">
+          <div class="progress-text">
+            {{ $t('scale.scalingProgress', { current: scalingProgress.current, total: scalingProgress.total }) }}
+          </div>
+          <div class="progress-filename">{{ scalingProgress.name }}</div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" :style="{ width: (scalingProgress.current / scalingProgress.total * 100) + '%' }" />
+          </div>
+        </div>
+        <div v-else-if="executing" class="executing-hint">{{ $t('common.executing') }}</div>
         <div class="footer-actions">
           <button class="cancel-btn" :disabled="executing" @click="router.back()">{{ $t('common.cancel') }}</button>
           <button
@@ -470,5 +490,39 @@ async function handleExecute() {
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   text-align: center;
+}
+
+.scale-control-panel .scaling-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.scale-control-panel .progress-text {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-weight: var(--font-medium);
+}
+
+.scale-control-panel .progress-filename {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scale-control-panel .progress-bar-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.scale-control-panel .progress-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--color-primary-500);
+  transition: width var(--duration-fast) var(--ease-out);
 }
 </style>

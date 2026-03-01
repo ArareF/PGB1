@@ -113,12 +113,31 @@ async fn daily_timer_loop(app: AppHandle, time_str: &str, reminder_type: &str) {
         let wall_target = chrono::Local::now()
             + chrono::Duration::from_std(duration).unwrap_or(chrono::Duration::zero());
 
+        // 日报预热：提前创建隐藏 WebView 加载 Google Docs
+        let pre_warm_at = if reminder_type == "daily-report" {
+            Some(wall_target - chrono::Duration::seconds(DAILY_REPORT_PRE_WARM_SECS))
+        } else {
+            None
+        };
+        let mut pre_warmed = false;
+
         // 分段 sleep：每段最多 30 秒，每段醒来用墙钟校验
         loop {
             let now = chrono::Local::now();
             if now >= wall_target {
                 break;
             }
+
+            // 日报预热检查：提前 90 秒创建隐藏窗口
+            if !pre_warmed {
+                if let Some(ref target) = pre_warm_at {
+                    if now >= *target {
+                        pre_warm_daily_report(&app);
+                        pre_warmed = true;
+                    }
+                }
+            }
+
             let remaining = (wall_target - now)
                 .to_std()
                 .unwrap_or(std::time::Duration::from_secs(30));
@@ -130,6 +149,55 @@ async fn daily_timer_loop(app: AppHandle, time_str: &str, reminder_type: &str) {
 
         // 等待 60 秒后进入下一轮循环（避免同一分钟内重复触发）
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+    }
+}
+
+/// 日报预热提前量（秒）：提前创建隐藏 WebView 让 Google Docs 在后台加载
+const DAILY_REPORT_PRE_WARM_SECS: i64 = 90;
+
+/// 日报 WebView 预热：创建隐藏窗口加载 Google Docs URL
+/// 在日报提醒时间前 90 秒调用，用户打开日报时窗口已就绪 → 秒开
+fn pre_warm_daily_report(app: &AppHandle) {
+    let label = "daily-report";
+
+    // 已存在则跳过（上次打开未关闭、或已预热）
+    if app.get_webview_window(label).is_some() {
+        return;
+    }
+
+    // 读取日报 URL
+    let config_dir = match app.path().app_config_dir() {
+        Ok(dir) => dir,
+        Err(_) => return,
+    };
+    let config_path = config_dir.join("attendance_config.json");
+    let config: crate::models::AttendanceConfig = match std::fs::read_to_string(&config_path) {
+        Ok(content) => match serde_json::from_str(&content) {
+            Ok(c) => c,
+            Err(_) => return,
+        },
+        Err(_) => return,
+    };
+
+    if config.daily_report.url.is_empty() {
+        return;
+    }
+
+    let parsed_url = match config.daily_report.url.parse() {
+        Ok(u) => u,
+        Err(_) => return,
+    };
+
+    match WebviewWindowBuilder::new(app, label, WebviewUrl::External(parsed_url))
+        .title("PGB1 日报")
+        .inner_size(1200.0, 800.0)
+        .center()
+        .visible(false)
+        .initialization_script(crate::commands::DAILY_REPORT_INIT_JS)
+        .build()
+    {
+        Ok(_) => eprintln!("[daily-report] 预热窗口已创建（隐藏）"),
+        Err(e) => eprintln!("[daily-report] 预热创建窗口失败: {}", e),
     }
 }
 

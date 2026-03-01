@@ -85,9 +85,12 @@ function formatSize(bytes: number): string {
 </script>
 
 <template>
-  <button
+  <div
     class="task-card glass-subtle"
+    role="button"
+    tabindex="0"
     @click="$emit('click', task)"
+    @keydown.enter="$emit('click', task)"
   >
     <!-- 优先度标签 + 名称 -->
     <div class="task-name-row">
@@ -136,7 +139,7 @@ function formatSize(bytes: number): string {
       </div>
     </Transition>
     </Teleport>
-  </button>
+  </div>
 </template>
 
 <style scoped>
@@ -148,8 +151,9 @@ function formatSize(bytes: number): string {
   justify-content: space-between;
   padding: var(--card-task-padding);
   border-radius: var(--card-border-radius);
-  border: none;
   cursor: pointer;
+  user-select: none;
+  outline: none;
   transition: var(--transition-card-hover);
   text-align: left;
   position: relative;

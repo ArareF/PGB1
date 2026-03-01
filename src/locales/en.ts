@@ -186,6 +186,7 @@ export default {
     custom: 'Custom',
     applyToSelected: 'Apply to Selected',
     startScale: 'Start Scaling',
+    scalingProgress: 'Scaling {current}/{total}',
   },
 
   scaleDialog: {
@@ -354,6 +355,11 @@ export default {
     latestVersion: 'Latest',
     versionN: 'Version {n}',
     readFailed: '(Failed to load)',
+    renameTitle: 'Rename',
+    renamePlaceholder: 'Enter new filename (without extension)',
+    deleteTitle: 'Delete File',
+    deleteDesc: 'Move "{name}" to the Recycle Bin. You can restore it later.',
+    confirmDelete: 'Confirm Delete',
   },
 
   shortcut: {

@@ -194,6 +194,7 @@ export default {
     custom: '自定义',
     applyToSelected: '应用到选中',
     startScale: '开始缩放',
+    scalingProgress: '正在缩放 {current}/{total}',
   },
 
   scaleDialog: {
@@ -371,6 +372,11 @@ export default {
     latestVersion: '最新版本',
     versionN: '版本 {n}',
     readFailed: '（读取失败）',
+    renameTitle: '重命名',
+    renamePlaceholder: '输入新文件名（不含扩展名）',
+    deleteTitle: '删除文件',
+    deleteDesc: '将把「{name}」移入回收站，可从回收站恢复。',
+    confirmDelete: '确认删除',
   },
 
   shortcut: {

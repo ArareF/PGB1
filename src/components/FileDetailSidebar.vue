@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
@@ -104,12 +104,18 @@ const props = defineProps<{
   file: FileEntry | null
   widthPercent?: number
   versions?: FileEntry[]
+  /** 是否显示重命名/删除按钮（游戏介绍/项目素材页使用；预览视频侧边栏不显示） */
+  allowActions?: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
   'update:widthPercent': [value: number]
   'select-version': [file: FileEntry]
+  /** 用户确认重命名，newName 为不含扩展名的新名称 */
+  rename: [newName: string]
+  /** 用户确认删除 */
+  delete: []
 }>()
 
 const { openInExplorer } = useDirectoryFiles()
@@ -198,6 +204,48 @@ async function openFile() {
   } catch (e) {
     console.error('打开文件失败:', e)
   }
+}
+
+// ─── 内联操作弹窗（重命名/删除） ─────────────────────
+
+type SidebarDialog = 'none' | 'rename' | 'delete'
+const sidebarDialog = ref<SidebarDialog>('none')
+const renameInput = ref('')
+
+/** 从文件名提取 stem（不含最后一个扩展名） */
+function getFileStem(file: FileEntry): string {
+  if (!file.extension) return file.name
+  return file.name.slice(0, -(file.extension.length + 1))
+}
+
+function openRenameDialog() {
+  renameInput.value = props.file ? getFileStem(props.file) : ''
+  sidebarDialog.value = 'rename'
+  nextTick(() => {
+    (document.querySelector('.fds-dialog-input') as HTMLInputElement)?.select()
+  })
+}
+
+function openDeleteDialog() {
+  sidebarDialog.value = 'delete'
+}
+
+function closeSidebarDialog() {
+  sidebarDialog.value = 'none'
+  renameInput.value = ''
+}
+
+function confirmRename() {
+  const trimmed = renameInput.value.trim()
+  if (!trimmed || !props.file) { closeSidebarDialog(); return }
+  if (trimmed === getFileStem(props.file)) { closeSidebarDialog(); return }
+  emit('rename', trimmed)
+  closeSidebarDialog()
+}
+
+function confirmDelete() {
+  emit('delete')
+  closeSidebarDialog()
 }
 
 // ─── 拖拽调整宽度 ────────────────────────────────────
@@ -404,6 +452,40 @@ function startResize(e: MouseEvent) {
             </div>
           </div>
 
+        </div>
+
+        <!-- 底部操作按钮（重命名/删除）；allowActions=false 时不渲染 -->
+        <div v-if="allowActions" class="sidebar-actions">
+          <button class="sidebar-action-btn" @click="openRenameDialog">{{ $t('common.rename') }}</button>
+          <button class="sidebar-action-btn danger" @click="openDeleteDialog">{{ $t('common.delete') }}</button>
+        </div>
+
+        <!-- 内联操作弹窗 -->
+        <div v-if="sidebarDialog !== 'none'" class="sidebar-dialog-overlay">
+          <!-- 重命名弹窗 -->
+          <div v-if="sidebarDialog === 'rename'" class="sidebar-dialog">
+            <p class="sidebar-dialog-title">{{ $t('fileDetail.renameTitle') }}</p>
+            <input
+              v-model="renameInput"
+              class="sidebar-dialog-input"
+              :placeholder="$t('fileDetail.renamePlaceholder')"
+              @keydown.enter="confirmRename"
+              @keydown.escape="closeSidebarDialog"
+            />
+            <div class="sidebar-dialog-actions">
+              <button class="sidebar-dialog-btn" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
+              <button class="sidebar-dialog-btn primary" @click="confirmRename">{{ $t('common.confirm') }}</button>
+            </div>
+          </div>
+          <!-- 删除确认弹窗 -->
+          <div v-if="sidebarDialog === 'delete'" class="sidebar-dialog">
+            <p class="sidebar-dialog-title">{{ $t('fileDetail.deleteTitle') }}</p>
+            <p class="sidebar-dialog-desc">{{ $t('fileDetail.deleteDesc', { name: file?.name }) }}</p>
+            <div class="sidebar-dialog-actions">
+              <button class="sidebar-dialog-btn" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
+              <button class="sidebar-dialog-btn danger" @click="confirmDelete">{{ $t('fileDetail.confirmDelete') }}</button>
+            </div>
+          </div>
         </div>
       </div>
     </Transition>
@@ -823,4 +905,6 @@ function startResize(e: MouseEvent) {
   color: var(--color-neutral-0);
   border-color: var(--color-primary);
 }
+
+/* .sidebar-actions / .sidebar-action-btn / .sidebar-dialog-* → design-system.css 公共类 */
 </style>

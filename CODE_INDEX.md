@@ -1,7 +1,7 @@
 # PGB1 代码索引
 
 > 全量源代码文件职责说明，按目录分组。新会话快速了解代码现状用。
-> 最后更新: 2026-02-27（UI 迭代：TransitionGroup FLIP 动画修复、文字对比度提升、打开文件夹按钮下沉副标题栏）
+> 最后更新: 2026-03-01（v2.5.2：素材进度判定 find_file_in_dir 前缀匹配→精确匹配修复；转换进度去重+会话隔离修复）
 
 ---
 
@@ -9,14 +9,14 @@
 
 | 目录 | 文件数 | 总行数 | 备注 |
 |------|--------|--------|------|
-| src/components/ | 19 | ~4800 | UI 组件（新增 OnboardingDialog.vue、PageGuideOverlay.vue） |
+| src/components/ | 19 | ~4900 | UI 组件（新增 OnboardingDialog.vue、PageGuideOverlay.vue） |
 | src/composables/ | 9 | ~700 | 逻辑组件（useStatusBar ~430 行，useScale 简化为 ~25 行） |
 | src/views/ | 12 | ~5400 | 页面 |
-| src/styles/ | 3 | ~790 | CSS 设计系统（新增 --text-2xs / --glass-light-blur / --panel-blur token） |
-| src/i18n + src/locales/ | 3 | ~1100 | 国际化：i18n 实例 + zh-CN/en locale 文件（含 onboarding/pageGuide namespace） |
+| src/styles/ | 3 | ~960 | CSS 设计系统（新增 .sidebar-actions/.sidebar-action-btn/.sidebar-dialog-* 公共类） |
+| src/i18n + src/locales/ | 3 | ~1110 | 国际化：i18n 实例 + zh-CN/en locale 文件（fileDetail 命名空间新增 5 个 key） |
 | src/其他 | 8 | ~250 | 入口、路由、配置（含 onboarding.ts）、布局 |
-| src-tauri/src/ | 7 | ~6850 | Rust 后端（共 61 个命令） |
-| **合计** | **54** | **~17700** | |
+| src-tauri/src/ | 7 | ~6990 | Rust 后端（共 63 个命令） |
+| **合计** | **54** | **~17820** | |
 
 ---
 
@@ -54,7 +54,7 @@
 | `NormalCard.vue` | ~237 | `file: FileEntry` | 普通文件卡片（游戏介绍/项目素材页用）。视频文件 onMounted canvas 截帧；PSD/PSB 文件调用 `usePsdThumbnail`（256px）异步加载真实缩略图，失败降级为 PS 图标；PDF 文件显示红色 PDF 图标；multiSelect?/checked? props + data-path + card-checkbox-shared 多选三件套 |
 | `SequencePreview.vue` | ~110 | `folderPath, fps?, maxWidth?, transparent?` | Canvas 序列帧动画播放器，mount 后自动循环播放，LRU 缓存。`transparent=true` 时 clearRect 透明背景 + 棋盘格 CSS，否则黑色背景 |
 | `ImageViewer.vue` | ~80 | `src` | 通用可缩放/拖拽图片查看器（滚轮缩放 + 鼠标拖拽），供 TaskPage 侧边栏和 FileDetailSidebar 共用 |
-| `FileDetailSidebar.vue` | ~780 | `file: FileEntry \| null, widthPercent?, versions?: FileEntry[]` | **普通文件侧边栏**（游戏介绍/项目素材页/任务页预览视频用）。**手动 glass**：不用 `glass-strong` 类（与 main-content 相邻会触发 backdrop-filter 兄弟冲突），手动 `background/border/box-shadow`。支持图片（ImageViewer）、视频（自定义播放控制条）、TXT（read_text_file）、**PSD/PSB**（`usePsdThumbnail` 800px 高清缩略图 + 「用 Photoshop 打开」按钮）、**PDF**（iframe 直接渲染，WebView2 内置 PDF 引擎）、其他（图标占位）。`open_file` 用系统关联程序打开文件。可选 `versions` prop 传入多版本列表，点击 emit `select-version` 切换播放。**版本历史卡片**：卡片式布局（与 TaskPage 其他版本一致），左列版本标签+文件大小、右侧扩展名+打开文件夹按钮，active 状态高亮。Teleport to #content-row。sidebar 过渡同时动画 `transform + width` |
+| `FileDetailSidebar.vue` | ~850 | `file: FileEntry \| null, widthPercent?, versions?: FileEntry[], allowActions?: boolean` | **普通文件侧边栏**（游戏介绍/项目素材页/任务页预览视频用）。**手动 glass**：不用 `glass-strong` 类（与 main-content 相邻会触发 backdrop-filter 兄弟冲突），手动 `background/border/box-shadow`。支持图片（ImageViewer）、视频（自定义播放控制条）、TXT（read_text_file）、**PSD/PSB**（`usePsdThumbnail` 800px 高清缩略图 + 「用 Photoshop 打开」按钮）、**PDF**（iframe 直接渲染，WebView2 内置 PDF 引擎）、其他（图标占位）。`open_file` 用系统关联程序打开文件。可选 `versions` prop 传入多版本列表，点击 emit `select-version` 切换播放。**版本历史卡片**：卡片式布局，左列版本标签+文件大小、右侧扩展名+打开文件夹按钮，active 状态高亮。**`allowActions=true`**：底部显示重命名/删除按钮（`.sidebar-action-btn` 公共类），内联弹窗覆盖 overlay（`.sidebar-dialog-*` 公共类），emit `rename(newName)` / `delete()` 由父页面执行 invoke + 刷新。Teleport to #content-row。sidebar 过渡同时动画 `transform + width` |
 | `TitleBar.vue` | ~250 | — | 顶部标题栏（返回按钮+标题+快捷功能区），消费 useNavigation()。返回箭头 SVG 40×40。支持 action 长按（500ms，`pointerdown` 计时，`onLongPress(btnRect)` 回调传递按钮 DOMRect）。`active` 属性控制按钮强调样式（蓝色背景+描边）。中间岛集成 **StatusBar**（常驻状态栏）。布局：左侧标题岛 `flex-shrink: 0` 不压缩，右侧功能岛独自承担窄窗口压缩。两岛 `align-items: flex-end` 底部对齐，右侧功能岛高度由内容撑开（比标题岛矮）。有 actions 时状态栏+分隔线+按钮共存，按钮区域支持滚轮横滚。**左岛手动 glass**：不用 `glass-medium` 类（与 center 岛相邻会触发 backdrop-filter 兄弟冲突），手动 `background/border/box-shadow`。**标题文字裁切**：`.title-text-wrap` 包裹层（`overflow:hidden; position:relative`），防止转场动画 leave 态 `position:absolute` 标题文字侵入返回按钮区域。**动画**：JS FLIP 宽度动画（`watch flush:pre/post` + `flipWidth`）；**flipWidth Bug 修复**：读 toWidth 前先清除残留内联样式（`style.width/transition/overflow = ''`）再 `offsetWidth` 强制 layout，防止快速连续导航时旧内联宽度污染 toWidth 导致岛宽卡死；标题/返回按钮/操作区 `<Transition name="nav-forward/back">` 方向感知滑入；**返回按钮 leave 动画修复**：`.nav-back-leave-active.back-btn` 加 `top:0; bottom:0`，防止 `position:absolute` 脱离 flex 后 `align-self:stretch` 失效导致向上跳动；新增 `leftIslandRef`、`centerIslandRef` template ref。**Hover**：`.action-btn` normal 态有微弱阴影（`0 1px 3px`）；`:hover` = `translateY(-2px)` + `--bg-active` + `border-color: --border-medium` + shadow（`0 2px 6px`）；`:active` 弹回 `translateY(0)`。**hover 裁切修复**：`glass-medium` 的 `overflow:hidden` 会裁切 translateY(-2px)，在 `.title-bar-center` 覆盖为 `overflow:visible`；`overflow-x:auto` 强制 `overflow-y:auto` 导致 ink overflow 被裁切，在 `.title-bar-actions` 加 `padding-block:6px` 建立缓冲区 |
 | `StatusBar.vue` | ~570 | — | **状态栏组件**（嵌入 TitleBar 中间岛）。左列：时间/日期/节假日标签（短文案）。右列：已工作胶囊（需 `hasClockIn && !hasClockOut`）+ 倒计时胶囊（需 `hasClockIn`，`hasClockOut` 后显示"下班咯"，午休显示`午休 Xm`/`午休中`）。最右：**番茄钟按钮**（无形态纯光晕：`::before` + `filter:blur(16px)` + `isolation:isolate`）——空闲=白色极淡，专注=蓝色，超时=红绿交替动画，休息=绿色，休息结束=绿色呼吸。长按 500ms 弹出配置面板（Teleport to body，`<Transition name="config-panel">` 进出场动画：`translateY(-6px) scale(0.95)` + opacity，`transform-origin: top right`）：5 个 boolean 开关 + 番茄钟时长 + **假日日历地区下拉**（自动/中国/日本/不显示，切换后即时刷新） |
 | `Sidebar.vue` | ~310 | — | 左侧快捷方式栏。**手动 glass**：不用 `glass-medium` 类（与 main-content 相邻会触发 backdrop-filter 兄弟冲突），手动 `background/border/box-shadow`。iOS 风格交互：单击启动，长按 500ms 进入编辑模式（图标抖动 + 右上角红色 × 删除徽章），点击空白退出。编辑模式内拖拽重排（`pointermove + elementFromPoint`，实时更新 `displayOrder`）。**拖拽排序动画**：`<TransitionGroup name="sort">` + `.sort-move { transition: transform 200ms }` FLIP 动画，其他图标平滑滑走。添加时自动提取图标（应用=`extract_exe_icon` 256px，网页=`fetch_favicon`）。[+] 固定在底部。**Hover**：`::before` 伪元素蓝色模糊光晕（`filter:blur(14px)` + `isolation:isolate`，`opacity` 0→0.45），无边框无阴影，`translateY(-2px)` 上浮；`:active` = `translateY(0) scale(0.95)`。**编辑模式抖动**：`0.45s linear infinite`，6个不规则关键帧（±3~4deg + 微量 translateY），`nth-child(2n/3n/4n)` 错开相位避免整齐同步 |
@@ -97,10 +97,10 @@
 | `ProjectPage.vue` | ~450 | 中 | 任务列表 + 快捷功能（游戏介绍/项目素材/打开AE/任务列表）。「打开AE」单击打最新（或默认）.aep，**长按弹出锚定式下拉面板**（Teleport to body，`position:fixed` 锚定按钮位置，外部点击关闭，与 StatusBar 配置面板同款风格），选择后设为默认并打开（持久化到 .pgb1_project.json），有默认时按钮蓝色强调。计算子任务进度传给 TaskCard。「任务列表」跳转 TaskListPage（传 projectPath + enabledTasks query）。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场 + `.card-move` FLIP 排序动画。**副标题旁文件夹按钮**：`.folder-btn` 图标按钮紧跟副标题，点击 `openInExplorer(projectPath)`；更多菜单已移除「打开项目文件夹」。**排序控件**：sub-title-bar 右侧两档切换（默认/优先度），选择结果 localStorage 持久化（`pgb1-project-sort`）；`PRIORITY_ORDER={high:0,medium:1,low:3}`，null fallback 2（急→高→普→停）；onTaskAction 接收 TaskCard action 事件，invoke set_task_priority 后刷新 |
 | `TaskListPage.vue` | ~270 | 中 | **任务管理页面**（路由页面版，替代弹窗）。通过 `route.params.projectId` + `route.query.projectPath/enabledTasks` 接收参数。三 Tab：任务启用/模板编辑/时光机。确定/取消均返回 ProjectPage |
 | `TaskPage.vue` | ~1900 | **高** | 素材浏览主页面。**树形视图分组**：普通任务按缩放比例分组（原始/[100]/[70]/[50]）；**Prototype 任务两级分组**：先按子分类（symbol/big_win/…），再按缩放比例子分组（原始/[100]/…），均用 section-label/group-label 渲染。名称视图平铺。**Phase 5a**：多选+拖拽上传+nextcloud 复制。**Phase 5b**：规范化。**Phase 5c**：缩放。**Phase 5d**：格式转换。**侧边栏**（手动 glass，不用 `glass-strong`，避免 backdrop-filter 兄弟冲突）：通用（重命名/删除）；序列帧专属：帧率行内联编辑 + [修改] 按钮；底部 `.sidebar-action-btn` 无 backdrop-filter。**sidebar-dialog**（重命名/删除弹窗）：手动 glass-strong（在 Teleport 到 #content-row 的侧边栏内，与 main-content 同层）。**03_preview 预览视频区块**：页面底部，按 baseName 分组（去 _01/_02 版本号后缀），每组一张卡片，截帧缩略图+上传状态标签（已上传/待更新/未上传）+版本数，点击打开 FileDetailSidebar（版本列表可切换），拖拽导出最新版，拖拽后弹确认弹窗复制到 nextcloud/preview/（breakdown 到 preview/breakdown/）。sidebar 过渡同时动画 `transform + width` 消除主内容区突变；useRubberBandSelect 集成（isEnabled=isMultiSelect） |
-| `ScalePage.vue` | ~465 | **中** | **素材缩放执行页面**（Phase 5c）。控制面板 Teleport 到 #content-row，手动 glass-medium（无 backdrop-filter，与 main-content 同层兄弟）；useRubberBandSelect（isEnabled=ref(true)，始终开启）。`imageMaterials` 过滤条件：`material_type=image && progress!='uploaded' && scales.length===0`（只显示完全未缩放的素材）。缩放比例是标注器：用户选中卡片 → 选比例 → 点"应用"标注到 scaleMap → 执行批量缩放 |
-| `ConvertPage.vue` | ~780 | **中** | **格式转换执行页面**（Phase 5d）。控制面板 Teleport 到 #content-row，手动 glass-medium（无 backdrop-filter，与 main-content 同层兄弟）。静帧默认全选，序列帧需手动标注 FPS 才算「已注释」。**TP 预设折叠面板**：侧边栏"开始制作"按钮上方，可展开收起，包含 Scale（f64）和 WebP Quality（u32）输入框，失焦时保存到全局设置。invoke `start_conversion` 时传 `tp_scale` / `tp_webp_quality`。监听 `sequence-conversion-failed` / `conversion-organized` 事件；useRubberBandSelect（isEnabled=ref(true)，始终开启） |
-| `GameIntroPage.vue` | ~230 | 低 | 浏览 00_Game Design & Doc 目录，支持 FileDetailSidebar。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场；多选开关 + 全选 + useRubberBandSelect（isEnabled=isMultiSelect）+ 多选批量拖拽。**副标题旁文件夹按钮**：`.folder-btn` 图标按钮紧跟副标题，点击 `openInExplorer(dirPath)`；TitleBar actions 已移除「打开文件夹」（原在快捷功能区）。**游戏原型检测**：mount 时调用 `find_game_exe` 递归扫描（Unity / Godot），找到 exe 则顶部导航动态插入「启动原型」按钮（`refreshNav()` 模式） |
-| `MaterialsPage.vue` | ~250 | 中 | 4 个分组素材库（01_Preproduction / 02_Production / 03_Render_VFX/VFX/PSD / 05_Outside）。**空目录也渲染分组**（显示"将文件拖入此处"提示），新建项目时可直接拖入；目录不存在时 import_files 自动创建。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场；多选开关 + 全选（跨 group/subGroup 收集 allFiles）+ useRubberBandSelect。**分组标题旁文件夹按钮**：`.folder-btn` 公共类（已迁入 design-system.css），每个 group/subGroup 标题后各一个 |
+| `ScalePage.vue` | ~490 | **中** | **素材缩放执行页面**（Phase 5c）。控制面板 Teleport 到 #content-row，手动 glass-medium（无 backdrop-filter，与 main-content 同层兄弟）；useRubberBandSelect（isEnabled=ref(true)，始终开启）。`imageMaterials` 过滤条件：`material_type=image && progress!='uploaded' && scales.length===0`（只显示完全未缩放的素材）。缩放比例是标注器：用户选中卡片 → 选比例 → 点"应用"标注到 scaleMap → 执行批量缩放。**缩放进度反馈**：监听 `scaling-progress` 事件，控制面板底部显示进度条 + "正在缩放 X/Y" + 当前文件名（CSS transition 平滑动画） |
+| `ConvertPage.vue` | ~780 | **中** | **格式转换执行页面**（Phase 5d）。控制面板 Teleport 到 #content-row，手动 glass-medium（无 backdrop-filter，与 main-content 同层兄弟）。静帧默认全选，序列帧需手动标注 FPS 才算「已注释」。**TP 预设折叠面板**：侧边栏"开始制作"按钮上方，可展开收起，包含 Scale（f64）和 WebP Quality（u32）输入框，失焦时保存到全局设置。invoke `start_conversion` 时传 `tp_scale` / `tp_webp_quality`。监听 `sequence-conversion-failed` / `conversion-organized` 事件；useRubberBandSelect（isEnabled=ref(true)，始终开启）。**进度去重修复**（v2.5.2）：`expectedNames` 白名单 + `organizedNames` Set 去重，只统计当前会话选中素材且每名只计一次；`handleStart` 先调 `stop_conversion` 清理旧会话防事件泄漏；`onUnmounted` 调 `stop_conversion` 防残留 watcher |
+| `GameIntroPage.vue` | ~255 | 低 | 浏览 00_Game Design & Doc 目录，支持 FileDetailSidebar。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场；多选开关 + 全选 + useRubberBandSelect（isEnabled=isMultiSelect）+ 多选批量拖拽。**副标题旁文件夹按钮**：`.folder-btn` 图标按钮紧跟副标题，点击 `openInExplorer(dirPath)`；TitleBar actions 已移除「打开文件夹」。**游戏原型检测**：mount 时调用 `find_game_exe` 递归扫描（Unity / Godot），找到 exe 则顶部导航动态插入「启动原型」按钮。**FileDetailSidebar 操作**：传 `allow-actions`，`@rename` → `invoke rename_file` + `loadFiles`，`@delete` → `invoke delete_file` + `loadFiles` |
+| `MaterialsPage.vue` | ~280 | 中 | 4 个分组素材库（01_Preproduction / 02_Production / 03_Render_VFX/VFX/PSD / 05_Outside）。**空目录也渲染分组**（显示"将文件拖入此处"提示），新建项目时可直接拖入；目录不存在时 import_files 自动创建。`.card-grid` 改为 `display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-*-width), 1fr))`；`<TransitionGroup name="card">` 卡片交错入场；多选开关 + 全选（跨 group/subGroup 收集 allFiles）+ useRubberBandSelect。**分组标题旁文件夹按钮**：`.folder-btn` 公共类，每个 group/subGroup 标题后各一个。**FileDetailSidebar 操作**：传 `allow-actions`，`@rename` → `invoke rename_file` + `refreshAll`，`@delete` → `invoke delete_file` + `refreshAll` |
 | `SettingsPage.vue` | ~1010 | **高** | **全局设置页面**。5 Tab 导航（工作流、翻译、日报打卡、通用设置、关于）。内置本地编辑副本 `editSettings`。**出勤引导**：`route.query.guide === 'attendance'` 时自动弹出 `settingsAttendance` 专属批注（新手引导跳转触发）。**开机自启修复**：`save_settings` 中 `autolaunch.disable()` 前先 `is_enabled()` 检查，避免条目不存在时 OS error 2。 |
 | `ReminderPage.vue` | ~260 | 中 | **日报打卡提醒弹窗**，支持 clock-in/clock-out/daily-report/overtime 四种类型 |
 | `OvertimePage.vue` | ~140 | 低 | **加班时间设置弹窗**（快捷按钮 +30分/+1小时/+2小时 + 自定义输入） |
@@ -113,7 +113,7 @@
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `reset.css` | 45 | 基础重置，字体引用 `var(--font-family-base)`，根字号 14px |
-| `design-system.css` | ~830 | **SSOT**：颜色（冷科技蓝色板+冷蓝灰中性色）、间距、排版（URW DIN + 更纱黑体）、圆角（工业风收窄）、卡片、标签、过渡、毛玻璃变量。暗色主题 v2.0 冷色工业终端风格。`.section-label`+`.group-label` 标题样式。**新增 token**：`--overlay-backdrop`（弹窗遮罩）、`--canvas-bg`（Canvas 背景）。弱化 Material 阴影，改用透明度+冷蓝边框拉层级。**Hover SSOT**：`--shadow-card-hover` 含 ring 光晕（`0 0 0 1px rgba(100,180,255,0.30)`）覆盖所有卡片；`--card-hover-lift` = -3px。**优先度 token**：菜单胶囊用 `--priority-{h/m/l}-{bg/text/active}`（半透明）；卡片圆点用 `--priority-{high/medium/low}-dot`（= color-danger/warning/success 纯实色）。**深色模式 `--text-tertiary`**：`#6B6E77`（原 `#4A4D54` 对比度仅 2.2:1，已提升至 3.8:1）。**TransitionGroup FLIP**：`.card-move { transition: transform ... }` 使所有 `name="card"` 分组在排序时平滑位移。**公共类 `.folder-btn`**：28×28 图标按钮，透明背景，hover 蓝色 wash，供各页面副标题旁打开文件夹按钮复用 |
+| `design-system.css` | ~960 | **SSOT**：颜色（冷科技蓝色板+冷蓝灰中性色）、间距、排版（URW DIN + 更纱黑体）、圆角（工业风收窄）、卡片、标签、过渡、毛玻璃变量。暗色主题 v2.0 冷色工业终端风格。`.section-label`+`.group-label` 标题样式。**新增 token**：`--overlay-backdrop`（弹窗遮罩）、`--canvas-bg`（Canvas 背景）。弱化 Material 阴影，改用透明度+冷蓝边框拉层级。**Hover SSOT**：`--shadow-card-hover` 含 ring 光晕（`0 0 0 1px rgba(100,180,255,0.30)`）覆盖所有卡片；`--card-hover-lift` = -3px。**优先度 token**：菜单胶囊用 `--priority-{h/m/l}-{bg/text/active}`（半透明）；卡片圆点用 `--priority-{high/medium/low}-dot`（= color-danger/warning/success 纯实色）。**深色模式 `--text-tertiary`**：`#6B6E77`（原 `#4A4D54` 对比度仅 2.2:1，已提升至 3.8:1）。**TransitionGroup FLIP**：`.card-move { transition: transform ... }` 使所有 `name="card"` 分组在排序时平滑位移。**公共类 `.folder-btn`**：28×28 图标按钮，透明背景，hover 蓝色 wash。**公共类 `.sidebar-actions`/`.sidebar-action-btn`**：侧边栏底部悬浮操作按钮（TaskPage + FileDetailSidebar 共用），`.danger` 变体 hover 红色。**公共类 `.sidebar-dialog-overlay`/`.sidebar-dialog`/`.sidebar-dialog-*`**：侧边栏内联弹窗（覆盖整个侧边栏的半透明遮罩 + glass-strong 弹窗卡片 + 输入框 + 按钮），`.primary`/`.danger` 变体 |
 | `glass.css` | ~75 | 毛玻璃工具类：`.glass-subtle`, `.glass-medium`, `.glass-strong`。**backdrop-filter 兄弟冲突规则**（顶部注释）：同层 flex 兄弟只能一个带 backdrop-filter，其余手动 bg/border/shadow。`overflow: clip`（非 hidden）；`::after` 噪点 `z-index: -1`，子元素不强制 `z-index` |
 
 ---
@@ -125,12 +125,12 @@
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `main.rs` | 6 | 应用入口 |
-| `lib.rs` | ~230 | Tauri 初始化、命令注册（61 个）、插件注册（opener/drag/dialog/clipboard/notification/**autostart**）、Windows Acrylic 毛玻璃、调度器初始化 + 补打检测、hotkey 全局快捷键初始化、**启动时同步 autolaunch 状态** |
+| `lib.rs` | ~232 | Tauri 初始化、命令注册（63 个）、插件注册（opener/drag/dialog/clipboard/notification/**autostart**）、Windows Acrylic 毛玻璃、调度器初始化 + 补打检测、hotkey 全局快捷键初始化、**启动时同步 autolaunch 状态** |
 | `models.rs` | ~495 | 数据模型（24 个 struct + 3 个 enum）。ProjectConfig 新增 default_ae_file 字段。新增 PreviewVideoEntry（含 upload_status）。新增 **PreviewSettings**（default_fps/background_transparent），AppSettings 加 preview 字段。`GeneralSettings.ui_scale` 默认值 `1.0`（首次运行不再使用自动缩放）。`GeneralSettings.auto_start: bool`（开机自启，默认 false）。**WorkflowSettings** 新增 `tp_scale: f64`（默认 0.5）/ `tp_webp_quality: u32`（默认 80）。**StartConversionRequest** 新增同名字段 |
-| `commands.rs` | ~5830 | 61 个命令实现 + 辅助函数（含 regex_strip_version、**send_ctrl_end**）。psd + base64 依赖。**`copy_icon_to_cache`**、**`collect_scales_for_proto_sequence`**（Prototype 序列帧专用 scale 收集）、**`find_game_exe`**（递归游戏原型检测，支持 Unity / Godot）。**`send_ctrl_end()`**（Win32 SendInput 发送真实 Ctrl+End 按键，Google Docs canvas 专用）。**`load_settings`** 首次运行仅创建空默认值（工具路径探测已移至前端 OnboardingDialog） |
+| `commands.rs` | ~6100 | 63 个命令实现 + 辅助函数（含 regex_strip_version、**send_ctrl_end**、**scroll_to_bottom_via_wheel**）。psd + base64 依赖。**`DAILY_REPORT_INIT_JS`**（`pub(crate)` 常量，日报 WebView 初始化脚本 SSOT，scheduler 预热共用）。**`spawn_daily_report_scroll`**（后台轮询就绪 + 聚焦 + Ctrl+End，预热命中时跳过轮询直接滚动）。**`copy_icon_to_cache`**、**`collect_scales_for_proto_sequence`**（Prototype 序列帧专用 scale 收集）、**`find_game_exe`**（递归游戏原型检测，支持 Unity / Godot）。**`send_ctrl_end()`**（Win32 SendInput 发送真实 Ctrl+End 按键）。**`scroll_to_bottom_via_wheel()`**（Win32 MOUSEEVENTF_WHEEL，移光标到窗口中央后发 500×-120 delta，绕过键盘焦点链）。**`load_settings`** 首次运行仅创建空默认值（工具路径探测已移至前端 OnboardingDialog）。**`rename_file`**（保留扩展名重命名，校验非法字符/重名）。**`delete_file`**（SHFileOperationW 移入回收站）。**`scan_material_versions` Prototype 修复**：`split_prototype_name` 拆分 subcat，各阶段目录深入 subcat 子目录查找；`collect_versions_in_scale_dirs` / `collect_versions_in_done_dirs` 新增 `subcat: &str` 参数。**素材进度判定修复**（v2.5.2）：`find_file_in_dir` / `find_webp_in_subdirs` / `find_webp_in_proto_subdirs` 从 `starts_with(base_name)` 前缀匹配改为 `file_stem() == base_name` 精确匹配，与 `collect_scales_for_*` 对齐，修复同前缀素材（如 bonus/bonus_bg）的进度误判 |
 | `hotkey.rs` | ~143 | **全局快捷键**：`start_hotkey_listener`（独立线程 Win32 消息循环）、`do_toggle_window`、`parse_shortcut`。支持计算器键（0xB7） |
-| `scheduler.rs` | ~190 | **考勤调度器**：AttendanceScheduler、create_reminder_window（400×200 毛玻璃置顶弹窗，**visible(false) 创建** + Rust 侧 500ms 延迟 show() 双保险，由 ReminderPage onMounted 调 show()）、calc_duration_until |
-| `conversion.rs` | ~140 | **转换管理**：ConversionSession 状态管理（含 `tp_scale`/`tp_webp_quality` TP 预设参数）、`bring_window_to_front`（Win32 API）、`handle_file_event`（监控 01_scale/ 递归）。**双路径支持**：普通任务 `[XX]/file.webp`，Prototype `[XX]/{subcat}/file.webp`，目标分别为 `[img-XX]/` 和 `[img-XX]/{subcat}/` |
+| `scheduler.rs` | ~240 | **考勤调度器**：AttendanceScheduler、create_reminder_window（400×200 毛玻璃置顶弹窗，**visible(false) 创建** + Rust 侧 500ms 延迟 show() 双保险，由 ReminderPage onMounted 调 show()）、calc_duration_until。**日报预热**：`DAILY_REPORT_PRE_WARM_SECS`（90 秒）+ `pre_warm_daily_report`（提前创建隐藏 WebView 加载 Google Docs），在 `daily_timer_loop` 中日报提醒前 90 秒触发 |
+| `conversion.rs` | ~140 | **转换管理**：ConversionSession 状态管理（含 `tp_scale`/`tp_webp_quality` TP 预设参数）、`bring_window_to_front`（Win32 API）、`handle_file_event`（监控 01_scale/ 递归）。**双路径支持**：普通任务 `[XX]/file.webp`，Prototype `[XX]/{subcat}/file.webp`，目标分别为 `[img-XX]/` 和 `[img-XX]/{subcat}/`。**事件载荷修复**（v2.5.2）：`conversion-organized` 事件 payload 对 Prototype 携带 `subcat/stem` 格式（与前端 images map key 对齐），普通任务仍为 `stem` |
 
 ### 已注册命令
 
@@ -141,7 +141,7 @@
 | `scan_directory` | dir_path | Vec\<FileEntry\> | 通用一层目录扫描（目录在前，文件在后） |
 | `scan_materials` | task_path | Vec\<MaterialInfo\> | **核心**：扫描 00_original，关联各阶段判定进度。返回 scales、fps。支持 Prototype |
 | `list_sequence_frames` | dir_path | Vec\<String\> | 列出序列帧目录的帧文件路径（排序） |
-| `scan_material_versions` | task_path, base_name, material_type | Vec\<MaterialVersion\> | 扫描素材在各工作流阶段的版本列表。序列帧原始版本 folder_path 指向目录本身（而非父目录） |
+| `scan_material_versions` | task_path, base_name, material_type | Vec\<MaterialVersion\> | 扫描素材在各工作流阶段的版本列表。序列帧原始版本 folder_path 指向目录本身（而非父目录）。**Prototype 修复**：base_name 为 `"subcat/basename"` 格式时，自动拆分并在各阶段目录下进入 subcat 子目录查找 |
 | `open_in_explorer` | path | () | Windows explorer 打开路径 |
 | `collect_drag_files` | task_path, materials | Vec\<String\> | **Phase 5a**：收集素材最终产物路径用于 OS 级拖拽（优先 02_done > 01_scale > 00_original）。支持 Prototype |
 | `copy_to_nextcloud` | task_path, material_names | CopyResult | **Phase 5a**：复制 02_done 文件到 nextcloud/（排除 .tps）。Prototype 保留子分类 + 额外复制 _original |
@@ -154,7 +154,7 @@
 | `delete_archived_version` | project_path, task_name, timestamp | () | 时光机：删除指定归档版本 |
 | `preview_normalize` | task_path | Vec\<NormalizePreviewItem\> | **Phase 5b**：扫描 00_original，识别静帧/序列帧，返回预览。支持 Prototype |
 | `execute_normalize` | items | () | **Phase 5b**：物理执行重命名和移动操作 |
-| `execute_scaling` | requests | () | **Phase 5c**：对静帧执行高质量缩放（Lanczos3），整理至 `01_scale/[XX]` |
+| `execute_scaling` | app_handle, requests | () | **Phase 5c**：对静帧执行高质量缩放（Lanczos3），整理至 `01_scale/[XX]`。每处理完一张图片 emit `scaling-progress` 事件（current/total/name） |
 | `start_conversion` | app_handle, request | () | **Phase 5d**：启动转换会话，递归监控 `01_scale/`，检测新 .webp 自动移到 `02_done/[img-XX]/` |
 | `stop_conversion` | — | () | **Phase 5d**：停止转换会话，终止 Imagine 进程 |
 | `execute_sequence_conversion` | app_handle, sequences | () | **Phase 5d**：序列帧 TexturePacker 转换流程，整理三件套到 `02_done/[an-XX-YY]/` |
@@ -168,7 +168,7 @@
 | `execute_clock_action` | app_handle, action | String | **打卡自动化**：WebView 登录 → 导航到打刻 → 点击出勤/退勤 → 更新记录 |
 | `show_clock_webview` | app_handle | () | 前台显示打卡 WebView |
 | `close_clock_webview` | app_handle | () | 关闭打卡 WebView 窗口 |
-| `open_daily_report` | app_handle | () | WebView 打开日报 URL，后台 spawn 轮询 Win32 SendInput Ctrl+End 滚动到底部（10 次 × 3 秒，Google Docs canvas 专用） |
+| `open_daily_report` | app_handle | () | WebView 打开日报 URL。**预热支持**：scheduler 提前 90 秒创建隐藏窗口，用户打开时发现已存在 → show + focus + `spawn_daily_report_scroll`（预热命中检测 `#pgb-ready` hash 后直接滚动，跳过轮询）。首次打开（无预热）：`DAILY_REPORT_INIT_JS`（`initialization_script` 注入）检测 `readyState=complete` + `.kix-cursor-caret` 两条件，满足后写 `#pgb-ready` hash → `spawn_daily_report_scroll` 轮询就绪后 JS focus + HWND 置顶 + `send_ctrl_end()` 跳到文档末尾 |
 | `test_reminder` | app_handle, reminder_type | () | 设置页测试用：spawn 异步触发指定类型的提醒弹窗（避免 sync 命令死锁，复用 create_reminder_window） |
 | `load_attendance_record` | app_handle | AttendanceRecord | 加载本地打卡记录 |
 | `save_attendance_record` | app_handle, record | () | 保存本地打卡记录 |
@@ -195,6 +195,8 @@
 | `set_task_priority` | project_path, task_name, priority? | () | 设置任务优先度写入 .pgb1_project.json 的 task_priorities Map |
 | `delete_project` | project_path | () | 将项目目录**移入回收站**（Windows SHFileOperationW + FOF_ALLOWUNDO），含安全检查（.pgb1_project.json 必须存在） |
 | `rename_project` | project_path, new_name | ProjectInfo | 重命名项目目录（fs::rename）+ 更新 .pgb1_project.json 的 project_name 字段，返回新的 ProjectInfo |
+| `rename_file` | path, new_name | () | 重命名单个文件，保留原扩展名，校验非法字符与重名冲突（GameIntroPage / MaterialsPage 侧边栏用） |
+| `delete_file` | path | () | 将单个文件**移入回收站**（SHFileOperationW + FOF_ALLOWUNDO，与 delete_project 同模式） |
 | `scan_preview_videos` | task_path, nextcloud_preview_path | Vec\<PreviewVideoEntry\> | 扫描 03_preview/，对比 nextcloud/preview/（及 breakdown/）判断每个文件的上传状态（uploaded/outdated/none） |
 | `copy_preview_to_nextcloud` | file_path, nextcloud_preview_path | () | 复制预览视频到 nextcloud/preview/，含 _breakdown 的自动路由到 preview/breakdown/ |
 | `extract_psd_thumbnail` | path, max_size | Option\<String\> | **async**：用 psd crate 合并图层，resize 到最长边 max_size px，编码为 JPEG base64 data URI。spawn_blocking 不阻塞主线程 |

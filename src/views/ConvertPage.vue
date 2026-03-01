@@ -145,6 +145,10 @@ const failedSequences = ref<string[]>([])
 const sequenceError = ref('')
 let unlistenOrganized: (() => void) | null = null
 let unlistenFailed: (() => void) | null = null
+/** 当前会话选中的素材名白名单，用于过滤跨会话的残留事件 */
+let expectedNames = new Set<string>()
+/** 已完成的素材名去重集，防止同一素材多次计数 */
+let organizedNames = new Set<string>()
 
 async function handleStart() {
   if (!canStart.value || !taskPath) return
@@ -166,13 +170,22 @@ async function handleStart() {
   isConverting.value = true
   failedSequences.value = []
   sequenceError.value = ''
-  conversionProgress.value = { current: 0, total: Object.keys(images).length + sequences.length }
+  expectedNames = new Set([...Object.keys(images), ...sequences.map(s => s.name)])
+  organizedNames = new Set()
+  conversionProgress.value = { current: 0, total: expectedNames.size }
 
   try {
+    // 清理旧会话（防止残留 watcher 的 500ms 延迟任务泄漏事件）
     if (unlistenOrganized) unlistenOrganized()
     if (unlistenFailed) unlistenFailed()
-    unlistenOrganized = await listen<string>('conversion-organized', () => {
-      conversionProgress.value.current++
+    try { await invoke('stop_conversion') } catch { /* 无旧会话时静默忽略 */ }
+    unlistenOrganized = await listen<string>('conversion-organized', (event) => {
+      const name = event.payload
+      // 白名单过滤 + 去重：只统计当前会话选中的素材，每个名字只计一次
+      if (expectedNames.has(name) && !organizedNames.has(name)) {
+        organizedNames.add(name)
+        conversionProgress.value.current = organizedNames.size
+      }
     })
     unlistenFailed = await listen<string>('sequence-conversion-failed', (event) => {
       failedSequences.value.push(event.payload)
@@ -224,8 +237,12 @@ async function handleFinish() {
 }
 
 onUnmounted(() => {
-  if (unlistenOrganized) unlistenOrganized()
-  if (unlistenFailed) unlistenFailed()
+  if (unlistenOrganized) { unlistenOrganized(); unlistenOrganized = null }
+  if (unlistenFailed) { unlistenFailed(); unlistenFailed = null }
+  // 组件卸载时清理转换会话，防止残留 watcher 持续运行
+  if (isConverting.value) {
+    invoke('stop_conversion').catch(() => {})
+  }
 })
 
 // ─── TP 预设输入 + 失焦保存 ──────────────────────────

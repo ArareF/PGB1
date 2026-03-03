@@ -178,16 +178,16 @@ defineExpose({ mode })
     <template v-else>
       <div class="note-toolbar">
         <button class="note-toolbar-btn" :title="t('note.toolbar.bold')" @mousedown.prevent="insertBold">
-          <strong>B</strong>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 0 8H6z"/><path d="M6 12h9a4 4 0 0 1 0 8H6z"/></svg>
         </button>
         <button class="note-toolbar-btn" :title="t('note.toolbar.italic')" @mousedown.prevent="insertItalic">
-          <em>I</em>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
         </button>
         <button class="note-toolbar-btn" :title="t('note.toolbar.link')" @mousedown.prevent="insertLink">
-          🔗
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </button>
         <button class="note-toolbar-btn" :title="t('note.toolbar.checklist')" @mousedown.prevent="insertChecklist">
-          ☑
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         </button>
       </div>
       <textarea

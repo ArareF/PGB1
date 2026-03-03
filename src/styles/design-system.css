@@ -883,7 +883,8 @@ html {
   border: var(--glass-medium-border);
   border-radius: var(--radius-button);
   background: var(--glass-medium-bg);
-  /* 不用 backdrop-filter，避免与父级 glass 容器 compositor 冲突 */
+  backdrop-filter: blur(var(--glass-medium-blur));
+  -webkit-backdrop-filter: blur(var(--glass-medium-blur));
   color: var(--text-secondary);
   font-size: var(--text-2xl);
   font-family: inherit;

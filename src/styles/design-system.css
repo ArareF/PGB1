@@ -1014,6 +1014,175 @@ html {
   z-index: 300;
 }
 
+/* ─── 笔记系统公共类 ──────────────────────────────────── */
+
+/* 卡片名称旁的笔记小图标（有批注时显示） */
+.note-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  opacity: 0.7;
+}
+
+/* 页面/侧边栏笔记按钮 */
+.note-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: var(--transition-bg);
+  flex-shrink: 0;
+}
+.note-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.note-btn.has-note {
+  color: var(--color-primary);
+}
+/* 副标题旁笔记单行预览（NoteRenderer 强制内联化） */
+.note-preview-inline {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 28px;
+}
+.note-preview-inline .note-rendered {
+  display: inline;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  word-break: normal;
+}
+.note-preview-inline .note-rendered .text-line,
+.note-preview-inline .note-rendered .checkbox-line {
+  display: inline;
+  min-height: unset;
+  gap: 0;
+}
+.note-preview-inline .note-rendered .text-line + .text-line::before,
+.note-preview-inline .note-rendered .text-line + .checkbox-line::before,
+.note-preview-inline .note-rendered .checkbox-line + .text-line::before,
+.note-preview-inline .note-rendered .checkbox-line + .checkbox-line::before {
+  content: ' · ';
+  color: var(--border-medium);
+}
+.note-preview-inline .note-rendered .checkbox-label {
+  display: inline;
+  gap: 2px;
+}
+.note-preview-inline .note-rendered .checkbox-input {
+  vertical-align: middle;
+  margin: 0 2px 0 0;
+}
+
+/* ─── 笔记渲染视图 ─────────────────────────────────────── */
+
+.note-rendered {
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.note-rendered .text-line {
+  min-height: 1.4em;
+}
+
+.note-rendered .note-link {
+  color: var(--color-primary);
+  text-decoration: none;
+  cursor: pointer;
+  word-break: break-all;
+}
+.note-rendered .note-link:hover {
+  text-decoration: underline;
+}
+
+.note-rendered .checkbox-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-1);
+}
+
+.note-rendered .checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  cursor: pointer;
+}
+
+.note-rendered .checkbox-input {
+  margin-top: 2px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.note-rendered .checkbox-text-done {
+  text-decoration: line-through;
+  color: var(--text-tertiary);
+}
+
+/* ─── 笔记工具栏 ──────────────────────────────────────── */
+
+.note-toolbar {
+  display: flex;
+  gap: var(--spacing-1);
+}
+
+.note-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+.note-toolbar-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+}
+
+/* 编辑/关闭按钮（渲染视图右上角） */
+.note-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-1) var(--spacing-2);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+.note-edit-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+}
+
 /* ─── 通用多选复选框（MaterialCard / NormalCard 共用） ──── */
 .card-checkbox-shared {
   position: absolute;

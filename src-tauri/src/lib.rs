@@ -20,6 +20,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             commands::scan_projects,
             commands::scan_tasks,
@@ -91,6 +93,8 @@ pub fn run() {
             commands::set_project_priority,
             commands::set_task_priority,
             commands::get_file_mtime,
+            commands::get_notes,
+            commands::set_note,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main 窗口必须在 tauri.conf.json 中声明");

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
@@ -11,6 +11,7 @@ import { useMaterials } from '../composables/useMaterials'
 import { useSettings } from '../composables/useSettings'
 import type { MaterialInfo } from '../composables/useMaterials'
 import type { FileEntry } from '../composables/useDirectoryFiles'
+import { useNotes, toggleCheckbox } from '../composables/useNotes'
 import { useRubberBandSelect } from '../composables/useRubberBandSelect'
 
 interface PreviewVideoEntry {
@@ -26,6 +27,9 @@ import ImageViewer from '../components/ImageViewer.vue'
 import FileDetailSidebar from '../components/FileDetailSidebar.vue'
 import UploadConfirmDialog from '../components/UploadConfirmDialog.vue'
 import NormalizationDialog from '../components/NormalizationDialog.vue'
+import NoteEditor from '../components/NoteEditor.vue'
+import NoteDialog from '../components/NoteDialog.vue'
+import NoteRenderer from '../components/NoteRenderer.vue'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
@@ -60,9 +64,14 @@ const { projects, loadProjects } = useProjects()
 const { openInExplorer } = useDirectoryFiles()
 const { materials, loading, loadMaterials } = useMaterials()
 const { loadSettings, settings } = useSettings()
+const taskFolderPathRef = ref('')
+const { loadNotes, hasNote, saveNote: saveTaskNote, getNote } = useNotes(taskFolderPathRef)
+const projectPathRef = ref('')
+const { loadNotes: loadProjectNotes, hasNote: hasProjectNote, getNote: getProjectNote, saveNote: saveProjectNote } = useNotes(projectPathRef)
 
 const projectId = route.params.projectId as string
 const taskId = route.params.taskId as string
+const pageNoteKey = 'card:' + taskId.toLowerCase()
 
 let taskFolderPath = ''
 let nextcloudPath = ''
@@ -151,6 +160,17 @@ const draggedPreviewFile = ref<PreviewVideoEntry | null>(null)
 /** 规范化弹窗状态 */
 const showNormalizeDialog = ref(false)
 const showGuide = ref(false)
+
+// 笔记
+const sidebarNoteText = ref('')
+const showPageNote = ref(false)
+const pageNoteText = ref('')
+
+function onPageNoteCheckbox(key: string, lineIndex: number) {
+  const raw = getProjectNote(key) ?? ''
+  const updated = toggleCheckbox(raw, lineIndex)
+  saveProjectNote(key, updated)
+}
 
 /** 拖拽意图检测：mousedown 记录起始位置，mousemove 超过阈值后启动拖拽 */
 const DRAG_THRESHOLD = 5 // 像素
@@ -784,6 +804,28 @@ function closeSidebar() {
   })
 }
 
+// 侧边栏笔记同步
+watch(() => selectedMaterial.value, (m: MaterialInfo | null) => {
+  sidebarNoteText.value = m ? (getNote('card:' + m.name.toLowerCase()) ?? '') : ''
+})
+
+async function onSidebarNoteSave() {
+  const m = selectedMaterial.value
+  if (!m) return
+  await saveTaskNote('card:' + m.name.toLowerCase(), sidebarNoteText.value)
+}
+
+async function onPageNoteSave(text: string) {
+  await saveProjectNote(pageNoteKey, text)
+  showPageNote.value = false
+}
+
+/** 页面笔记 checkbox 切换：静默保存，不关闭弹窗 */
+async function onPageNoteUpdate(text: string) {
+  pageNoteText.value = text
+  await saveProjectNote(pageNoteKey, text)
+}
+
 function onPreviewVideoMouseDown(e: MouseEvent, group: PreviewVideoGroup) {
   if (e.button !== 0) return
   const startX = e.clientX
@@ -1007,9 +1049,14 @@ onMounted(async () => {
   const project = projects.value.find(p => p.name === projectId)
   if (project) {
     taskFolderPath = `${project.path}\\03_Render_VFX\\VFX\\Export\\${taskId}`
+    taskFolderPathRef.value = taskFolderPath
     nextcloudPath = `${project.path}\\03_Render_VFX\\VFX\\nextcloud\\${taskId}`
     nextcloudPreviewPath = `${project.path}\\03_Render_VFX\\VFX\\nextcloud\\preview`
+    projectPathRef.value = project.path
     await loadMaterials(taskFolderPath)
+    await loadNotes()
+    await loadProjectNotes()
+    pageNoteText.value = getProjectNote(pageNoteKey) ?? ''
 
     // 加载 03_preview 视频并分组
     try {
@@ -1074,6 +1121,17 @@ onUnmounted(() => {
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
         </button>
+        <div v-if="hasProjectNote(pageNoteKey)" class="note-preview-inline">
+          <NoteRenderer :text="getProjectNote(pageNoteKey)!" @toggle-checkbox="onPageNoteCheckbox(pageNoteKey, $event)" />
+        </div>
+        <button
+          class="note-btn"
+          :class="{ 'has-note': hasProjectNote(pageNoteKey) }"
+          :title="$t('note.pageNote')"
+          @click="pageNoteText = getProjectNote(pageNoteKey) ?? ''; showPageNote = true"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </button>
         <div class="view-buttons">
           <button
             class="view-btn"
@@ -1135,6 +1193,8 @@ onUnmounted(() => {
                 :material="m"
                 :multi-select="isMultiSelect"
                 :checked="selectedPaths.has(m.path)"
+                :has-note="hasNote('card:' + m.name.toLowerCase())"
+                :note-preview="getNote('card:' + m.name.toLowerCase()) ?? ''"
                 :class="{
                   selected: !isMultiSelect && selectedMaterial?.path === m.path,
                   'multi-checked': isMultiSelect && selectedPaths.has(m.path),
@@ -1155,6 +1215,8 @@ onUnmounted(() => {
               :material="m"
               :multi-select="isMultiSelect"
               :checked="selectedPaths.has(m.path)"
+              :has-note="hasNote('card:' + m.name.toLowerCase())"
+              :note-preview="getNote('card:' + m.name.toLowerCase()) ?? ''"
               :class="{
                 selected: !isMultiSelect && selectedMaterial?.path === m.path,
                 'multi-checked': isMultiSelect && selectedPaths.has(m.path),
@@ -1285,6 +1347,16 @@ onUnmounted(() => {
               <span class="info-value">{{ progressLabel(selectedMaterial.progress) }}</span>
             </div>
           </div>
+        </div>
+
+        <!-- 笔记编辑区 -->
+        <div class="sidebar-section">
+          <p class="section-title">{{ $t('note.note') }}</p>
+          <NoteEditor
+            v-model="sidebarNoteText"
+            @save="onSidebarNoteSave"
+            @toggle-checkbox="(idx: number) => { sidebarNoteText = toggleCheckbox(sidebarNoteText, idx); onSidebarNoteSave() }"
+          />
         </div>
 
         <!-- 其他版本 -->
@@ -1453,6 +1525,15 @@ onUnmounted(() => {
     />
   </Teleport>
 
+  <NoteDialog
+    :show="showPageNote"
+    :title="$t('note.pageNote')"
+    :note="pageNoteText"
+    @save="onPageNoteSave"
+    @update="onPageNoteUpdate"
+    @cancel="showPageNote = false"
+  />
+
   <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.task" @close="showGuide = false" />
 </template>
 
@@ -1477,6 +1558,7 @@ onUnmounted(() => {
   overflow-y: auto;
   padding-top: var(--spacing-4);
 }
+
 
 /* 小标题栏 */
 /* .sub-title-bar, .sub-title → design-system.css 公共类 */

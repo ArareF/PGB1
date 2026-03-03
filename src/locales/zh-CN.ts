@@ -577,12 +577,37 @@ export default {
     attMore: '每个页面不懂的地方，都可以在这里查看指引',
   },
 
+  note: {
+    note: '批注',
+    editNote: '编辑批注',
+    placeholder: '写点笔记...',
+    hoverPreview: '悬停预览',
+    pageNote: '页面笔记',
+    edit: '编辑',
+    close: '关闭',
+    toolbar: {
+      bold: '粗体',
+      italic: '斜体',
+      link: '链接',
+      linkName: '名称',
+      checklist: '清单项',
+    },
+  },
+
   priority: {
     high: '急',
     medium: '高',
     normal: '普',
     low: '停',
     setPriority: '优先度',
+  },
+
+  update: {
+    title: '发现新版本',
+    install: '立即更新',
+    later: '稍后提醒',
+    skip: '跳过此版本',
+    downloading: '正在下载…',
   },
 
 }

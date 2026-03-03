@@ -55,6 +55,8 @@ pub struct ProjectInfo {
     pub app_icon: Option<String>,
     /// 项目优先度（来自 ProjectConfig.priority）
     pub priority: Option<String>,
+    /// 卡片批注（来自 .pgb1_notes.json，key = card:{项目名_lower}）
+    pub note: Option<String>,
 }
 
 /// 返回给前端的任务信息
@@ -78,6 +80,8 @@ pub struct TaskInfo {
     pub video_uploaded: u32,
     /// 任务优先度（来自项目 .pgb1_project.json 的 task_priorities）
     pub priority: Option<String>,
+    /// 卡片批注（来自 .pgb1_notes.json，key = card:{任务名_lower}）
+    pub note: Option<String>,
 }
 
 /// 通用文件/目录条目（普通卡片用）

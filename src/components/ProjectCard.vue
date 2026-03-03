@@ -3,6 +3,7 @@ import { computed, ref, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
+import NoteTooltip from './NoteTooltip.vue'
 import type { ProjectInfo } from '../composables/useProjects'
 
 useI18n()
@@ -31,9 +32,12 @@ async function toggleMenu() {
 
 const emit = defineEmits<{
   click: [project: ProjectInfo]
-  action: [project: ProjectInfo, action: 'rename' | 'deadline' | 'delete']
+  action: [project: ProjectInfo, action: 'rename' | 'deadline' | 'delete' | 'note']
   refresh: []
+  'note-save': [project: ProjectInfo, text: string]
 }>()
+
+const cardRef = ref<HTMLElement | null>(null)
 
 // 分母：无子任务的父任务数 + 所有子任务数（有子任务的父任务本身不计入）
 const totalTaskCount = computed(() => {
@@ -103,6 +107,7 @@ async function setPriority(option: string) {
 
 <template>
   <div
+    ref="cardRef"
     class="project-card glass-subtle"
     @click="$emit('click', project)"
   >
@@ -138,6 +143,7 @@ async function setPriority(option: string) {
           :class="`priority-dot--${project.priority}`"
         />
         <span class="card-name">{{ project.name }}</span>
+        <svg v-if="project.note" class="note-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       </div>
       <span class="card-deadline">
         {{ project.deadline ?? $t('project.noDeadline') }}
@@ -184,6 +190,10 @@ async function setPriority(option: string) {
             </div>
           </div>
           <div class="menu-divider" />
+          <button class="menu-item" @mousedown.prevent="$emit('action', project, 'note')">
+            {{ $t('note.note') }}
+          </button>
+          <div class="menu-divider" />
           <button class="menu-item" @mousedown.prevent="$emit('action', project, 'rename')">
             {{ $t('project.renameProject') }}
           </button>
@@ -196,6 +206,13 @@ async function setPriority(option: string) {
         </div>
       </Transition>
     </Teleport>
+
+    <NoteTooltip
+      v-if="project.note"
+      :target="cardRef"
+      :text="project.note ?? ''"
+      @save="(text: string) => emit('note-save', project, text)"
+    />
   </div>
 </template>
 

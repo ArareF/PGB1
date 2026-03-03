@@ -11,6 +11,7 @@ export interface TaskInfo {
   video_total: number
   video_uploaded: number
   priority: string | null
+  note: string | null
 }
 
 export function useTasks() {

@@ -7,8 +7,11 @@ import { useNavigation } from '../composables/useNavigation'
 import { useProjects } from '../composables/useProjects'
 import { useTasks } from '../composables/useTasks'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
+import { useNotes, toggleCheckbox } from '../composables/useNotes'
 import type { TaskInfo } from '../composables/useTasks'
 import TaskCard from '../components/TaskCard.vue'
+import NoteDialog from '../components/NoteDialog.vue'
+import NoteRenderer from '../components/NoteRenderer.vue'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
@@ -25,6 +28,20 @@ let projectPath = ''
 
 const enabledTasks = ref<string[]>([])
 const showGuide = ref(false)
+
+// 笔记
+const projectPathRef = ref('')
+const noteTarget = ref<TaskInfo | null>(null)
+const showNoteDialog = ref(false)
+const { loadNotes: loadPageNotes, getNote: getPageNote, saveNote: savePageNote, hasNote: hasPageNote } = useNotes(projectPathRef)
+const showPageNote = ref(false)
+const pageNoteText = ref('')
+
+function onPageNoteCheckbox(key: string, lineIndex: number) {
+  const raw = getPageNote(key) ?? ''
+  const updated = toggleCheckbox(raw, lineIndex)
+  savePageNote(key, updated)
+}
 
 // 排序模式（localStorage 持久化）
 const SORT_MODE_KEY = 'pgb1-project-sort'
@@ -47,8 +64,13 @@ const sortedTasks = computed(() => {
   })
 })
 
-// 处理 TaskCard 的优先度 action
-async function onTaskAction(task: TaskInfo, _action: 'priority', value: string | null) {
+// 处理 TaskCard 的 action（优先度 / 笔记）
+async function onTaskAction(task: TaskInfo, action: 'priority' | 'note', value: string | null) {
+  if (action === 'note') {
+    noteTarget.value = task
+    showNoteDialog.value = true
+    return
+  }
   if (!projectPath) return
   await invoke('set_task_priority', {
     projectPath,
@@ -56,6 +78,58 @@ async function onTaskAction(task: TaskInfo, _action: 'priority', value: string |
     priority: value,
   })
   await loadTasks(projectPath)
+}
+
+async function onNoteSave(text: string) {
+  if (!noteTarget.value || !projectPath) return
+  await invoke('set_note', {
+    dirPath: projectPath,
+    key: 'card:' + noteTarget.value.name.toLowerCase(),
+    note: text || null,
+  })
+  showNoteDialog.value = false
+  noteTarget.value = null
+  await loadTasks(projectPath)
+}
+
+/** checkbox 切换：静默保存，不关闭弹窗 */
+async function onNoteUpdate(text: string) {
+  if (!noteTarget.value || !projectPath) return
+  noteTarget.value.note = text || null
+  await invoke('set_note', {
+    dirPath: projectPath,
+    key: 'card:' + noteTarget.value.name.toLowerCase(),
+    note: text || null,
+  })
+}
+
+function closeNoteDialog() {
+  showNoteDialog.value = false
+  noteTarget.value = null
+}
+
+const pageNoteKey = 'card:' + projectId.toLowerCase()
+
+async function onPageNoteSave(text: string) {
+  await savePageNote(pageNoteKey, text)
+  showPageNote.value = false
+}
+
+/** 页面笔记 checkbox 切换：静默保存，不关闭弹窗 */
+async function onPageNoteUpdate(text: string) {
+  pageNoteText.value = text
+  await savePageNote(pageNoteKey, text)
+}
+
+/** tooltip checkbox 切换：直接持久化 */
+async function onTooltipNoteSave(task: TaskInfo, text: string) {
+  if (!projectPath) return
+  task.note = text || null
+  await invoke('set_note', {
+    dirPath: projectPath,
+    key: 'card:' + task.name.toLowerCase(),
+    note: text || null,
+  })
 }
 
 const completedSubtasks = ref<string[]>([])
@@ -122,11 +196,14 @@ onMounted(async () => {
   const project = projects.value.find(p => p.name === projectId)
   if (project) {
     projectPath = project.path
+    projectPathRef.value = project.path
     enabledTasks.value = project.enabled_tasks
     completedSubtasks.value = project.completed_subtasks
     defaultAeFile.value = project.default_ae_file
     refreshNav()   // 更新 active 状态
     await loadTasks(project.path)
+    await loadPageNotes()
+    pageNoteText.value = getPageNote(pageNoteKey) ?? ''
   }
 })
 
@@ -224,6 +301,17 @@ onUnmounted(() => {
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
         </svg>
       </button>
+      <div v-if="hasPageNote(pageNoteKey)" class="note-preview-inline">
+        <NoteRenderer :text="getPageNote(pageNoteKey)!" @toggle-checkbox="onPageNoteCheckbox(pageNoteKey, $event)" />
+      </div>
+      <button
+        class="note-btn"
+        :class="{ 'has-note': hasPageNote(pageNoteKey) }"
+        :title="$t('note.pageNote')"
+        @click="pageNoteText = getPageNote(pageNoteKey) ?? ''; showPageNote = true"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      </button>
       <div class="sort-tabs">
         <button
           v-for="mode in (['default', 'priority'] as const)"
@@ -248,6 +336,7 @@ onUnmounted(() => {
           :subtask-progress="taskSubtaskProgress[task.name.toLowerCase()]"
           @click="openTask"
           @action="onTaskAction"
+          @note-save="onTooltipNoteSave"
         />
       </TransitionGroup>
     </div>
@@ -278,6 +367,24 @@ onUnmounted(() => {
         </div>
       </Transition>
     </Teleport>
+
+    <NoteDialog
+      :show="showNoteDialog"
+      :title="$t('note.editNote')"
+      :note="noteTarget?.note ?? ''"
+      @save="onNoteSave"
+      @update="onNoteUpdate"
+      @cancel="closeNoteDialog"
+    />
+
+    <NoteDialog
+      :show="showPageNote"
+      :title="$t('note.pageNote')"
+      :note="pageNoteText"
+      @save="onPageNoteSave"
+      @update="onPageNoteUpdate"
+      @cancel="showPageNote = false"
+    />
 
     <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.project" @close="showGuide = false" />
   </div>
@@ -346,6 +453,7 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--color-primary-500) 12%, transparent);
   border-color: var(--color-primary-700);
 }
+
 </style>
 
 <style>

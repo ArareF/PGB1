@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import NoteTooltip from './NoteTooltip.vue'
 import type { TaskInfo } from '../composables/useTasks'
 
 const { t } = useI18n()
@@ -17,8 +18,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   click: [task: TaskInfo]
-  action: [task: TaskInfo, action: 'priority', value: string | null]
+  action: [task: TaskInfo, action: 'priority' | 'note', value: string | null]
+  'note-save': [task: TaskInfo, text: string]
 }>()
+
+const cardRef = ref<HTMLElement | null>(null)
 
 // 菜单控制
 const showMenu = ref(false)
@@ -86,6 +90,7 @@ function formatSize(bytes: number): string {
 
 <template>
   <div
+    ref="cardRef"
     class="task-card glass-subtle"
     role="button"
     tabindex="0"
@@ -100,6 +105,7 @@ function formatSize(bytes: number): string {
         :class="`priority-dot--${task.priority}`"
       />
       <span class="task-name">{{ task.name }}</span>
+      <svg v-if="task.note" class="note-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
     </div>
 
     <div class="task-bottom">
@@ -136,9 +142,20 @@ function formatSize(bytes: number): string {
             >{{ $t(`priority.${p}`) }}</button>
           </div>
         </div>
+        <div class="menu-divider" />
+        <button class="menu-item" @mousedown.prevent="emit('action', task, 'note', null)">
+          {{ $t('note.note') }}
+        </button>
       </div>
     </Transition>
     </Teleport>
+
+    <NoteTooltip
+      v-if="task.note"
+      :target="cardRef"
+      :text="task.note ?? ''"
+      @save="(text: string) => emit('note-save', task, text)"
+    />
   </div>
 </template>
 

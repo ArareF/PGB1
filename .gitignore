@@ -41,3 +41,9 @@ psd_test/
 debug-clock.mjs
 psd_debug.pdb
 *.pdb
+
+# Windows 快捷方式
+*.lnk
+
+# 站点目录（独立部署，不入仓库）
+website/

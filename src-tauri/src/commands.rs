@@ -82,6 +82,11 @@ pub fn scan_projects(root_dir: String) -> Result<Vec<ProjectInfo>, String> {
         // 查找 01_Preproduction/ 下名字含 appicon 的文件（大小写不敏感）
         let app_icon = find_app_icon(&path.join("01_Preproduction"));
 
+        // 读取笔记文件
+        let project_note = read_notes_file(&path)
+            .get(&format!("card:{}", project_name.to_lowercase()))
+            .cloned();
+
         projects.push(ProjectInfo {
             name: project_name,
             path: path.to_string_lossy().to_string(),
@@ -89,6 +94,7 @@ pub fn scan_projects(root_dir: String) -> Result<Vec<ProjectInfo>, String> {
             default_ae_file: config.default_ae_file,
             app_icon,
             priority: config.priority,
+            note: project_note,
             tasks,
             task_count,
             enabled_tasks,
@@ -135,6 +141,9 @@ pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
             .unwrap_or_default()
     };
 
+    // 读取笔记文件（一次读取，复用给所有任务）
+    let notes_map = read_notes_file(project_dir);
+
     let entries =
         fs::read_dir(&export_path).map_err(|e| format!("无法读取 Export 目录: {}", e))?;
 
@@ -175,6 +184,7 @@ pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
         let size_bytes = calc_dir_size(&nc_task_dir);
 
         let priority = task_priorities.get(&task_name.to_lowercase()).cloned();
+        let note = notes_map.get(&format!("card:{}", task_name.to_lowercase())).cloned();
         tasks.push(TaskInfo {
             name: task_name,
             path: path.to_string_lossy().to_string(),
@@ -185,6 +195,7 @@ pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
             video_total,
             video_uploaded,
             priority,
+            note,
         });
     }
 
@@ -967,7 +978,8 @@ fn find_webp_in_proto_subdirs(dir: &Path, base_name: &str, sub_name: &str, prefi
                             let fpath = file.path();
                             let stem = fpath.file_stem().and_then(|s| s.to_str()).unwrap_or("");
                             let ext = fpath.extension().and_then(|e| e.to_str()).unwrap_or("");
-                            if stem == base_name && ext == "webp" {
+                            // multipack 支持：TexturePacker --multipack 输出 name-0.webp, name-1.webp
+                            if (stem == base_name || stem.starts_with(&format!("{}-", base_name))) && ext == "webp" {
                                 return true;
                             }
                         }
@@ -1226,7 +1238,8 @@ fn find_webp_in_subdirs(dir: &Path, base_name: &str, prefix: &str) -> bool {
                         let fpath = file.path();
                         let stem = fpath.file_stem().and_then(|s| s.to_str()).unwrap_or("");
                         let ext = fpath.extension().and_then(|e| e.to_str()).unwrap_or("");
-                        if stem == base_name && ext == "webp" {
+                        // multipack 支持：TexturePacker --multipack 输出 name-0.webp, name-1.webp
+                        if (stem == base_name || stem.starts_with(&format!("{}-", base_name))) && ext == "webp" {
                             return true;
                         }
                     }
@@ -3262,6 +3275,7 @@ pub fn create_project(
         default_ae_file: None,
         app_icon: None,
         priority: None,
+        note: None,
     })
 }
 
@@ -5969,6 +5983,7 @@ pub fn rename_project(project_path: String, new_name: String) -> Result<ProjectI
         default_ae_file: config.default_ae_file,
         app_icon,
         priority: config.priority,
+        note: None,
     })
 }
 
@@ -6181,5 +6196,50 @@ pub fn set_task_priority(project_path: String, task_name: String, priority: Opti
     let json = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("序列化失败: {}", e))?;
     fs::write(&config_path, json).map_err(|e| format!("写入失败: {}", e))?;
+    Ok(())
+}
+
+// ─── 笔记系统 ─────────────────────────────────────────────
+
+/// 读取目录下的 .pgb1_notes.json，防御性解析，文件不存在或格式错误返回空 Map
+fn read_notes_file(dir: &Path) -> std::collections::HashMap<String, String> {
+    let notes_path = dir.join(".pgb1_notes.json");
+    fs::read_to_string(&notes_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<std::collections::HashMap<String, String>>(&s).ok())
+        .unwrap_or_default()
+}
+
+/// 获取目录下所有笔记
+#[tauri::command]
+pub fn get_notes(dir_path: String) -> Result<std::collections::HashMap<String, String>, String> {
+    let dir = Path::new(&dir_path);
+    Ok(read_notes_file(dir))
+}
+
+/// 设置/删除单条笔记（note 为 None 或空字符串时删除该 key，Map 为空时删除文件）
+#[tauri::command]
+pub fn set_note(dir_path: String, key: String, note: Option<String>) -> Result<(), String> {
+    let dir = Path::new(&dir_path);
+    let notes_path = dir.join(".pgb1_notes.json");
+    let mut map = read_notes_file(dir);
+
+    match note {
+        Some(text) if !text.is_empty() => { map.insert(key, text); }
+        _ => { map.remove(&key); }
+    }
+
+    if map.is_empty() {
+        // Map 为空时删除文件（避免留空文件）
+        if notes_path.exists() {
+            let _ = fs::remove_file(&notes_path);
+        }
+    } else {
+        let json = serde_json::to_string_pretty(&map)
+            .map_err(|e| format!("序列化笔记失败: {}", e))?;
+        fs::write(&notes_path, json)
+            .map_err(|e| format!("写入笔记失败: {}", e))?;
+    }
+
     Ok(())
 }

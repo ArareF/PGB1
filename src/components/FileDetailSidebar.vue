@@ -5,6 +5,8 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
+import { toggleCheckbox } from '../composables/useNotes'
+import NoteEditor from './NoteEditor.vue'
 import ImageViewer from './ImageViewer.vue'
 
 // ─── 视频播放控制 ─────────────────────────────────────
@@ -106,6 +108,8 @@ const props = defineProps<{
   versions?: FileEntry[]
   /** 是否显示重命名/删除按钮（游戏介绍/项目素材页使用；预览视频侧边栏不显示） */
   allowActions?: boolean
+  /** 笔记文本（有值时显示编辑区） */
+  note?: string
 }>()
 
 const emit = defineEmits<{
@@ -116,10 +120,18 @@ const emit = defineEmits<{
   rename: [newName: string]
   /** 用户确认删除 */
   delete: []
+  /** 保存笔记 */
+  'save-note': [text: string]
 }>()
 
 const { openInExplorer } = useDirectoryFiles()
 const { t } = useI18n()
+
+// 笔记编辑
+const noteText = ref('')
+watch([() => props.file, () => props.note], () => {
+  noteText.value = props.note ?? ''
+})
 
 /** 从文件完整路径提取所在目录 */
 function getFolderPath(filePath: string): string {
@@ -450,6 +462,16 @@ function startResize(e: MouseEvent) {
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- 笔记编辑区 -->
+          <div v-if="note != null" class="sidebar-section">
+            <p class="section-title">{{ $t('note.note') }}</p>
+            <NoteEditor
+              v-model="noteText"
+              @save="emit('save-note', noteText)"
+              @toggle-checkbox="(idx: number) => { noteText = toggleCheckbox(noteText, idx); emit('save-note', noteText) }"
+            />
           </div>
 
         </div>

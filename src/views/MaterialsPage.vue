@@ -7,7 +7,10 @@ import { startDrag } from '@crabnebula/tauri-plugin-drag'
 import { useNavigation } from '../composables/useNavigation'
 import { useProjects } from '../composables/useProjects'
 import { useDirectoryFiles, type FileEntry } from '../composables/useDirectoryFiles'
+import { useNotes, toggleCheckbox } from '../composables/useNotes'
 import NormalCard from '../components/NormalCard.vue'
+import NoteDialog from '../components/NoteDialog.vue'
+import NoteRenderer from '../components/NoteRenderer.vue'
 import FileDetailSidebar from '../components/FileDetailSidebar.vue'
 import { useRubberBandSelect } from '../composables/useRubberBandSelect'
 import { useI18n } from 'vue-i18n'
@@ -43,6 +46,21 @@ const groups = ref<MaterialGroup[]>([])
 const loading = ref(false)
 
 let projectPath = ''
+const projectPathRef = ref('')
+
+// 笔记（主标题级，key 'page:materials'）
+const { loadNotes: loadPageNotes, hasNote: hasPageNote, getNote: getPageNote, saveNote: savePageNote } = useNotes(projectPathRef)
+const showPageNote = ref(false)
+const pageNoteText = ref('')
+
+function onPageNoteCheckbox(key: string, lineIndex: number) {
+  const raw = getPageNote(key) ?? ''
+  const updated = toggleCheckbox(raw, lineIndex)
+  savePageNote(key, updated)
+}
+
+// 各分组笔记缓存：dirPath → notes map
+const groupNotesMap = ref<Record<string, Record<string, string>>>({})
 
 /** 侧边栏选中文件 */
 const selectedFile = ref<FileEntry | null>(null)
@@ -129,6 +147,57 @@ function onMainClick(e: MouseEvent) {
   }
 }
 
+/** 查找文件所在分组 dirPath */
+function findGroupDirForFile(filePath: string): string | null {
+  for (const g of groups.value) {
+    if (g.files.some(f => f.path === filePath)) return g.dirPath
+    if (g.subGroups) {
+      for (const sg of g.subGroups) {
+        if (sg.files.some(f => f.path === filePath)) return sg.dirPath
+      }
+    }
+  }
+  return null
+}
+
+function groupHasNote(dirPath: string, fileName: string): boolean {
+  return !!(groupNotesMap.value[dirPath]?.['card:' + fileName.toLowerCase()])
+}
+
+function groupNotePreview(dirPath: string, fileName: string): string {
+  return groupNotesMap.value[dirPath]?.['card:' + fileName.toLowerCase()] ?? ''
+}
+
+function getFileNote(file: FileEntry): string | undefined {
+  const dir = findGroupDirForFile(file.path)
+  if (!dir) return undefined
+  return groupNotesMap.value[dir]?.['card:' + file.name.toLowerCase()] ?? undefined
+}
+
+async function onSidebarNoteSave(text: string) {
+  const file = selectedFile.value
+  if (!file) return
+  const dir = findGroupDirForFile(file.path)
+  if (!dir) return
+  await invoke('set_note', { dirPath: dir, key: 'card:' + file.name.toLowerCase(), note: text || null })
+  // 刷新该分组笔记缓存
+  try {
+    const notes = await invoke<Record<string, string>>('get_notes', { dirPath: dir })
+    groupNotesMap.value = { ...groupNotesMap.value, [dir]: notes }
+  } catch { /* 忽略 */ }
+}
+
+async function onPageNoteSave(text: string) {
+  await savePageNote('page:materials', text)
+  showPageNote.value = false
+}
+
+/** 页面笔记 checkbox 切换：静默保存，不关闭弹窗 */
+async function onPageNoteUpdate(text: string) {
+  pageNoteText.value = text
+  await savePageNote('page:materials', text)
+}
+
 async function onSidebarRename(newName: string) {
   const file = selectedFile.value
   if (!file) return
@@ -212,6 +281,22 @@ async function refreshAll() {
 
   groups.value = result
   loading.value = false
+
+  // 加载各分组笔记
+  const notesMap: Record<string, Record<string, string>> = {}
+  for (const g of result) {
+    try {
+      notesMap[g.dirPath] = await invoke<Record<string, string>>('get_notes', { dirPath: g.dirPath })
+    } catch { notesMap[g.dirPath] = {} }
+    if (g.subGroups) {
+      for (const sg of g.subGroups) {
+        try {
+          notesMap[sg.dirPath] = await invoke<Record<string, string>>('get_notes', { dirPath: sg.dirPath })
+        } catch { notesMap[sg.dirPath] = {} }
+      }
+    }
+  }
+  groupNotesMap.value = notesMap
 }
 
 // ─── 拖入/拖出 ──────────────────────────────────────
@@ -303,7 +388,10 @@ onMounted(async () => {
   const project = projects.value.find(p => p.name === projectId)
   if (project) {
     projectPath = project.path
+    projectPathRef.value = project.path
     await refreshAll()
+    await loadPageNotes()
+    pageNoteText.value = getPageNote('page:materials') ?? ''
   }
 
   // 监听外部文件拖入
@@ -339,6 +427,22 @@ onUnmounted(() => {
     <!-- 固定小标题栏 -->
     <div class="sub-title-bar">
       <span class="sub-title">{{ $t('materialsPage.materialFolders') }}</span>
+      <div v-if="hasPageNote('page:materials')" class="note-preview-inline">
+        <NoteRenderer :text="getPageNote('page:materials')!" @toggle-checkbox="onPageNoteCheckbox('page:materials', $event)" />
+      </div>
+      <button
+        class="note-btn"
+        :class="{ 'has-note': hasPageNote('page:materials') }"
+        :title="$t('note.pageNote')"
+        @click="pageNoteText = getPageNote('page:materials') ?? ''; showPageNote = true"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>
+      </button>
       <div class="view-buttons">
         <button class="view-btn" @click="refreshAll">{{ $t('common.refresh') }}</button>
         <button
@@ -398,6 +502,8 @@ onUnmounted(() => {
               :file="file"
               :multi-select="isMultiSelect"
               :checked="selectedPaths.has(file.path)"
+              :has-note="groupHasNote(group.dirPath, file.name)"
+              :note-preview="groupNotePreview(group.dirPath, file.name)"
               :class="{ selected: !isMultiSelect && selectedFile?.path === file.path, 'multi-checked': isMultiSelect && selectedPaths.has(file.path) }"
               @click="onCardClick(file)"
               @mousedown="onCardMouseDown($event, file)"
@@ -433,6 +539,8 @@ onUnmounted(() => {
                   :file="file"
                   :multi-select="isMultiSelect"
                   :checked="selectedPaths.has(file.path)"
+                  :has-note="groupHasNote(sub.dirPath, file.name)"
+                  :note-preview="groupNotePreview(sub.dirPath, file.name)"
                   :class="{ selected: !isMultiSelect && selectedFile?.path === file.path, 'multi-checked': isMultiSelect && selectedPaths.has(file.path) }"
                   @click="onCardClick(file)"
                   @mousedown="onCardMouseDown($event, file)"
@@ -449,10 +557,12 @@ onUnmounted(() => {
       :file="selectedFile"
       :width-percent="sidebarWidth"
       allow-actions
+      :note="selectedFile ? getFileNote(selectedFile) : undefined"
       @close="selectedFile = null"
       @update:width-percent="sidebarWidth = $event"
       @rename="onSidebarRename"
       @delete="onSidebarDelete"
+      @save-note="onSidebarNoteSave"
     />
   </div>
 
@@ -469,6 +579,15 @@ onUnmounted(() => {
       }"
     />
   </Teleport>
+
+  <NoteDialog
+    :show="showPageNote"
+    :title="$t('note.pageNote')"
+    :note="pageNoteText"
+    @save="onPageNoteSave"
+    @update="onPageNoteUpdate"
+    @cancel="showPageNote = false"
+  />
 
   <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.materials" @close="showGuide = false" />
 </template>
@@ -599,4 +718,5 @@ onUnmounted(() => {
   color: var(--text-primary);
   border-color: var(--border-heavy);
 }
+
 </style>

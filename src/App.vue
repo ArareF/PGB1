@@ -7,6 +7,8 @@ import { useScale } from './composables/useScale'
 import { useSettings } from './composables/useSettings'
 import MainLayout from './layouts/MainLayout.vue'
 import OnboardingDialog from './components/OnboardingDialog.vue'
+import UpdateDialog from './components/UpdateDialog.vue'
+import { useUpdater } from './composables/useUpdater'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,6 +32,12 @@ onMounted(async () => {
   // 首次启动检测
   showOnboarding.value = !s?.general?.onboarded
   ready.value = true
+
+  // 非首次启动时，延迟检查更新
+  if (!showOnboarding.value) {
+    const { scheduleCheck } = useUpdater()
+    scheduleCheck()
+  }
 })
 
 async function onOnboardingComplete(mode: 'off' | 'auto' | 'record_only') {
@@ -61,5 +69,6 @@ const isPopupRoute = computed(() => {
   <template v-else-if="ready">
     <OnboardingDialog v-if="showOnboarding" :show="true" @complete="onOnboardingComplete($event)" />
     <MainLayout v-else />
+    <UpdateDialog />
   </template>
 </template>

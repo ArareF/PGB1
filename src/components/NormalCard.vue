@@ -3,12 +3,17 @@ import { ref, computed, onMounted } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
+import NoteTooltip from './NoteTooltip.vue'
 
 const props = defineProps<{
   file: FileEntry
   multiSelect?: boolean
   checked?: boolean
+  hasNote?: boolean
+  notePreview?: string
 }>()
+
+const cardRef = ref<HTMLElement | null>(null)
 
 defineEmits<{
   click: [file: FileEntry]
@@ -60,6 +65,7 @@ onMounted(async () => {
 
 <template>
   <button
+    ref="cardRef"
     class="normal-card glass-subtle"
     :data-path="file.path"
     @click="$emit('click', file)"
@@ -132,8 +138,17 @@ onMounted(async () => {
 
     <!-- 文件信息 -->
     <div class="card-info">
-      <span class="card-name">{{ file.name }}</span>
+      <div class="card-name-row">
+        <span class="card-name">{{ file.name }}</span>
+        <svg v-if="hasNote" class="note-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      </div>
     </div>
+
+    <NoteTooltip
+      v-if="hasNote"
+      :target="cardRef"
+      :text="notePreview ?? ''"
+    />
   </button>
 </template>
 
@@ -207,6 +222,13 @@ onMounted(async () => {
   flex-direction: column;
   gap: var(--spacing-3);
   padding-top: var(--card-material-gap);
+  min-width: 0;
+}
+
+.card-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
   min-width: 0;
 }
 

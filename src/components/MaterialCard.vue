@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useSettings } from '../composables/useSettings'
 import type { MaterialInfo } from '../composables/useMaterials'
 import SequencePreview from './SequencePreview.vue'
+import NoteTooltip from './NoteTooltip.vue'
 
 const { t } = useI18n()
 
@@ -14,7 +16,11 @@ defineProps<{
   multiSelect?: boolean
   checked?: boolean
   scaleLabel?: string   // 缩放标注，有值时替换右下角 size-tag
+  hasNote?: boolean
+  notePreview?: string
 }>()
+
+const cardRef = ref<HTMLElement | null>(null)
 
 defineEmits<{
   click: [material: MaterialInfo]
@@ -44,6 +50,7 @@ function progressLabel(progress: string): string {
 
 <template>
   <button
+    ref="cardRef"
     class="material-card glass-subtle"
     :data-path="material.path"
     @click="$emit('click', material)"
@@ -93,7 +100,10 @@ function progressLabel(progress: string): string {
 
     <!-- 文件信息 -->
     <div class="card-info">
-      <span class="card-name" :title="material.file_name">{{ material.name.includes('/') ? material.name.split('/')[1] : material.name }}</span>
+      <div class="card-name-row">
+        <span class="card-name" :title="material.file_name">{{ material.name.includes('/') ? material.name.split('/')[1] : material.name }}</span>
+        <svg v-if="hasNote" class="note-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      </div>
       <div class="card-tags">
         <span class="progress-tag" :class="`progress-${material.progress}`">
           {{ progressLabel(material.progress) }}
@@ -101,6 +111,12 @@ function progressLabel(progress: string): string {
         <span class="size-tag">{{ formatSize(material.size_bytes) }}</span>
       </div>
     </div>
+
+    <NoteTooltip
+      v-if="hasNote"
+      :target="cardRef"
+      :text="notePreview ?? ''"
+    />
   </button>
 </template>
 
@@ -182,6 +198,13 @@ function progressLabel(progress: string): string {
   padding-top: var(--card-material-gap);
   min-width: 0;
   min-height: 56px;
+}
+
+.card-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-width: 0;
 }
 
 .card-name {

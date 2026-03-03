@@ -7,7 +7,10 @@ import { startDrag } from '@crabnebula/tauri-plugin-drag'
 import { useNavigation } from '../composables/useNavigation'
 import { useProjects } from '../composables/useProjects'
 import { useDirectoryFiles, type FileEntry } from '../composables/useDirectoryFiles'
+import { useNotes, toggleCheckbox } from '../composables/useNotes'
 import NormalCard from '../components/NormalCard.vue'
+import NoteDialog from '../components/NoteDialog.vue'
+import NoteRenderer from '../components/NoteRenderer.vue'
 import FileDetailSidebar from '../components/FileDetailSidebar.vue'
 import { useRubberBandSelect } from '../composables/useRubberBandSelect'
 import { useI18n } from 'vue-i18n'
@@ -24,7 +27,19 @@ const { files, loading, loadFiles, openInExplorer } = useDirectoryFiles()
 const projectId = route.params.projectId as string
 
 let dirPath = ''
+const dirPathRef = ref('')
 const showGuide = ref(false)
+
+// 笔记
+const { loadNotes, hasNote, saveNote, getNote } = useNotes(dirPathRef)
+const showPageNote = ref(false)
+const pageNoteText = ref('')
+
+function onPageNoteCheckbox(key: string, lineIndex: number) {
+  const raw = getNote(key) ?? ''
+  const updated = toggleCheckbox(raw, lineIndex)
+  saveNote(key, updated)
+}
 
 /** 侧边栏选中文件 */
 const selectedFile = ref<FileEntry | null>(null)
@@ -100,6 +115,23 @@ function onMainClick(e: MouseEvent) {
   if (!(e.target as HTMLElement).closest('.normal-card')) {
     selectedFile.value = null
   }
+}
+
+async function onPageNoteSave(text: string) {
+  await saveNote('page', text)
+  showPageNote.value = false
+}
+
+/** 页面笔记 checkbox 切换：静默保存，不关闭弹窗 */
+async function onPageNoteUpdate(text: string) {
+  pageNoteText.value = text
+  await saveNote('page', text)
+}
+
+async function onSidebarNoteSave(text: string) {
+  const file = selectedFile.value
+  if (!file) return
+  await saveNote('card:' + file.name.toLowerCase(), text)
 }
 
 async function onSidebarRename(newName: string) {
@@ -227,9 +259,12 @@ onMounted(async () => {
   const project = projects.value.find(p => p.name === projectId)
   if (project) {
     dirPath = `${project.path}\\00_Game Design & Doc`
+    dirPathRef.value = dirPath
     await loadFiles(dirPath)
     await scanGameExe()
     if (gameExePath.value) refreshNav()
+    await loadNotes()
+    pageNoteText.value = getNote('page') ?? ''
   }
 
   // 监听外部文件拖入
@@ -269,6 +304,17 @@ onUnmounted(() => {
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
         </svg>
       </button>
+      <div v-if="hasNote('page')" class="note-preview-inline">
+        <NoteRenderer :text="getNote('page')!" @toggle-checkbox="onPageNoteCheckbox('page', $event)" />
+      </div>
+      <button
+        class="note-btn"
+        :class="{ 'has-note': hasNote('page') }"
+        :title="$t('note.pageNote')"
+        @click="pageNoteText = getNote('page') ?? ''; showPageNote = true"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      </button>
       <div class="view-buttons">
         <button class="view-btn" @click="() => { if (dirPath) loadFiles(dirPath) }">{{ $t('common.refresh') }}</button>
         <button
@@ -307,6 +353,8 @@ onUnmounted(() => {
           :file="file"
           :multi-select="isMultiSelect"
           :checked="selectedPaths.has(file.path)"
+          :has-note="hasNote('card:' + file.name.toLowerCase())"
+          :note-preview="getNote('card:' + file.name.toLowerCase()) ?? ''"
           :class="{
             selected: !isMultiSelect && selectedFile?.path === file.path,
             'multi-checked': isMultiSelect && selectedPaths.has(file.path),
@@ -322,10 +370,12 @@ onUnmounted(() => {
       :file="selectedFile"
       :width-percent="sidebarWidth"
       allow-actions
+      :note="selectedFile ? (getNote('card:' + selectedFile.name.toLowerCase()) ?? undefined) : undefined"
       @close="selectedFile = null"
       @update:width-percent="sidebarWidth = $event"
       @rename="onSidebarRename"
       @delete="onSidebarDelete"
+      @save-note="onSidebarNoteSave"
     />
 
     <!-- 拖入视觉反馈 -->
@@ -354,6 +404,15 @@ onUnmounted(() => {
       }"
     />
   </Teleport>
+
+  <NoteDialog
+    :show="showPageNote"
+    :title="$t('note.pageNote')"
+    :note="pageNoteText"
+    @save="onPageNoteSave"
+    @update="onPageNoteUpdate"
+    @cancel="showPageNote = false"
+  />
 
   <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.gameIntro" @close="showGuide = false" />
 </template>
@@ -453,4 +512,5 @@ onUnmounted(() => {
   color: var(--text-primary);
   border-color: var(--border-heavy);
 }
+
 </style>

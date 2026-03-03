@@ -545,11 +545,36 @@ export default {
     attMore: 'You can find a page guide here whenever you need help',
   },
 
+  note: {
+    note: 'Note',
+    editNote: 'Edit Note',
+    placeholder: 'Write a note...',
+    hoverPreview: 'Hover preview',
+    pageNote: 'Page Note',
+    edit: 'Edit',
+    close: 'Close',
+    toolbar: {
+      bold: 'Bold',
+      italic: 'Italic',
+      link: 'Link',
+      linkName: 'name',
+      checklist: 'Checklist',
+    },
+  },
+
   priority: {
     high: 'Urgent',
     medium: 'High',
     normal: 'Normal',
     low: 'Hold',
     setPriority: 'Priority',
+  },
+
+  update: {
+    title: 'Update Available',
+    install: 'Update Now',
+    later: 'Remind Later',
+    skip: 'Skip This Version',
+    downloading: 'Downloading…',
   },
 }

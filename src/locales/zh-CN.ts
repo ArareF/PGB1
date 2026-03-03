@@ -608,6 +608,10 @@ export default {
     later: '稍后提醒',
     skip: '跳过此版本',
     downloading: '正在下载…',
+    checkUpdate: '检查更新',
+    checking: '正在检查…',
+    isLatest: '已是最新版本',
+    checkFailed: '检查失败，点击重试',
   },
 
 }

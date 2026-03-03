@@ -11,8 +11,11 @@ import { useScale } from '../composables/useScale'
 import type { AppSettings } from '../composables/useSettings'
 import { reloadConfig as reloadStatusBarConfig } from '../composables/useStatusBar'
 import { APP_NAME, APP_VERSION, APP_DEVELOPER } from '../config/app'
+import { useUpdater } from '../composables/useUpdater'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
+
+const { checking, checkResult, manualCheck } = useUpdater()
 
 const route = useRoute()
 const router = useRouter()
@@ -628,6 +631,12 @@ async function onLanguageChange(e: Event) {
               <span class="about-value">{{ APP_DEVELOPER }}</span>
             </div>
           </div>
+          <button class="check-update-btn" :disabled="checking" @click="manualCheck">
+            <template v-if="checking">{{ $t('update.checking') }}</template>
+            <template v-else-if="checkResult === 'latest'">{{ $t('update.isLatest') }}</template>
+            <template v-else-if="checkResult === 'error'">{{ $t('update.checkFailed') }}</template>
+            <template v-else>{{ $t('update.checkUpdate') }}</template>
+          </button>
         </div>
       </main>
     </div>
@@ -918,6 +927,28 @@ async function onLanguageChange(e: Event) {
 .about-value {
   font-size: var(--text-sm);
   color: var(--text-primary);
+}
+
+.check-update-btn {
+  margin-top: var(--spacing-4);
+  padding: var(--spacing-2) var(--spacing-5);
+  border-radius: var(--radius-button);
+  border: 1px solid var(--border-medium);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+.check-update-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--color-primary);
+}
+.check-update-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* 测试打卡按钮 */

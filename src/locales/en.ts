@@ -576,5 +576,9 @@ export default {
     later: 'Remind Later',
     skip: 'Skip This Version',
     downloading: 'Downloading…',
+    checkUpdate: 'Check for Updates',
+    checking: 'Checking…',
+    isLatest: 'You are up to date',
+    checkFailed: 'Check failed, click to retry',
   },
 }

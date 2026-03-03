@@ -12,6 +12,9 @@ const downloading = ref(false)
 const progress = ref(0)         // 0–100
 const totalBytes = ref(0)
 const downloadedBytes = ref(0)
+const checking = ref(false)
+/** 手动检查结果：null=未检查, 'latest'=已是最新, 'error'=检查失败 */
+const checkResult = ref<'latest' | 'error' | null>(null)
 
 let pendingUpdate: Update | null = null
 
@@ -36,6 +39,32 @@ export function useUpdater() {
         console.warn('检查更新失败:', e)
       }
     }, CHECK_DELAY_MS)
+  }
+
+  /** 手动检查更新（忽略已跳过版本，清除 skipped 记录） */
+  async function manualCheck() {
+    checking.value = true
+    checkResult.value = null
+    localStorage.removeItem(SKIPPED_VERSION_KEY)
+    try {
+      const update = await check()
+      if (!update) {
+        checkResult.value = 'latest'
+        checking.value = false
+        return
+      }
+      pendingUpdate = update
+      updateInfo.value = {
+        version: update.version,
+        body: update.body ?? '',
+      }
+      updateAvailable.value = true
+      checking.value = false
+    } catch (e) {
+      console.error('检查更新失败:', e)
+      checkResult.value = 'error'
+      checking.value = false
+    }
   }
 
   /** 下载并安装更新 */
@@ -87,7 +116,10 @@ export function useUpdater() {
     updateInfo,
     downloading,
     progress,
+    checking,
+    checkResult,
     scheduleCheck,
+    manualCheck,
     installUpdate,
     skipVersion,
     dismiss,

@@ -35,7 +35,7 @@ const {
             <svg class="version-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 12h14m-4-4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span class="version-new">{{ updateInfo?.version }}</span>
+            <span class="version-new">V{{ updateInfo?.version }}</span>
           </div>
 
           <!-- 更新说明 -->
@@ -45,23 +45,25 @@ const {
 
           <!-- 下载进度 -->
           <div v-if="downloading" class="update-progress">
-            <div class="progress-bar">
-              <div class="progress-fill" :style="{ width: progress + '%' }"></div>
+            <div class="update-progress-bar">
+              <div class="update-progress-fill" :style="{ width: progress + '%' }"></div>
             </div>
-            <span class="progress-text">{{ t('update.downloading') }} {{ progress }}%</span>
+            <span class="update-progress-text">{{ t('update.downloading') }} {{ progress }}%</span>
           </div>
 
           <!-- 按钮区 -->
           <div v-if="!downloading" class="update-actions">
-            <button class="btn-update" @click="installUpdate">
+            <button class="update-btn-primary" @click="installUpdate">
               {{ t('update.install') }}
             </button>
-            <button class="btn-secondary" @click="dismiss">
-              {{ t('update.later') }}
-            </button>
-            <button class="btn-skip" @click="skipVersion">
-              {{ t('update.skip') }}
-            </button>
+            <div class="update-btn-row">
+              <button class="update-btn-secondary" @click="dismiss">
+                {{ t('update.later') }}
+              </button>
+              <button class="update-btn-skip" @click="skipVersion">
+                {{ t('update.skip') }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -81,18 +83,18 @@ const {
 }
 
 .update-dialog {
-  width: 380px;
-  padding: var(--space-xl);
+  width: 360px;
+  padding: var(--spacing-6);
   border-radius: var(--radius-xl);
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
+  gap: var(--spacing-4);
 }
 
 .update-header {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--spacing-2);
 }
 
 .update-icon {
@@ -104,25 +106,25 @@ const {
 
 .update-header h2 {
   margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
   color: var(--text-primary);
 }
 
 .update-versions {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--spacing-2);
   justify-content: center;
-  padding: var(--space-md);
+  padding: var(--spacing-3);
   border-radius: var(--radius-md);
-  background: var(--bg-subtle);
+  background: var(--glass-subtle-bg);
 }
 
 .version-current {
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   color: var(--text-tertiary);
-  font-family: var(--font-family-mono);
+  font-family: var(--font-mono);
 }
 
 .version-arrow {
@@ -133,46 +135,50 @@ const {
 }
 
 .version-new {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
   color: var(--color-primary);
-  font-family: var(--font-family-mono);
+  font-family: var(--font-mono);
 }
 
 .update-body {
   max-height: 160px;
   overflow-y: auto;
-  padding: var(--space-sm) var(--space-md);
+  padding: var(--spacing-2) var(--spacing-3);
   border-radius: var(--radius-sm);
-  background: var(--bg-subtle);
-  font-size: var(--font-size-sm);
+  background: var(--glass-subtle-bg);
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   line-height: 1.6;
   white-space: pre-line;
 }
 
+.update-body p {
+  margin: 0;
+}
+
 .update-progress {
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
+  gap: var(--spacing-1);
 }
 
-.progress-bar {
+.update-progress-bar {
   height: 6px;
-  border-radius: 3px;
-  background: var(--bg-subtle);
+  border-radius: var(--radius-full);
+  background: var(--glass-subtle-bg);
   overflow: hidden;
 }
 
-.progress-fill {
+.update-progress-fill {
   height: 100%;
-  border-radius: 3px;
+  border-radius: var(--radius-full);
   background: var(--color-primary);
   transition: width var(--duration-normal) var(--ease-out);
 }
 
-.progress-text {
-  font-size: var(--font-size-xs);
+.update-progress-text {
+  font-size: var(--text-xs);
   color: var(--text-tertiary);
   text-align: center;
 }
@@ -180,51 +186,63 @@ const {
 .update-actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--spacing-3);
 }
 
-.btn-update {
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-md);
+.update-btn-primary {
+  padding: var(--spacing-2) var(--spacing-4);
+  border-radius: var(--radius-button);
   border: none;
   background: var(--color-primary);
   color: #fff;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  font-family: inherit;
   cursor: pointer;
   transition: opacity var(--duration-fast);
 }
 
-.btn-update:hover {
+.update-btn-primary:hover {
   opacity: 0.9;
 }
 
-.btn-secondary {
-  padding: var(--space-xs) var(--space-md);
-  border-radius: var(--radius-md);
+.update-btn-row {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.update-btn-secondary {
+  flex: 1;
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-button);
   border: 1px solid var(--border-light);
   background: transparent;
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
+  font-family: inherit;
   cursor: pointer;
   transition: background var(--duration-fast);
 }
 
-.btn-secondary:hover {
-  background: var(--bg-subtle);
+.update-btn-secondary:hover {
+  background: var(--bg-hover);
 }
 
-.btn-skip {
-  padding: var(--space-xs);
+.update-btn-skip {
+  flex: 1;
+  padding: var(--spacing-2) var(--spacing-3);
   border: none;
+  border-radius: var(--radius-button);
   background: transparent;
   color: var(--text-tertiary);
-  font-size: var(--font-size-xs);
+  font-size: var(--text-xs);
+  font-family: inherit;
   cursor: pointer;
   text-align: center;
+  transition: color var(--duration-fast);
 }
 
-.btn-skip:hover {
+.update-btn-skip:hover {
   color: var(--text-secondary);
 }
 </style>

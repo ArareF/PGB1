@@ -3681,6 +3681,8 @@ async fn execute_clock_action_inner(
     let button_text = if action == "clock_in" { "出勤" } else { "退勤" };
 
     let mut button_state = String::from("not_found");
+    let mut disabled_count = 0u32; // 连续 disabled 计数，防止页面初始化期间误判
+    const DISABLED_CONFIRM_THRESHOLD: u32 = 8; // 连续 8 次 disabled（≈2 秒）才认定已打卡
     for _ in 0..60 {
         // 最多等 15 秒，每 250ms 检查一次
         let hash_js = format!(
@@ -3703,16 +3705,25 @@ async fn execute_clock_action_inner(
 
         let state = read_webview_hash_state(&webview_window);
         if !state.is_empty() {
-            button_state = state;
-            if button_state == "ready" || button_state == "disabled" {
+            button_state = state.clone();
+            if state == "ready" {
                 break;
+            }
+            if state == "disabled" {
+                disabled_count += 1;
+                // 连续多次确认 disabled 才认定已打卡（过滤页面初始化的瞬态 disabled）
+                if disabled_count >= DISABLED_CONFIRM_THRESHOLD {
+                    break;
+                }
+            } else {
+                disabled_count = 0;
             }
         }
     }
 
     // 判断按钮状态
-    if button_state == "disabled" {
-        // 按钮已禁用 = 已经打过卡了（不覆盖已有的 actual 时间）
+    if button_state == "disabled" && disabled_count >= DISABLED_CONFIRM_THRESHOLD {
+        // 按钮持续禁用 = 已经打过卡了（不覆盖已有的 actual 时间）
         let now = chrono::Local::now();
         let today = now.format("%Y-%m-%d").to_string();
         let record_path = config_dir.join("attendance_record.json");
@@ -3731,6 +3742,7 @@ async fn execute_clock_action_inner(
         }
         save_attendance_record_internal(&record_path, &record);
 
+        let _ = webview_window.close();
         emit_progress(&app_handle, "already-done", "今天已经打过卡了");
         return Ok("已打卡（按钮已禁用）".to_string());
     }
@@ -3738,9 +3750,12 @@ async fn execute_clock_action_inner(
     if button_state != "ready" {
         let reason = if button_state == "not_found" {
             "打刻页面结构可能已变化，未找到对应按钮"
+        } else if button_state == "disabled" {
+            "按钮短暂禁用后未恢复，页面可能未完全加载，请稍后重试"
         } else {
             "按钮未在 15 秒内变为可用状态，请稍后重试"
         };
+        let _ = webview_window.close();
         return Err(format!("无法点击「{}」：{}", button_text, reason));
     }
 
@@ -3819,11 +3834,13 @@ async fn execute_clock_action_inner(
         }
         save_attendance_record_internal(&record_path, &record);
 
+        let _ = webview_window.close();
         emit_progress(&app_handle, "success", "打卡成功");
         Ok("打卡成功".to_string())
     } else {
-        emit_progress(&app_handle, "success", "打卡操作已执行，请查看浏览器确认结果");
-        Ok("打卡操作已执行，请查看浏览器确认结果".to_string())
+        // 未确认：不写入记录，不关闭 WebView（保留现场供用户检查）
+        emit_progress(&app_handle, "unconfirmed", "打卡操作已执行但未确认，请点击「查看结果」手动检查");
+        Ok("打卡操作已执行但未确认".to_string())
     }
 }
 
@@ -4502,13 +4519,14 @@ pub fn reschedule_attendance(
 }
 
 #[tauri::command]
-pub async fn translate_text(
+pub async fn translate_text_stream(
+    app_handle: tauri::AppHandle,
     api_key: String,
     model: String,
     lang_a: String,
     lang_b: String,
     text: String,
-) -> Result<String, String> {
+) -> Result<(), String> {
     if api_key.is_empty() {
         return Err("请先在设置中配置 Gemini API Key".to_string());
     }
@@ -4535,7 +4553,7 @@ pub async fn translate_text(
     );
 
     let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:streamGenerateContent?alt=sse",
         model
     );
 
@@ -4545,34 +4563,77 @@ pub async fn translate_text(
         }]
     });
 
-    let client = reqwest::Client::new();
-    let response = client
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .header("X-goog-api-key", &api_key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("网络错误：{}", e))?;
+    // spawn 异步任务，命令立即返回（避免长连接阻塞 IPC）
+    tauri::async_runtime::spawn(async move {
+        let client = reqwest::Client::new();
+        let response = match client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .header("X-goog-api-key", &api_key)
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = app_handle.emit("translate-error", format!("网络错误：{}", e));
+                return;
+            }
+        };
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let err_text = response.text().await.unwrap_or_default();
-        return Err(format!("API 错误 {}: {}", status, err_text));
-    }
+        if !response.status().is_success() {
+            let status = response.status();
+            let err_text = response.text().await.unwrap_or_default();
+            let _ = app_handle.emit("translate-error", format!("API 错误 {}: {}", status, err_text));
+            return;
+        }
 
-    let resp_json: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("解析响应失败：{}", e))?;
+        // SSE 流式读取：TCP chunk 边界与 SSE 事件边界不对齐，需 buffer 累积
+        let mut buffer = String::new();
+        let mut response = response;
+        while let Ok(Some(chunk)) = response.chunk().await {
+            let chunk_str = match std::str::from_utf8(&chunk) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            // 统一换行符：Google API 返回 \r\n，需规范为 \n 才能正确分割 SSE 事件
+            buffer.push_str(&chunk_str.replace('\r', ""));
 
-    let translated = resp_json["candidates"][0]["content"]["parts"][0]["text"]
-        .as_str()
-        .ok_or_else(|| "响应格式异常，无法提取翻译结果".to_string())?
-        .trim()
-        .to_string();
+            // 按 \n\n 分割完整的 SSE 事件
+            while let Some(pos) = buffer.find("\n\n") {
+                let event_block = buffer[..pos].to_string();
+                buffer = buffer[pos + 2..].to_string();
 
-    Ok(translated)
+                // 提取 data: 行
+                for line in event_block.lines() {
+                    let line = line.trim();
+                    if let Some(json_str) = line.strip_prefix("data: ") {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                            if let Some(text) = json["candidates"][0]["content"]["parts"][0]["text"].as_str() {
+                                let _ = app_handle.emit("translate-chunk", text.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 流结束后处理 buffer 中残留的最后一个事件（可能没有尾部 \n\n）
+        for line in buffer.lines() {
+            let line = line.trim();
+            if let Some(json_str) = line.strip_prefix("data: ") {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    if let Some(text) = json["candidates"][0]["content"]["parts"][0]["text"].as_str() {
+                        let _ = app_handle.emit("translate-chunk", text.to_string());
+                    }
+                }
+            }
+        }
+
+        let _ = app_handle.emit("translate-done", ());
+    });
+
+    Ok(())
 }
 
 #[tauri::command]

@@ -49,7 +49,7 @@
 | 文件 | 行数 | Props | 职责 |
 |------|------|-------|------|
 | `ProjectCard.vue` | ~496 | `project: ProjectInfo` | 项目卡片（图标+名称+截止日期+进度条）。根元素为 `<div>`（非 `<button>`，避免嵌套）。**AppIcon**：`onMounted` 读 `project.app_icon`，PNG 用 `convertFileSrc`，PSD/PSB 调 `getPsdThumbnail(128px)`，无图标降级为 SVG 占位。进度条计算：无子任务的父任务用 `completed_tasks`，有子任务的父任务用 `completed_subtasks`，分母 = 无子任务父任务数 + 所有子任务数。**Hover 菜单**：右上角 ··· 按钮（opacity 过渡），展开重命名/修改截止日期/删除三项，emit `action` 事件。**菜单 Teleport to body**：避免父级 `glass-subtle` 的 `backdrop-filter` 创建合成层导致子级毛玻璃失效，菜单使用 `glass-medium` 类 + `position: fixed` + 动态坐标（`menuBtnRef.getBoundingClientRect()`），`z-index: var(--z-dropdown)`。菜单样式在全局（非 scoped）`<style>` 块。**动画**：`···` 按钮 hover 出现加 `scale(0.85→1)` 动画；卡片下拉菜单加 `<Transition name="card-menu">`。**优先度圆点**：名称前 `.priority-dot--{high/medium/low}` 9px 纯色实心圆，无文字（null 不显示）；菜单固定展示四档 `急/高/普/停`（'normal'→null），选中态高亮，直接调用 set_project_priority + emit refresh。全局 `<style>` 块含 `.priority-pill--{high/medium/normal/low}` 样式，TaskCard 复用。**笔记**：`project.note` 有值时名称旁显示 `.note-icon` SVG（12px），`cardRef` + NoteTooltip hover 预览（前 39 字符），菜单 divider 后「批注」按钮 → emit `action(project, 'note')`。NoteTooltip `@save` → emit `note-save(project, text)` 转发 checkbox 切换 |
-| `TaskCard.vue` | ~283 | `task, subtaskProgress?` | 任务卡片（名称+动态进度标签+大小）。**有子任务**：未开始 0/N（灰）/ 进行中 X/N（黄）/ 已完成（绿）。**无子任务（叶子任务）**：未开始（灰）/ 制作中（蓝，有素材未全上传）/ 已完成（绿），不显示数字。大小取 nextcloud 目录。**右上角 ··· 菜单**：Teleport to body，同款 ProjectCard 菜单机制；仅含优先度选择器（急/高/普/停四档固定展示），emit action(task, 'priority', value\|null) 给 ProjectPage 处理。**优先度圆点**：名称前 `.priority-dot` 9px 实心圆，null 不显示。**单根节点**：`<Teleport>` 移至 `<button>` 内部（Teleport 内容仍挂载到 body，comment 占位无影响），使组件兼容 `<TransitionGroup>` 入场/FLIP 动画。**笔记**：`task.note` 有值时名称旁 `.note-icon`，cardRef + NoteTooltip hover 预览，菜单 divider 后「批注」→ emit `action(task, 'note')`。NoteTooltip `@save` → emit `note-save(task, text)` 转发 checkbox 切换 |
+| `TaskCard.vue` | ~283 | `task, subtaskProgress?` | 任务卡片（名称+动态进度标签+大小）。**有子任务**：未开始 0/N（灰）/ 进行中 X/N（黄）/ 已完成（绿），纯以子任务进度判定（不检查文件上传状态）。**无子任务（叶子任务）**：未开始（灰）/ 制作中（蓝，有素材未全上传）/ 已完成（绿，需 `filesAllUploaded()`），不显示数字。大小取 nextcloud 目录。**右上角 ··· 菜单**：Teleport to body，同款 ProjectCard 菜单机制；仅含优先度选择器（急/高/普/停四档固定展示），emit action(task, 'priority', value\|null) 给 ProjectPage 处理。**优先度圆点**：名称前 `.priority-dot` 9px 实心圆，null 不显示。**单根节点**：`<Teleport>` 移至 `<button>` 内部（Teleport 内容仍挂载到 body，comment 占位无影响），使组件兼容 `<TransitionGroup>` 入场/FLIP 动画。**笔记**：`task.note` 有值时名称旁 `.note-icon`，cardRef + NoteTooltip hover 预览，菜单 divider 后「批注」→ emit `action(task, 'note')`。NoteTooltip `@save` → emit `note-save(task, text)` 转发 checkbox 切换 |
 | `MaterialCard.vue` | ~289 | `material, multiSelect?, checked?, hasNote?, notePreview?` | 素材卡片（序列帧=SequencePreview, 静帧=img, 进度标签+大小）。序列帧角标显示 fps（转换后才显示，转换前隐藏）。SequencePreview `:key` 绑定 `${path}-${fps}`，fps 变化时强制重挂使动画速度即时更新。fps 和 transparent 从 `useSettings().settings.preview` 读取。**笔记**：`hasNote` 有值时名称旁 `.note-icon`，cardRef + NoteTooltip hover 预览 |
 | `NormalCard.vue` | ~274 | `file: FileEntry, hasNote?, notePreview?` | 普通文件卡片（游戏介绍/项目素材页用）。视频文件 onMounted canvas 截帧；PSD/PSB 文件调用 `usePsdThumbnail`（256px）异步加载真实缩略图，失败降级为 PS 图标；PDF 文件显示红色 PDF 图标；multiSelect?/checked? props + data-path + card-checkbox-shared 多选三件套。**笔记**：同 MaterialCard，`hasNote`/`notePreview` props + `.note-icon` + NoteTooltip |
 | `SequencePreview.vue` | ~110 | `folderPath, fps?, maxWidth?, transparent?` | Canvas 序列帧动画播放器，mount 后自动循环播放，LRU 缓存。`transparent=true` 时 clearRect 透明背景 + 棋盘格 CSS，否则黑色背景 |
@@ -109,7 +109,7 @@
 | `SettingsPage.vue` | ~1010 | **高** | **全局设置页面**。5 Tab 导航（工作流、翻译、日报打卡、通用设置、关于）。内置本地编辑副本 `editSettings`。**出勤引导**：`route.query.guide === 'attendance'` 时自动弹出 `settingsAttendance` 专属批注（新手引导跳转触发）。**开机自启修复**：`save_settings` 中 `autolaunch.disable()` 前先 `is_enabled()` 检查，避免条目不存在时 OS error 2。 |
 | `ReminderPage.vue` | ~260 | 中 | **日报打卡提醒弹窗**，支持 clock-in/clock-out/daily-report/overtime 四种类型 |
 | `OvertimePage.vue` | ~140 | 低 | **加班时间设置弹窗**（快捷按钮 +30分/+1小时/+2小时 + 自定义输入） |
-| `TranslatorPage.vue` | ~250 | 低 | **翻译悬浮窗**（独立 400×500 WebviewWindow，always_on_top）。顶部胶囊拖拽条 + 毛玻璃输入框 + 语言对选择器[中英/中日/英日] + 翻译/撤回。Ctrl+Enter 触发。调用 `translate_text` → Gemini API |
+| `TranslatorPage.vue` | ~300 | 低 | **翻译悬浮窗**（独立 400×500 WebviewWindow，always_on_top）。顶部胶囊拖拽条 + 毛玻璃输入框 + 语言对选择器[中英/中日/英日] + 翻译/撤回。Ctrl+Enter 触发。**流式翻译**：invoke `translate_text_stream` → listen `translate-chunk`/`translate-done`/`translate-error`，首个 chunk 替换原文、后续 chunk 追加，失败自动恢复原文。**等待动画**：`isWaiting` 控制 textarea 呼吸透明度（`breathe` keyframes 0.35↔1，1.6s），首个 chunk 到达即停止。onUnmounted 清理监听器（参考 ConvertPage 同模式） |
 
 ---
 
@@ -180,7 +180,7 @@
 | `schedule_overtime_reminder` | app_handle, scheduler, minutes | () | 创建一次性加班定时提醒 |
 | `show_overtime_dialog` | app_handle | () | spawn 异步创建加班时间设置弹窗（避免 sync 命令死锁） |
 | `reschedule_attendance` | app_handle, scheduler | () | 重置所有定时任务 |
-| `translate_text` | api_key, model, lang_a, lang_b, text | String | **翻译**：Rust 后端调用 Gemini API（reqwest）。支持中/英/日三语自动检测互译 |
+| `translate_text_stream` | app_handle, api_key, model, lang_a, lang_b, text | () | **流式翻译**：SSE 流式调用 Gemini API（`streamGenerateContent?alt=sse`），spawn 异步任务立即返回。逐块 emit `translate-chunk`（增量文本）→ 结束 emit `translate-done` → 异常 emit `translate-error`。buffer 累积 + `\n\n` 分割 SSE 事件 |
 | `toggle_translator_window` | app_handle | () | 切换翻译窗口显示/隐藏 |
 | `load_shortcuts` | app_handle | Vec\<Shortcut\> | 从 app_config_dir/shortcuts.json 加载快捷方式列表 |
 | `save_shortcuts` | app_handle, shortcuts | () | 序列化写入 shortcuts.json |
@@ -262,4 +262,4 @@
 
 **考勤调度系统**：scheduler.rs 管理 3 个常驻定时任务（出勤/退勤/日报）+ 1 个临时加班任务。Arc\<Mutex\<AttendanceScheduler\>\> 作为 Tauri State 管理。提醒弹窗 = 独立 WebviewWindow（400×200 毛玻璃置顶），指向 Vue 路由 `/reminder/:type`
 
-**翻译系统**：hotkey.rs 在独立线程运行 Win32 消息循环，监听全局热键。首次按键时动态创建 400×500 可调大小 always_on_top WebviewWindow，加载 `/translator` 路由，延迟 50ms 应用 Acrylic 毛玻璃。Gemini API 在 Rust 后端通过 reqwest 调用，API Key 不暴露给前端。
+**翻译系统**：hotkey.rs 在独立线程运行 Win32 消息循环，监听全局热键。首次按键时动态创建 400×500 可调大小 always_on_top WebviewWindow，加载 `/translator` 路由，延迟 50ms 应用 Acrylic 毛玻璃。**SSE 流式翻译**：`translate_text_stream` 调用 Gemini `streamGenerateContent?alt=sse` 端点，spawn 异步任务 + `response.chunk()` 循环读取 SSE 流 → buffer 累积 + `\n\n` 分割 → emit `translate-chunk` 增量文本；前端 listen 三事件实时追加。**模型自由输入**：设置页 `<input list>` + `<datalist>` 替代固定 `<select>`，用户可选预设也可手动输入任意模型 ID。

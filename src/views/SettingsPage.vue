@@ -385,12 +385,13 @@ async function onLanguageChange(e: Event) {
 
           <div class="form-group">
             <label class="form-label">{{ $t('settings.aiModel') }}</label>
-            <select v-model="editSettings.translation.model" class="form-select">
+            <input v-model="editSettings.translation.model" list="gemini-models" class="form-input" :placeholder="$t('settings.modelPlaceholder')" />
+            <datalist id="gemini-models">
               <option value="gemini-2.5-flash">Gemini 2.5 Flash ({{ $t('settings.modelFlashRecommended') }})</option>
               <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite ({{ $t('settings.modelFlashLiteFaster') }})</option>
               <option value="gemini-3-flash-preview">Gemini 3 Flash ({{ $t('settings.modelFlashPreview') }})</option>
               <option value="gemini-2.5-pro">Gemini 2.5 Pro ({{ $t('settings.modelProStrongest') }})</option>
-            </select>
+            </datalist>
           </div>
 
           <div class="form-group">

@@ -17,7 +17,7 @@ const errorMsg = ref('')
 const clockingMode = ref(false)
 const progressStep = ref('')
 const progressMessage = ref('')
-const clockResult = ref<'success' | 'already-done' | 'error' | ''>('')
+const clockResult = ref<'success' | 'already-done' | 'unconfirmed' | 'error' | ''>('')
 const resultMessage = ref('')
 
 let unlisten: UnlistenFn | null = null
@@ -35,8 +35,8 @@ onMounted(async () => {
     progressStep.value = step
     progressMessage.value = message
 
-    if (step === 'success' || step === 'already-done') {
-      clockResult.value = step
+    if (step === 'success' || step === 'already-done' || step === 'unconfirmed') {
+      clockResult.value = step as typeof clockResult.value
       resultMessage.value = message
       loading.value = false
     } else if (step === 'error') {
@@ -156,14 +156,22 @@ async function handleAction(action: string) {
       <!-- 有结果了 -->
       <template v-if="clockResult">
         <p class="reminder-title">
-          {{ clockResult === 'error' ? $t('reminder.clockFailed') : $t('reminder.clockComplete') }}
+          {{ clockResult === 'error' ? $t('reminder.clockFailed')
+           : clockResult === 'unconfirmed' ? $t('reminder.clockUnconfirmed')
+           : $t('reminder.clockComplete') }}
         </p>
         <div class="divider"></div>
-        <p class="reminder-body" :class="{ 'error-body': clockResult === 'error' }">
+        <p class="reminder-body" :class="{ 'error-body': clockResult === 'error', 'warning-body': clockResult === 'unconfirmed' }">
           {{ resultMessage }}
         </p>
         <div class="btn-group">
           <template v-if="clockResult === 'error'">
+            <button class="action-btn action-btn-secondary" @click="closeWindow">{{ $t('common.close') }}</button>
+          </template>
+          <template v-else-if="clockResult === 'unconfirmed'">
+            <button class="action-btn action-btn-warning" @click="handleAction('showResult')">
+              {{ $t('reminder.viewResult') }}
+            </button>
             <button class="action-btn action-btn-secondary" @click="closeWindow">{{ $t('common.close') }}</button>
           </template>
           <template v-else>
@@ -273,6 +281,10 @@ async function handleAction(action: string) {
   color: var(--color-danger);
 }
 
+.warning-body {
+  color: var(--color-warning);
+}
+
 .error-text {
   font-size: var(--text-sm);
   color: var(--color-danger);
@@ -350,6 +362,17 @@ async function handleAction(action: string) {
 
 .action-btn-primary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--color-primary-500) 90%, transparent);
+}
+
+.action-btn-warning {
+  background: color-mix(in srgb, var(--color-warning) 75%, transparent);
+  backdrop-filter: blur(var(--glass-subtle-blur));
+  -webkit-backdrop-filter: blur(var(--glass-subtle-blur));
+  color: var(--color-neutral-0);
+}
+
+.action-btn-warning:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-warning) 90%, transparent);
 }
 
 .action-btn-secondary {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { useSettings } from '../composables/useSettings'
 
@@ -11,6 +12,7 @@ const { loadSettings } = useSettings()
 
 const inputText = ref('')
 const isTranslating = ref(false)
+const isWaiting = ref(false)
 const copyFeedback = ref(false)
 const langPair = ref('zh-en')
 const lastOriginal = ref('')
@@ -37,6 +39,17 @@ function getLangPair() {
   return map[langPair.value] || ['zh-CN', 'en']
 }
 
+// 流式翻译事件监听器清理
+let unlistenChunk: (() => void) | null = null
+let unlistenDone: (() => void) | null = null
+let unlistenError: (() => void) | null = null
+
+function cleanupListeners() {
+  if (unlistenChunk) { unlistenChunk(); unlistenChunk = null }
+  if (unlistenDone) { unlistenDone(); unlistenDone = null }
+  if (unlistenError) { unlistenError(); unlistenError = null }
+}
+
 async function handleTranslate() {
   if (isTranslating.value || !inputText.value.trim()) return
 
@@ -44,26 +57,64 @@ async function handleTranslate() {
   if (!settings) return
 
   isTranslating.value = true
+  isWaiting.value = true
   lastOriginal.value = inputText.value
+  canUndo.value = false
 
   const [langA, langB] = getLangPair()
 
+  // 清理旧监听器
+  cleanupListeners()
+
+  // 注册流式事件监听
+  let firstChunk = true
+  unlistenChunk = await listen<string>('translate-chunk', (event) => {
+    if (firstChunk) {
+      inputText.value = event.payload
+      isWaiting.value = false
+      firstChunk = false
+    } else {
+      inputText.value += event.payload
+    }
+  })
+
+  unlistenDone = await listen<void>('translate-done', () => {
+    inputText.value = inputText.value.trim()
+    canUndo.value = true
+    isTranslating.value = false
+    isWaiting.value = false
+    cleanupListeners()
+  })
+
+  unlistenError = await listen<string>('translate-error', (event) => {
+    console.error('翻译失败:', event.payload)
+    inputText.value = lastOriginal.value
+    isTranslating.value = false
+    isWaiting.value = false
+    cleanupListeners()
+  })
+
   try {
-    const result = await invoke<string>('translate_text', {
+    await invoke('translate_text_stream', {
       apiKey: settings.translation.apiKey,
       model: settings.translation.model,
       langA,
       langB,
-      text: inputText.value,
+      text: lastOriginal.value,
     })
-    inputText.value = result
-    canUndo.value = true
   } catch (e) {
+    // invoke 本身失败（参数校验错误）
     console.error('翻译失败:', e)
-  } finally {
+    inputText.value = lastOriginal.value
     isTranslating.value = false
+    isWaiting.value = false
+    cleanupListeners()
   }
 }
+
+onUnmounted(() => {
+  cleanupListeners()
+})
 
 function handleUndo() {
   if (!canUndo.value || !lastOriginal.value) return
@@ -114,7 +165,8 @@ function handleKeydown(e: KeyboardEvent) {
       <textarea
         v-model="inputText"
         class="panel-textarea"
-        :placeholder="$t('translator.placeholder')"
+        :class="{ 'is-waiting': isWaiting }"
+        :placeholder="isTranslating ? $t('translator.translating') + '...' : $t('translator.placeholder')"
         @keydown="handleKeydown"
       />
       <!-- 粘贴/复制按钮 -->
@@ -234,6 +286,13 @@ function handleKeydown(e: KeyboardEvent) {
 }
 .panel-textarea::placeholder {
   color: var(--text-tertiary);
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+.panel-textarea.is-waiting {
+  animation: breathe 1.6s ease-in-out infinite;
 }
 
 /* ── 粘贴/复制按钮行 ── */

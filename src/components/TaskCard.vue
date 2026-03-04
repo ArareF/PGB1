@@ -61,7 +61,7 @@ function filesAllUploaded(): boolean {
 const statusInfo = computed(() => {
   const p = props.subtaskProgress
   if (p && p.total > 0) {
-    if (p.completed >= p.total && filesAllUploaded()) {
+    if (p.completed >= p.total) {
       return { label: t('taskCard.completed'), cls: 'status-completed' }
     }
     if (p.completed > 0) {

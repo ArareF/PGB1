@@ -66,7 +66,7 @@ onMounted(async () => {
 <template>
   <button
     ref="cardRef"
-    class="normal-card glass-subtle"
+    class="normal-card"
     :data-path="file.path"
     @click="$emit('click', file)"
   >
@@ -160,11 +160,14 @@ onMounted(async () => {
   flex-direction: column;
   padding: var(--card-material-padding);
   border-radius: var(--card-border-radius);
-  border: none;
   cursor: pointer;
   transition: var(--transition-card-hover);
   text-align: left;
   overflow: hidden;
+  /* 手动 glass-subtle：不用 backdrop-filter，避免每张卡片创建独立合成层 */
+  background: var(--glass-subtle-bg);
+  border: var(--glass-subtle-border);
+  box-shadow: var(--glass-subtle-shadow);
 }
 
 .normal-card:hover {
@@ -204,7 +207,6 @@ onMounted(async () => {
   border: 1px solid var(--tag-format-border);
   border-right: none;
   border-bottom: none;
-  backdrop-filter: blur(var(--glass-subtle-blur));
 }
 
 .preview-img {

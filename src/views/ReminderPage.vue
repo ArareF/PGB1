@@ -96,6 +96,8 @@ async function closeWindow() {
     if (reminderType.value === 'clock-in') {
       await invoke('dismiss_clock_in_reminder').catch(() => {})
     }
+    // 清理可能隐藏的打卡 WebView 窗口（成功/已打卡后 hide 保留供查看，关闭时统一销毁）
+    await invoke('close_clock_webview').catch(() => {})
     await getCurrentWindow().close()
   } catch {
     // 忽略关闭错误
@@ -132,7 +134,8 @@ async function handleAction(action: string) {
 
       case 'showResult':
         await invoke('show_clock_webview')
-        await closeWindow()
+        // 只关提醒窗口，不清理打卡 WebView（用户正要查看）
+        await getCurrentWindow().close()
         break
 
       case 'dismiss':

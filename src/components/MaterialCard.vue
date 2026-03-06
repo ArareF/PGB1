@@ -51,7 +51,7 @@ function progressLabel(progress: string): string {
 <template>
   <button
     ref="cardRef"
-    class="material-card glass-subtle"
+    class="material-card"
     :data-path="material.path"
     @click="$emit('click', material)"
   >
@@ -128,11 +128,14 @@ function progressLabel(progress: string): string {
   flex-direction: column;
   padding: var(--card-material-padding);
   border-radius: var(--card-border-radius);
-  border: none;
   cursor: pointer;
   transition: var(--transition-card-hover);
   text-align: left;
   overflow: hidden;
+  /* 手动 glass-subtle：不用 backdrop-filter，避免每张卡片创建独立合成层 */
+  background: var(--glass-subtle-bg);
+  border: var(--glass-subtle-border);
+  box-shadow: var(--glass-subtle-shadow);
 }
 
 .material-card:hover {
@@ -182,7 +185,6 @@ function progressLabel(progress: string): string {
   border: 1px solid var(--tag-format-border);
   border-right: none;
   border-bottom: none;
-  backdrop-filter: blur(var(--glass-subtle-blur));
 }
 
 .scale-badge {
@@ -264,7 +266,6 @@ function progressLabel(progress: string): string {
   border-radius: var(--radius-sm);
   border: 2px solid var(--border-heavy);
   background: var(--glass-subtle-bg);
-  backdrop-filter: blur(var(--glass-subtle-blur));
   box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;

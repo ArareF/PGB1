@@ -547,6 +547,10 @@ export default {
     attMore: 'You can find a page guide here whenever you need help',
   },
 
+  folderBrowser: {
+    empty: 'This folder is empty',
+  },
+
   note: {
     note: 'Note',
     editNote: 'Edit Note',

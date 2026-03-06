@@ -1194,7 +1194,6 @@ html {
   border-radius: var(--radius-sm);
   border: 2px solid var(--border-heavy);
   background: var(--glass-subtle-bg);
-  backdrop-filter: blur(var(--glass-subtle-blur));
   box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;

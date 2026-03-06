@@ -1,27 +1,23 @@
 import { invoke } from '@tauri-apps/api/core'
+import { convertFileSrc } from '@tauri-apps/api/core'
 
-// 模块级缓存：`${path}@${maxSize}@${mtime}` → dataURI（null 表示解析失败）
+// 模块级缓存：`${path}@${maxSize}` → asset URL（null 表示解析失败）
+// mtime 失效已由 Rust 磁盘缓存处理，前端只缓存 invoke 结果避免重复调用
 const cache = new Map<string, string | null>()
 // 进行中的请求：同一 key 并发时只发一个 invoke
 const pending = new Map<string, Promise<string | null>>()
 
 export async function getPsdThumbnail(path: string, maxSize: number): Promise<string | null> {
-  // 先拿 mtime，构造带版本的 key，文件修改后自动失效
-  let mtime = 0
-  try {
-    mtime = await invoke<number>('get_file_mtime', { path })
-  } catch {
-    // stat 失败时退化为不带 mtime 的 key（依然能用，只是不会自动失效）
-  }
-
-  const key = `${path}@${maxSize}@${mtime}`
+  const key = `${path}@${maxSize}`
 
   if (cache.has(key)) return cache.get(key)!
 
   if (pending.has(key)) return pending.get(key)!
 
   const promise = invoke<string | null>('extract_psd_thumbnail', { path, maxSize })
-    .then(result => {
+    .then(cachePath => {
+      // Rust 返回磁盘缓存文件路径，用 convertFileSrc 转为 asset URL
+      const result = cachePath ? convertFileSrc(cachePath) : null
       cache.set(key, result)
       pending.delete(key)
       return result

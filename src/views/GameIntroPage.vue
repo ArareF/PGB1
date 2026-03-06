@@ -12,6 +12,7 @@ import NormalCard from '../components/NormalCard.vue'
 import NoteDialog from '../components/NoteDialog.vue'
 import NoteRenderer from '../components/NoteRenderer.vue'
 import FileDetailSidebar from '../components/FileDetailSidebar.vue'
+import FolderBrowserDialog from '../components/FolderBrowserDialog.vue'
 import { useRubberBandSelect } from '../composables/useRubberBandSelect'
 import { useI18n } from 'vue-i18n'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
@@ -44,6 +45,10 @@ function onPageNoteCheckbox(key: string, lineIndex: number) {
 /** 侧边栏选中文件 */
 const selectedFile = ref<FileEntry | null>(null)
 const sidebarWidth = ref(30)
+
+/** 文件夹浏览弹窗 */
+const showFolderBrowser = ref(false)
+const folderBrowserPath = ref('')
 
 /** 游戏原型启动程序路径（null = 未检测到，支持 Unity / Godot） */
 const gameExePath = ref<string | null>(null)
@@ -96,7 +101,8 @@ const { isSelecting, selectionRect, justFinished, onContainerMouseDown, onContai
 
 function onCardClick(file: FileEntry) {
   if (file.is_dir) {
-    openInExplorer(file.path)
+    folderBrowserPath.value = file.path
+    showFolderBrowser.value = true
     return
   }
   if (isMultiSelect.value) {
@@ -415,6 +421,12 @@ onUnmounted(() => {
   />
 
   <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.gameIntro" @close="showGuide = false" />
+
+  <FolderBrowserDialog
+    :show="showFolderBrowser"
+    :initial-path="folderBrowserPath"
+    @close="showFolderBrowser = false"
+  />
 </template>
 
 <style scoped>

@@ -102,7 +102,7 @@ const progressPercent = computed(() =>
   duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0
 )
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   file: FileEntry | null
   widthPercent?: number
   versions?: FileEntry[]
@@ -110,7 +110,13 @@ const props = defineProps<{
   allowActions?: boolean
   /** 笔记文本（有值时显示编辑区） */
   note?: string
-}>()
+  /** Teleport 目标选择器（默认 #content-row） */
+  teleportTarget?: string
+  /** 禁用 Teleport，就地渲染（弹窗内使用，避免卸载顺序导致崩溃） */
+  teleportDisabled?: boolean
+}>(), {
+  teleportTarget: '#content-row',
+})
 
 const emit = defineEmits<{
   close: []
@@ -292,7 +298,7 @@ function startResize(e: MouseEvent) {
 </script>
 
 <template>
-  <Teleport to="#content-row">
+  <Teleport :to="teleportTarget" :disabled="teleportDisabled">
     <Transition name="file-sidebar">
       <div
         v-if="file"

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "recall": {
+      "source": "arjunkmrm/recall",
+      "sourceType": "github",
+      "computedHash": "0668c9da71b786d7569f5dae7db540ec89828aa73f5bfd3644d4d1296ccf5f8d"
+    }
+  }
+}

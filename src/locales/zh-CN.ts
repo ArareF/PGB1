@@ -579,6 +579,10 @@ export default {
     attMore: '每个页面不懂的地方，都可以在这里查看指引',
   },
 
+  folderBrowser: {
+    empty: '此文件夹为空',
+  },
+
   note: {
     note: '批注',
     editNote: '编辑批注',

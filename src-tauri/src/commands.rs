@@ -5,7 +5,6 @@ use crate::models::{
     MaterialType, MaterialVersion, PreviewVideoEntry, ProjectConfig, ProjectInfo, ScaleRequest,
     AppShortcut, Shortcut, ShortcutsConfig, StartConversionRequest, TaskInfo,
 };
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use crate::scheduler::SchedulerState;
 use crate::conversion::{ConversionState, ConversionSession, handle_file_event, bring_window_to_front};
 use std::fs;
@@ -3742,7 +3741,7 @@ async fn execute_clock_action_inner(
         }
         save_attendance_record_internal(&record_path, &record);
 
-        let _ = webview_window.close();
+        let _ = webview_window.hide();
         emit_progress(&app_handle, "already-done", "今天已经打过卡了");
         return Ok("已打卡（按钮已禁用）".to_string());
     }
@@ -3834,7 +3833,7 @@ async fn execute_clock_action_inner(
         }
         save_attendance_record_internal(&record_path, &record);
 
-        let _ = webview_window.close();
+        let _ = webview_window.hide();
         emit_progress(&app_handle, "success", "打卡成功");
         Ok("打卡成功".to_string())
     } else {
@@ -5814,57 +5813,196 @@ pub fn copy_preview_to_nextcloud(
     Ok(())
 }
 
-/// 渲染 PSD/PSB 文件的合并图层，生成缩略图，返回 data URI（base64 JPEG）
+/// 提取 PSD/PSB 缩略图，写入磁盘缓存并返回缓存文件路径（前端用 convertFileSrc 引用）
 /// max_size: 最长边像素上限（卡片用 256，侧边栏用 800）
-/// 异步执行，CPU 密集部分放到阻塞线程池，不阻塞 Tauri 主线程
-#[tauri::command]
-pub async fn extract_psd_thumbnail(path: String, max_size: u32) -> Result<Option<String>, String> {
-    tokio::task::spawn_blocking(move || {
-        use image::{RgbaImage, imageops};
+/// 使用信号量限制并发数（2），避免大量 PSD 同时解析导致线程池饱和
+static PSD_SEMAPHORE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
 
+#[tauri::command]
+pub async fn extract_psd_thumbnail(
+    app_handle: tauri::AppHandle,
+    path: String,
+    max_size: u32,
+) -> Result<Option<String>, String> {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use tauri::Manager;
+
+    // 用 mtime 做缓存失效判定
+    let mtime = fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
+        .unwrap_or(0);
+
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    mtime.hash(&mut hasher);
+    max_size.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    let cache_dir = app_handle.path().app_config_dir()
+        .map_err(|e| format!("获取配置目录失败: {}", e))?
+        .join("psd_thumbnails");
+    let cache_file = cache_dir.join(format!("{:016x}.jpg", hash));
+
+    // 磁盘缓存命中 → 直接返回路径
+    if cache_file.exists() {
+        return Ok(Some(cache_file.to_string_lossy().to_string()));
+    }
+
+    let _permit = PSD_SEMAPHORE.acquire().await.map_err(|e| format!("信号量错误: {}", e))?;
+    let cache_file_clone = cache_file.clone();
+    let cache_dir_clone = cache_dir.clone();
+
+    tokio::task::spawn_blocking(move || {
         let data = fs::read(&path).map_err(|e| format!("读取文件失败: {}", e))?;
 
-        let psd = match psd::Psd::from_bytes(&data) {
-            Ok(p) => p,
-            Err(e) => {
-                log::warn!("PSD 解析失败 {}: {}", path, e);
-                return Ok(None);
+        // 判断文件版本：1=PSD，2=PSB
+        let is_psb = data.len() >= 6
+            && &data[0..4] == b"8BPS"
+            && u16::from_be_bytes([data[4], data[5]]) == 2;
+
+        let jpeg_data = if is_psb {
+            // PSB：psd crate 不支持，只能用内嵌 JPEG 缩略图
+            extract_embedded_thumbnail(&data)
+        } else {
+            // PSD：优先图层合并（高质量），失败时 fallback 到内嵌 JPEG
+            match extract_psd_via_layer_composite(&data, max_size, &path) {
+                Ok(Some(jpeg)) => Some(jpeg),
+                _ => extract_embedded_thumbnail(&data),
             }
         };
 
-        let w = psd.width();
-        let h = psd.height();
-        if w == 0 || h == 0 {
-            return Ok(None);
+        match jpeg_data {
+            Some(jpeg) => {
+                // 写入磁盘缓存，前端用 convertFileSrc 引用
+                fs::create_dir_all(&cache_dir_clone)
+                    .map_err(|e| format!("创建缓存目录失败: {}", e))?;
+                fs::write(&cache_file_clone, &jpeg)
+                    .map_err(|e| format!("写入缓存文件失败: {}", e))?;
+                Ok(Some(cache_file_clone.to_string_lossy().to_string()))
+            }
+            None => Ok(None),
         }
-
-        let rgba = psd.rgba();
-        let img = RgbaImage::from_raw(w, h, rgba)
-            .ok_or_else(|| "RGBA 数据长度不匹配".to_string())?;
-
-        // resize 到最长边 max_size px（若原图更小则不放大）
-        let thumb_max = max_size.max(1).min(w.max(h));
-        let (thumb_w, thumb_h) = if w >= h {
-            (thumb_max, (h as f32 * thumb_max as f32 / w as f32).round() as u32)
-        } else {
-            ((w as f32 * thumb_max as f32 / h as f32).round() as u32, thumb_max)
-        };
-        let thumb_w = thumb_w.max(1);
-        let thumb_h = thumb_h.max(1);
-
-        let thumb = imageops::resize(&img, thumb_w, thumb_h, imageops::FilterType::Triangle);
-
-        // 编码为 JPEG（转为 RGB，JPEG 不支持 alpha）
-        let rgb_thumb = image::DynamicImage::ImageRgba8(thumb).to_rgb8();
-        let mut jpeg_buf: Vec<u8> = Vec::new();
-        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_buf, 85);
-        encoder.encode_image(&rgb_thumb).map_err(|e| format!("JPEG 编码失败: {}", e))?;
-
-        let b64 = BASE64.encode(&jpeg_buf);
-        Ok(Some(format!("data:image/jpeg;base64,{}", b64)))
     })
     .await
     .map_err(|e| format!("线程执行失败: {}", e))?
+}
+
+/// 从 PSD/PSB 文件的 Image Resources 段提取内嵌 JPEG 缩略图
+/// 资源 ID 0x040C（Photoshop 5.0+）或 0x0409（Photoshop 4.0）
+fn extract_embedded_thumbnail(data: &[u8]) -> Option<Vec<u8>> {
+    // 文件头固定 26 字节：4(sig) + 2(ver) + 6(reserved) + 2(ch) + 4(h) + 4(w) + 2(depth) + 2(mode)
+    if data.len() < 26 {
+        return None;
+    }
+    // 校验签名 "8BPS"
+    if &data[0..4] != b"8BPS" {
+        return None;
+    }
+    let version = u16::from_be_bytes([data[4], data[5]]);
+    if version != 1 && version != 2 {
+        return None;
+    }
+
+    let mut pos: usize = 26;
+
+    // 跳过 Color Mode Data 段（4 字节长度 + 数据）
+    if pos + 4 > data.len() { return None; }
+    let cm_len = u32::from_be_bytes([data[pos], data[pos+1], data[pos+2], data[pos+3]]) as usize;
+    pos += 4 + cm_len;
+
+    // Image Resources 段（4 字节长度 + 数据）
+    if pos + 4 > data.len() { return None; }
+    let ir_len = u32::from_be_bytes([data[pos], data[pos+1], data[pos+2], data[pos+3]]) as usize;
+    pos += 4;
+    let ir_end = pos + ir_len;
+    if ir_end > data.len() { return None; }
+
+    // 遍历 Image Resource Block
+    let mut safety = 0u32;
+    while pos + 12 <= ir_end && safety < 500 {
+        safety += 1;
+        // 签名 "8BIM"
+        if &data[pos..pos+4] != b"8BIM" { break; }
+        let res_id = u16::from_be_bytes([data[pos+4], data[pos+5]]);
+        // Pascal string（name）
+        let name_len = data[pos+6] as usize;
+        let padded_name_len = if (name_len + 1) % 2 != 0 { name_len + 2 } else { name_len + 1 };
+        let data_len_offset = pos + 6 + padded_name_len;
+        if data_len_offset + 4 > ir_end { break; }
+        let block_data_len = u32::from_be_bytes([
+            data[data_len_offset], data[data_len_offset+1],
+            data[data_len_offset+2], data[data_len_offset+3],
+        ]) as usize;
+        let block_data_start = data_len_offset + 4;
+
+        if (res_id == 0x040C || res_id == 0x0409) && block_data_len > 28 {
+            // 缩略图资源头：4(format) + 4(w) + 4(h) + 4(widthbytes) + 4(totalsize) + 4(compressed_size) + 4(bpp) = 28 字节
+            let jpeg_start = block_data_start + 28;
+            let jpeg_end = block_data_start + block_data_len;
+            if jpeg_end <= data.len() {
+                let fmt = u32::from_be_bytes([
+                    data[block_data_start], data[block_data_start+1],
+                    data[block_data_start+2], data[block_data_start+3],
+                ]);
+                if fmt == 1 {
+                    // format=1 表示 JPEG
+                    let jpeg = data[jpeg_start..jpeg_end].to_vec();
+                    if jpeg.len() >= 2 && jpeg[0] == 0xFF && jpeg[1] == 0xD8 {
+                        return Some(jpeg);
+                    }
+                }
+            }
+        }
+
+        // 跳到下一个 resource block（数据长度按偶数对齐）
+        let padded_data_len = if block_data_len % 2 != 0 { block_data_len + 1 } else { block_data_len };
+        pos = block_data_start + padded_data_len;
+    }
+
+    None
+}
+
+/// 使用 psd crate 合并图层生成缩略图 JPEG 字节（仅 PSD，PSB 不支持）
+fn extract_psd_via_layer_composite(data: &[u8], max_size: u32, path: &str) -> Result<Option<Vec<u8>>, String> {
+    use image::{RgbaImage, imageops};
+
+    let psd = match psd::Psd::from_bytes(data) {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("PSD 解析失败 {}: {}", path, e);
+            return Ok(None);
+        }
+    };
+
+    let w = psd.width();
+    let h = psd.height();
+    if w == 0 || h == 0 {
+        return Ok(None);
+    }
+
+    let rgba = psd.rgba();
+    let img = RgbaImage::from_raw(w, h, rgba)
+        .ok_or_else(|| "RGBA 数据长度不匹配".to_string())?;
+
+    let thumb_max = max_size.max(1).min(w.max(h));
+    let (thumb_w, thumb_h) = if w >= h {
+        (thumb_max, (h as f32 * thumb_max as f32 / w as f32).round() as u32)
+    } else {
+        ((w as f32 * thumb_max as f32 / h as f32).round() as u32, thumb_max)
+    };
+    let thumb_w = thumb_w.max(1);
+    let thumb_h = thumb_h.max(1);
+
+    let thumb = imageops::resize(&img, thumb_w, thumb_h, imageops::FilterType::Triangle);
+
+    let rgb_thumb = image::DynamicImage::ImageRgba8(thumb).to_rgb8();
+    let mut jpeg_buf: Vec<u8> = Vec::new();
+    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_buf, 85);
+    encoder.encode_image(&rgb_thumb).map_err(|e| format!("JPEG 编码失败: {}", e))?;
+
+    Ok(Some(jpeg_buf))
 }
 
 /// 在指定目录下查找名字含 "appicon"（大小写不敏感）的文件

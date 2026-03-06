@@ -244,6 +244,7 @@ function refreshNav() {
       ? [{ id: 'launch-game', label: t('gameIntro.launchPrototype'), handler: () => { invoke('open_file', { path: gameExePath.value! }) } }]
       : []
     ),
+    { id: 'materials', label: t('project.projectMaterials'), handler: () => router.push({ name: 'materials', params: { projectId } }) },
   ]
   setNavigation({
     title: t('gameIntro.title'),
@@ -469,7 +470,7 @@ onUnmounted(() => {
 .scroll-content {
   flex: 1;
   overflow-y: auto;
-  padding-top: var(--spacing-4);
+  padding: var(--spacing-4) var(--spacing-2) var(--spacing-2);
 }
 
 .loading-text,

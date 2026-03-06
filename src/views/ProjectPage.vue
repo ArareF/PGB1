@@ -404,7 +404,7 @@ onUnmounted(() => {
 .scroll-content {
   flex: 1;
   overflow-y: auto;
-  padding-top: var(--spacing-4);
+  padding: var(--spacing-4) var(--spacing-2) var(--spacing-2);
 }
 
 .loading-text {

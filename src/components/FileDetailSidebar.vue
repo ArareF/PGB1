@@ -269,7 +269,9 @@ function confirmDelete() {
 // ─── 拖拽调整宽度 ────────────────────────────────────
 
 const isResizing = ref(false)
-const currentWidth = ref(props.widthPercent ?? 30)
+const SIDEBAR_WIDTH_KEY = 'pgb1-sidebar-width'
+const savedWidth = parseFloat(localStorage.getItem(SIDEBAR_WIDTH_KEY) || '')
+const currentWidth = ref(isFinite(savedWidth) ? savedWidth : (props.widthPercent ?? 30))
 
 watch(() => props.widthPercent, (v) => {
   if (v != null) currentWidth.value = v
@@ -289,6 +291,7 @@ function startResize(e: MouseEvent) {
   }
   function onMouseUp() {
     isResizing.value = false
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(currentWidth.value))
     window.removeEventListener('mousemove', onMouseMove)
     window.removeEventListener('mouseup', onMouseUp)
   }
@@ -606,7 +609,7 @@ function startResize(e: MouseEvent) {
 /* ─── 图片预览 ─── */
 .preview-image-wrap {
   width: 100%;
-  height: 280px;
+  aspect-ratio: 4 / 3;
   border-radius: var(--radius-lg);
   background: var(--glass-subtle-bg);
   overflow: hidden;

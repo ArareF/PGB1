@@ -233,7 +233,9 @@ setNavigation({
   title: t('materialsPage.title'),
   showBackButton: true,
   onBack: () => router.push({ name: 'project', params: { projectId } }),
-  actions: [],
+  actions: [
+    { id: 'game-intro', label: t('project.gameIntro'), handler: () => router.push({ name: 'gameIntro', params: { projectId } }) },
+  ],
   moreMenuItems: [
     { id: 'refresh', label: t('common.refresh'), handler: refreshAll },
     { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
@@ -644,7 +646,7 @@ onUnmounted(() => {
 .scroll-content {
   flex: 1;
   overflow-y: auto;
-  padding-top: var(--spacing-4);
+  padding: var(--spacing-4) var(--spacing-2) var(--spacing-2);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-6);

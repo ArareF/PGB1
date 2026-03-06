@@ -10,7 +10,8 @@
        （Sidebar / FileDetailSidebar / ScalePage control-panel /
         ConvertPage control-panel / TaskPage sidebar-dialog 全部手动）
      - title-bar:   仅 center 岛保留 glass-medium（left 岛手动）
-     - more-dropdown: 手动 glass-strong（未 Teleport，仍在原始 DOM 树中）
+     - more-dropdown: Teleport to body，手动 glass（--dropdown-menu-bg 高不透明度，
+       无 backdrop-filter——与 TitleBar glass-medium 视觉重叠会产生黑色伪影）
      - 弹窗(Teleport to body): 不受影响，可正常使用 glass-strong
    ============================================================================= */
 

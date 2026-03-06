@@ -565,6 +565,8 @@
   --glass-medium-blur:        16px;
   --glass-medium-border:      1px solid rgba(0, 0, 0, 0.12);
   --glass-medium-shadow:      0 8px 16px rgba(0, 0, 0, 0.10);
+  /* 下拉菜单专用背景（无法用 backdrop-filter，高不透明度补偿） */
+  --dropdown-menu-bg:         rgba(240, 240, 242, 0.95);
 
   /* 毛玻璃效果 — 强 */
   --glass-strong-bg:          rgba(255, 255, 255, 0.80);
@@ -682,6 +684,8 @@
   --glass-medium-blur:        24px;
   --glass-medium-border:      1px solid rgba(100, 180, 255, 0.12);
   --glass-medium-shadow:      0 4px 12px rgba(0, 0, 0, 0.40);
+  /* 下拉菜单专用背景（无法用 backdrop-filter，高不透明度补偿） */
+  --dropdown-menu-bg:         rgba(28, 30, 36, 0.95);
 
   /* 毛玻璃效果 — 强（二层面板/弹窗） */
   --glass-strong-bg:          rgba(14, 15, 18, 0.75);

@@ -10,6 +10,19 @@ import { useNavigation } from '../composables/useNavigation'
 const { t } = useI18n()
 const { moreMenuItems, routeDirection, setRouteDirection } = useNavigation()
 const showMoreMenu = ref(false)
+const moreBtnRef = ref<HTMLElement | null>(null)
+const dropdownPos = ref({ top: '0px', right: '0px' })
+
+function toggleMoreMenu() {
+  showMoreMenu.value = !showMoreMenu.value
+  if (showMoreMenu.value && moreBtnRef.value) {
+    const rect = moreBtnRef.value.getBoundingClientRect()
+    dropdownPos.value = {
+      top: `${rect.bottom + 6}px`,
+      right: `${window.innerWidth - rect.right}px`,
+    }
+  }
+}
 
 // 路由方向检测：路径深度变浅 = 返回
 const router = useRouter()
@@ -38,28 +51,30 @@ const allMoreMenuItems = computed(() => {
       <div class="top-right-column">
         <WindowControls class="window-controls-area" />
         <div class="more-menu-wrapper">
-          <button class="more-menu-btn" :title="$t('common.more')" @click="showMoreMenu = !showMoreMenu">
+          <button ref="moreBtnRef" class="more-menu-btn" :title="$t('common.more')" @click="toggleMoreMenu">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <circle cx="3" cy="8" r="1.5" />
               <circle cx="8" cy="8" r="1.5" />
               <circle cx="13" cy="8" r="1.5" />
             </svg>
           </button>
-          <!-- 下拉菜单 — 内容由各页面通过 useNavigation 注入 -->
-          <Transition name="dropdown">
-            <div v-if="showMoreMenu" class="more-dropdown">
-              <button
-                v-for="item in allMoreMenuItems"
-                :key="item.id"
-                class="dropdown-item"
-                @click="showMoreMenu = false; item.handler()"
-              >
-                {{ item.label }}
-              </button>
-            </div>
-          </Transition>
-          <!-- 点击外部关闭遮罩 -->
-          <div v-if="showMoreMenu" class="more-menu-overlay" @click="showMoreMenu = false" />
+          <!-- 下拉菜单 — Teleport to body 以安全使用 backdrop-filter -->
+          <Teleport to="body">
+            <Transition name="dropdown">
+              <div v-if="showMoreMenu" class="more-dropdown" :style="{ top: dropdownPos.top, right: dropdownPos.right }">
+                <button
+                  v-for="item in allMoreMenuItems"
+                  :key="item.id"
+                  class="dropdown-item"
+                  @click="showMoreMenu = false; item.handler()"
+                >
+                  {{ item.label }}
+                </button>
+              </div>
+            </Transition>
+            <!-- 点击外部关闭遮罩 -->
+            <div v-if="showMoreMenu" class="more-menu-overlay" @click="showMoreMenu = false" />
+          </Teleport>
         </div>
       </div>
     </div>
@@ -181,48 +196,7 @@ const allMoreMenuItems = computed(() => {
   margin-top: auto;
 }
 
-/* 下拉菜单 — 手动复刻 glass-strong 视觉，不用 backdrop-filter：
-   未 Teleport to body，仍在原始 DOM 树中，
-   backdrop-filter 会侵入相邻 glass 区域（与 Sidebar/左岛同类问题） */
-.more-dropdown {
-  position: absolute;
-  top: calc(100% + var(--spacing-2));
-  right: 0;
-  min-width: calc(var(--floating-action-height) * 3);
-  padding: var(--spacing-2);
-  border-radius: var(--floating-action-radius);
-  z-index: var(--z-dropdown);
-  background: var(--glass-strong-bg);
-  border: var(--glass-strong-border);
-  box-shadow: var(--glass-strong-shadow);
-}
-
-.dropdown-item {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: var(--spacing-2) var(--spacing-3);
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: var(--transition-bg);
-  white-space: nowrap;
-}
-
-.dropdown-item:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-/* 点击外部关闭遮罩 — 全屏透明，z-index 低于下拉菜单 */
-.more-menu-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: calc(var(--z-dropdown) - 1);
-}
+/* .more-dropdown / .dropdown-item / .more-menu-overlay → 非 scoped 块（Teleport to body） */
 
 /* 内容行 — 水平间距对齐上方垂直间距 */
 .content-row {
@@ -252,20 +226,7 @@ const allMoreMenuItems = computed(() => {
   height: 100%;
 }
 
-/* 下拉菜单进出动画 */
-.dropdown-enter-active,
-.dropdown-leave-active {
-  transition: var(--transition-dropdown);
-  transform-origin: top right;
-}
-.dropdown-enter-from {
-  transform: translateY(-6px) scale(0.95);
-  opacity: 0.8;
-}
-.dropdown-leave-to {
-  transform: translateY(-6px) scale(0.95);
-  opacity: 0;
-}
+/* .dropdown-*  transition → 非 scoped 块（Teleport to body） */
 
 /* 路由页面切换动画 — 前进（从右滑入） */
 .page-forward-enter-active {
@@ -296,6 +257,64 @@ const allMoreMenuItems = computed(() => {
 }
 .page-back-leave-to {
   transform: translateX(100px);
+  opacity: 0;
+}
+</style>
+
+<!-- 非 scoped — Teleport to body 的更多菜单 -->
+<style>
+/* 下拉菜单 — Teleport to body，手动 glass（无 backdrop-filter）；
+   与 TitleBar glass-medium 视觉重叠，backdrop-filter 会产生黑色伪影 */
+.more-dropdown {
+  position: fixed;
+  min-width: calc(var(--floating-action-height) * 3);
+  padding: var(--spacing-2);
+  border-radius: var(--floating-action-radius);
+  z-index: var(--z-dropdown);
+  background: var(--dropdown-menu-bg);
+  border: var(--glass-medium-border);
+  box-shadow: var(--glass-medium-shadow);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-bg);
+  white-space: nowrap;
+}
+
+.dropdown-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* 点击外部关闭遮罩 — 全屏透明 */
+.more-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-dropdown) - 1);
+}
+
+/* 下拉菜单进出动画 */
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: var(--transition-dropdown);
+  transform-origin: top right;
+}
+.dropdown-enter-from {
+  transform: translateY(-6px) scale(0.95);
+  opacity: 0.8;
+}
+.dropdown-leave-to {
+  transform: translateY(-6px) scale(0.95);
   opacity: 0;
 }
 </style>

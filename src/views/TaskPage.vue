@@ -918,7 +918,9 @@ function onMainContentClick(e: MouseEvent) {
 }
 
 /** 侧边栏可拖拽宽度（百分比，范围 20-60） */
-const sidebarWidthPercent = ref(30)
+const SIDEBAR_WIDTH_KEY = 'pgb1-sidebar-width'
+const _savedW = parseFloat(localStorage.getItem(SIDEBAR_WIDTH_KEY) || '')
+const sidebarWidthPercent = ref(isFinite(_savedW) ? _savedW : 30)
 const isResizing = ref(false)
 
 function startResize(e: MouseEvent) {
@@ -936,6 +938,7 @@ function startResize(e: MouseEvent) {
 
   function onMouseUp() {
     isResizing.value = false
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidthPercent.value))
     document.removeEventListener('mousemove', onMouseMove)
     document.removeEventListener('mouseup', onMouseUp)
   }
@@ -1556,7 +1559,7 @@ onUnmounted(() => {
 .scroll-content {
   flex: 1;
   overflow-y: auto;
-  padding-top: var(--spacing-4);
+  padding: var(--spacing-4) var(--spacing-2) var(--spacing-2);
 }
 
 

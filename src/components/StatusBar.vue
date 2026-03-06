@@ -284,6 +284,8 @@ onUnmounted(() => {
   align-items: flex-start;
   gap: var(--spacing-1);
   line-height: var(--leading-tight);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .status-bar__time {

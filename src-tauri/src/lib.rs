@@ -68,6 +68,7 @@ pub fn run() {
             commands::reschedule_attendance,
             commands::translate_text_stream,
             commands::toggle_translator_window,
+            commands::open_pinboard_window,
             commands::load_shortcuts,
             commands::save_shortcuts,
             commands::launch_shortcut,
@@ -93,6 +94,10 @@ pub fn run() {
             commands::set_project_priority,
             commands::set_task_priority,
             commands::get_file_mtime,
+            commands::get_pinboard,
+            commands::save_pinboard,
+            commands::save_pin_image,
+            commands::delete_pin_image,
             commands::get_notes,
             commands::set_note,
         ])

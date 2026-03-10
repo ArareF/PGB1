@@ -620,4 +620,31 @@ export default {
     checkFailed: '检查失败，点击重试',
   },
 
+  pinboard: {
+    title: '贴图板',
+    paste: '粘贴',
+    pasteHint: 'Ctrl+V 粘贴截图',
+    noClipboardImage: '剪贴板中没有图片',
+    empty: '粘贴截图到这里作为参考',
+    delete: '删除贴图',
+    deleteConfirm: '确定删除这张贴图？',
+    tools: {
+      select: '选择',
+      pen: '画笔',
+      arrow: '箭头',
+      rect: '矩形',
+      ellipse: '椭圆',
+      text: '文字',
+      eraser: '橡皮擦',
+    },
+    undo: '撤销',
+    redo: '重做',
+    zoomIn: '放大',
+    zoomOut: '缩小',
+    zoomReset: '重置缩放',
+    pinCount: '{count} 张贴图',
+    closeTab: '关闭标签',
+    noTabs: '从页面点击贴图板按钮打开画布',
+  },
+
 }

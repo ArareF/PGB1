@@ -557,3 +557,75 @@ pub struct PreviewVideoEntry {
 }
 
 use std::collections::HashMap;
+
+// ─── 贴图板 ──────────────────────────────────────────────
+
+/// 单条标注
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PinAnnotation {
+    #[serde(rename = "type")]
+    pub annotation_type: String,
+    pub color: String,
+    #[serde(default)]
+    pub stroke_width: f64,
+    #[serde(default)]
+    pub points: Vec<[f64; 2]>,
+    #[serde(default)]
+    pub start: Option<[f64; 2]>,
+    #[serde(default)]
+    pub end: Option<[f64; 2]>,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub position: Option<[f64; 2]>,
+    #[serde(default)]
+    pub font_size: Option<f64>,
+}
+
+/// 单张贴图
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PinInfo {
+    pub id: String,
+    pub image: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    #[serde(default)]
+    pub annotations: Vec<PinAnnotation>,
+    #[serde(default)]
+    pub z_index: u32,
+    #[serde(default)]
+    pub created_at: String,
+}
+
+/// 画布视口状态
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PinboardViewport {
+    #[serde(default)]
+    pub pan_x: f64,
+    #[serde(default)]
+    pub pan_y: f64,
+    #[serde(default = "default_zoom")]
+    pub zoom: f64,
+}
+
+fn default_zoom() -> f64 { 1.0 }
+
+/// 单个画布的数据
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PinboardCanvas {
+    #[serde(default)]
+    pub pins: Vec<PinInfo>,
+    #[serde(default)]
+    pub viewport: Option<PinboardViewport>,
+    #[serde(default)]
+    pub annotations: Vec<PinAnnotation>,
+}
+
+/// .pgb1_pinboard.json 根结构（key → 画布）
+pub type PinboardData = std::collections::HashMap<String, PinboardCanvas>;

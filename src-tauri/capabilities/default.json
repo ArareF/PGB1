@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "PGB1 默认权限",
-  "windows": ["main", "reminder-*", "webview-*", "daily-report", "translator"],
+  "windows": ["main", "reminder-*", "webview-*", "daily-report", "translator", "pinboard"],
   "permissions": [
     "core:default",
     "opener:default",
@@ -19,6 +19,7 @@
     "dialog:default",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-image",
     "notification:default",
     "updater:default",
     "process:allow-restart"

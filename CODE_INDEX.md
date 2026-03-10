@@ -1,7 +1,7 @@
 # PGB1 代码索引
 
 > 全量源代码文件职责说明，按目录分组。新会话快速了解代码现状用。
-> 最后更新: 2026-03-06（页面互跳按钮 + StatusBar 左列防折行 + scroll-content hover 裁切修复）
+> 最后更新: 2026-03-10（贴图板独立窗口 + 标签系统 + 笔刷大小调整 + 文字大小调整）
 
 ---
 
@@ -9,14 +9,14 @@
 
 | 目录 | 文件数 | 总行数 | 备注 |
 |------|--------|--------|------|
-| src/components/ | 24 | ~7990 | UI 组件（笔记四件套 + FolderBrowserDialog 文件夹浏览弹窗） |
-| src/composables/ | 10 | ~1180 | 逻辑组件（useNotes 新增 stripMarkdown/toggleCheckbox，useStatusBar ~430 行） |
-| src/views/ | 12 | ~8450 | 页面（笔记系统集成后各页面增长） |
-| src/styles/ | 3 | ~1200 | CSS 设计系统（新增 .note-icon/.note-btn/.note-textarea/.note-progress-* 笔记公共类） |
-| src/i18n + src/locales/ | 3 | ~1200 | 国际化：i18n 实例 + zh-CN/en locale 文件（note 命名空间含 toolbar 子对象） |
+| src/components/ | 27 | ~10380 | UI 组件（笔记四件套 + FolderBrowserDialog + 贴图板组件 PinboardCanvas/PinItem + PinboardDialog[废弃]） |
+| src/composables/ | 11 | ~1500 | 逻辑组件（usePinboard，useStatusBar ~430 行） |
+| src/views/ | 13 | ~9640 | 页面（新增 PinboardPage 独立窗口） |
+| src/styles/ | 3 | ~1400 | CSS 设计系统（贴图板工具栏公共类 .pb-tool-btn/.pb-separator/.pb-color-dot） |
+| src/i18n + src/locales/ | 3 | ~1280 | 国际化：i18n 实例 + zh-CN/en locale 文件（note 命名空间含 toolbar 子对象） |
 | src/其他 | 8 | ~250 | 入口、路由、配置（含 onboarding.ts）、布局 |
-| src-tauri/src/ | 7 | ~7670 | Rust 后端（共 65 个命令） |
-| **合计** | **60** | **~27750** | |
+| src-tauri/src/ | 7 | ~8150 | Rust 后端（共 70 个命令） |
+| **合计** | **65** | **~31070** | |
 
 ---
 
@@ -25,13 +25,13 @@
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `src/main.ts` | 10 | 应用入口，初始化 Vue 3 + Router + i18n，加载样式 |
-| `src/App.vue` | ~65 | 根组件，initTheme()，加载 settings 后 initScale(uiScale) + 设置 locale。首次启动检测 `onboarded`，未引导时显示 OnboardingDialog，引导完成后渲染 MainLayout。**引导→设置跳转**：`onOnboardingComplete(mode)` 接收打卡模式，mode !== 'off' 时 `router.push` 到设置页出勤 Tab 并触发出勤配置指引 |
+| `src/App.vue` | ~75 | 根组件，initTheme()，加载 settings 后 initScale(uiScale) + 设置 locale。首次启动检测 `onboarded`，未引导时显示 OnboardingDialog，引导完成后渲染 MainLayout。**引导→设置跳转**：`onOnboardingComplete(mode)` 接收打卡模式，mode !== 'off' 时 `router.push` 到设置页出勤 Tab 并触发出勤配置指引。**isPopupRoute**：reminder/overtime/translator/pinboard 四种路由跳过 MainLayout |
 | `src/i18n/index.ts` | 12 | vue-i18n 实例：`legacy:false`, 默认 zh-CN，fallback zh-CN |
-| `src/locales/zh-CN.ts` | ~596 | 中文 locale（23 个 namespace，含 note 命名空间） |
-| `src/locales/en.ts` | ~563 | 英文 locale（结构与 zh-CN 完全对齐） |
+| `src/locales/zh-CN.ts` | ~650 | 中文 locale（24 个 namespace，含 pinboard 命名空间） |
+| `src/locales/en.ts` | ~617 | 英文 locale（结构与 zh-CN 完全对齐） |
 | `src/config/app.ts` | 8 | 软件元信息 SSOT：`APP_NAME`、`APP_VERSION`、`APP_DEVELOPER` |
 | `src/config/onboarding.ts` | ~90 | 引导数据 SSOT：`PageIntro`/`GuideAnnotation` 接口，`PAGE_INTROS`（9 页介绍，仅被 PageGuideOverlay 的更多菜单消费），`PAGE_GUIDE_ANNOTATIONS`（各页面批注坐标，含 `settingsAttendance` 出勤引导专用批注） |
-| `src/router/index.ts` | 52 | 9 条路由：`/` → HomePage, `/project/:id` → ProjectPage, `/project/:id/task/:taskId` → TaskPage, game-intro, materials, **`/project/:id/task-list` → TaskListPage**, `/reminder/:type` → ReminderPage, `/overtime` → OvertimePage, `/translator` → TranslatorPage |
+| `src/router/index.ts` | ~56 | 10 条路由：`/` → HomePage, `/project/:id` → ProjectPage, `/project/:id/task/:taskId` → TaskPage, game-intro, materials, **`/project/:id/task-list` → TaskListPage**, `/reminder/:type` → ReminderPage, `/overtime` → OvertimePage, `/translator` → TranslatorPage, **`/pinboard` → PinboardPage** |
 | `src/vite-env.d.ts` | 1 | Vite 类型声明 |
 
 ---
@@ -73,6 +73,9 @@
 | `NoteRenderer.vue` | ~135 | `text: string` (emits: toggle-checkbox) | **笔记渲染组件**。逐行解析 markdown 子集：`[text](url)` → 命名链接（显示 text，点击跳 url）、`https?://` → 裸链接（`openUrl` 跳外部浏览器）、`- [ ] `/`- [x] ` → checkbox（点击 emit toggle-checkbox）、`**..**` → `<strong>`、`*..*` → `<em>`。InlineSegment 含可选 `href` 字段区分命名链接与裸链接。**v-for 复合 key** `` `${idx}-${line.checked}` ``：checkbox 切换时强制重建 DOM 节点，规避 WebView2 `:checked` 属性更新不触发重绘。XSS 安全（Vue 模板拼接，不 innerHTML） |
 | `NoteEditor.vue` | ~170 | `modelValue: string` (emits: update:modelValue, save, toggle-checkbox) | **笔记编辑器（双模式）**。`mode: 'render' \| 'edit'`：渲染模式 = NoteRenderer + 编辑按钮；编辑模式 = 迷你工具栏（B/I/链接/清单 4 按钮）+ textarea + 进度条。空 modelValue 自动进编辑模式。工具栏通过 `selectionStart/End` 精确插入语法。`defineExpose({ mode })` 暴露模式供父组件读取 |
 | `NoteDialog.vue` | ~165 | `show, title, note` (emits: save, update, cancel) | **笔记弹窗（双模式适配）**。内嵌 NoteEditor（`:save-on-blur="false"` 防止失焦关闭），渲染模式底部仅「关闭」按钮，编辑模式底部「保存+取消」。**双事件模型**：`save` = 显式保存（关闭弹窗），`update` = checkbox 切换静默保存（不关闭弹窗）。Teleport to body，`<Transition name="dialog">`。overlay `@mousedown.self.prevent` 防止点击外部关闭 |
+| `PinboardDialog.vue` | ~618 | — | **[废弃]** 原贴图板弹窗外壳，已被 PinboardPage（独立窗口）替代。无引用，待删除 |
+| `PinboardCanvas.vue` | ~595 | `pins, viewport, activeTool, activeColor, strokeSize, fontSize, canvasAnnotations` (emits: bindpin, bindpaste等) | **贴图板自由画布**。可平移（右键/空格+左键拖拽）+ 滚轮缩放（MAX_ZOOM=1.0，不超过 100%）。渲染 PinItem 子组件。**画布标注层**：`<canvas>` overlay，支持画笔/箭头/矩形/椭圆/文字/橡皮擦直接在画布背景绘制。世界坐标系：`toWorldCoords(e)` 屏幕→世界坐标转换，`ctx.setTransform(zoom, 0, 0, zoom, panX, panY)` viewport 变换渲染。**PS 橡皮擦**：`globalCompositeOperation = 'destination-out'` 像素级擦除（3 pass 多次绘制消除抗锯齿残留）。**笔刷大小**：`strokeSize` prop 控制画笔/橡皮擦/形状工具线宽，`fontSize` prop 控制文字标注字号。**笔刷光标指示器**：跟随鼠标的圆形 div，大小 = strokeSize × zoom（仅 pen/eraser）。ResizeObserver 同步 canvas 尺寸 |
+| `PinItem.vue` | ~615 | `pin, dirPath, isSelected, activeTool, activeColor, brushSize` (emits: bindselect, bindupdate等) | **单张贴图组件**。可拖拽移动 + 四角/四边 resize 手柄缩放。`convertFileSrc` 加载 `.pgb1_pins/{image}` 图片。**Pin 级标注**：内嵌 `<canvas>` overlay，支持画笔/箭头/矩形/椭圆/文字/橡皮擦（标注坐标归一化为 0-1，与 pin 尺寸无关）。**PS 橡皮擦**：同画布，`destination-out` 像素级擦除（3 pass 多次绘制）。删除按钮 28×28（z-index: 20），resize 手柄 8px（z-index: 20）。标注画布 z-index: 1 |
 
 ---
 
@@ -91,6 +94,7 @@
 | `useScale.ts` | ~60 | `initScale()`, `setManualScale()` | 全局 UI 缩放单例。基准 1920px，clamp [0.67, 1.25]，同步缩放 #app + body（覆盖 Teleport 元素）。支持用户手动覆盖（0 = 自动）。**注意**：自动模式基于 `window.innerWidth`，宽屏（>1920px）会超出 1.0 被夹到 1.25，窄窗口会偏小；默认值已改为 1.0 |
 | `usePsdThumbnail.ts` | ~30 | `getPsdThumbnail(path, maxSize)` | PSD 缩略图模块级缓存。key = `path@maxSize`，mtime 失效由 Rust 磁盘缓存处理。并发去重（同一 key 只发一个 invoke）。调用 `extract_psd_thumbnail`，返回 `convertFileSrc(cachePath)` asset URL |
 | `useStatusBar.ts` | ~420 | `useStatusBar()`, `saveConfig()`, `reloadConfig()` | 状态栏数据单例。分钟级 tick，从 `load_attendance_config` 读上下班+午休时间。**节假日**：`CalendarRegion`（auto/CN/JP/none），auto 模式用 `ipapi.co/country/` 检测 IP（7天缓存），CN 走 timor.tech（含调休概念），其他国家走 date.nager.at（按年缓存）；标签简短：`休息日 🎉`/`调休`/`明天休 🎉`。**打卡状态感知**：每分钟 tick 调 `load_attendance_record`，`hasClockIn`/`hasClockOut` 驱动胶囊显隐（未打卡不显示，打下班卡触发"下班咯"）。**番茄钟**：5 阶段状态机（idle→work→work-done→break→break-done→idle），秒级倒计时，归零发系统通知。配置项（localStorage）：`showPomodoro`/`pomodoroWork`（25m）/`pomodoroBreak`（5m）/`calendarRegion`（auto）。暴露：`timeStr`/`dateStr`/`holidayLabel`/`hasClockIn`/`hasClockOut`/`workedMinutes`/`countdownMinutes`/`isLunch`/`toLunchMinutes`/`lunchLeftMinutes`/`formatMinutes`/`pomodoroPhase`/`pomodoroDisplay`/`onPomodoroClick`/`reloadHoliday` |
+| `usePinboard.ts` | ~197 | `usePinboard(dirPath, canvasKey)` | **贴图板 composable**。管理 pins/canvasAnnotations/viewport 状态。`loadPinboard` → invoke `get_pinboard`；`savePinboard` → invoke `save_pinboard`（含 pins + viewport + canvasAnnotations）；`pasteImage` → clipboard readImage → RGBA → invoke `save_pin_image` → 写 `.pgb1_pins/{id}.png`；`deletePin` → invoke `delete_pin_image` + 移除 pin。`getPinImageUrl` 用 `convertFileSrc` 构建 asset URL。`bringToFront` 调整 zIndex。接受 `Ref<string> \| string` 参数 |
 | `useRubberBandSelect.ts` | ~75 | `useRubberBandSelect()` | 框选多选逻辑。mousedown（空白区域）→ mousemove（视口矩形 + data-path 碰撞）→ onSelect 回调。justFinished ref 屏蔽框选后 click 事件。onContainerScroll 终止框选防止起点失效 |
 
 ---
@@ -110,7 +114,8 @@
 | `SettingsPage.vue` | ~1010 | **高** | **全局设置页面**。5 Tab 导航（工作流、翻译、日报打卡、通用设置、关于）。内置本地编辑副本 `editSettings`。**出勤引导**：`route.query.guide === 'attendance'` 时自动弹出 `settingsAttendance` 专属批注（新手引导跳转触发）。**开机自启修复**：`save_settings` 中 `autolaunch.disable()` 前先 `is_enabled()` 检查，避免条目不存在时 OS error 2。 |
 | `ReminderPage.vue` | ~260 | 中 | **日报打卡提醒弹窗**，支持 clock-in/clock-out/daily-report/overtime 四种类型 |
 | `OvertimePage.vue` | ~140 | 低 | **加班时间设置弹窗**（快捷按钮 +30分/+1小时/+2小时 + 自定义输入） |
-| `TranslatorPage.vue` | ~300 | 低 | **翻译悬浮窗**（独立 400×500 WebviewWindow，always_on_top）。顶部胶囊拖拽条 + 毛玻璃输入框 + 语言对选择器[中英/中日/英日] + 翻译/撤回。Ctrl+Enter 触发。**流式翻译**：invoke `translate_text_stream` → listen `translate-chunk`/`translate-done`/`translate-error`，首个 chunk 替换原文、后续 chunk 追加，失败自动恢复原文。**等待动画**：`isWaiting` 控制 textarea 呼吸透明度（`breathe` keyframes 0.35↔1，1.6s），首个 chunk 到达即停止。onUnmounted 清理监听器（参考 ConvertPage 同模式） |
+| `PinboardPage.vue` | ~833 | **中** | **贴图板独立窗口**（900×700 WebviewWindow，无装饰+透明+Acrylic 毛玻璃）。**标签系统**：浏览器式多标签，各页面点击贴图板按钮时 invoke `open_pinboard_window` → 已存在窗口 emit `pinboard-open-tab` 事件添加/切换标签，不存在则创建新窗口（URL query params 编码初始标签）。关闭最后一个标签自动关闭窗口。**工具栏**：粘贴按钮 + 标注工具（选择/画笔/箭头/矩形/椭圆/文字/橡皮擦）+ **笔刷大小滑块**（画笔 1~20/橡皮擦 5~50/文字 10~48，工具独立记忆）+ 颜色选择（5 色）+ 撤销/重做（Ctrl+Z / Ctrl+Alt+Z / Ctrl+Shift+Z）+ 缩放。**窗口拖拽**：标签栏 `data-tauri-drag-region` spacer。**撤销/重做**：双栈设计——选中 pin 时操作 pin 级标注栈，未选中时操作画布级标注栈。切换标签时自动保存当前画布 |
+| `TranslatorPage.vue` | ~300 | 低 | **翻译悬浮窗**（独立 400×250 WebviewWindow，always_on_top）。顶部胶囊拖拽条 + 毛玻璃输入框 + 语言对选择器[中英/中日/英日] + 翻译/撤回。Ctrl+Enter 触发。**流式翻译**：invoke `translate_text_stream` → listen `translate-chunk`/`translate-done`/`translate-error`，首个 chunk 替换原文、后续 chunk 追加，失败自动恢复原文。**等待动画**：`isWaiting` 控制 textarea 呼吸透明度（`breathe` keyframes 0.35↔1，1.6s），首个 chunk 到达即停止。onUnmounted 清理监听器（参考 ConvertPage 同模式） |
 
 ---
 
@@ -131,9 +136,9 @@
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `main.rs` | 6 | 应用入口 |
-| `lib.rs` | ~294 | Tauri 初始化、命令注册（65 个）、插件注册（opener/drag/dialog/clipboard/notification/**autostart**）、Windows Acrylic 毛玻璃、调度器初始化 + 补打检测、hotkey 全局快捷键初始化、**启动时同步 autolaunch 状态** |
-| `models.rs` | ~559 | 数据模型（24 个 struct + 3 个 enum）。ProjectConfig 新增 default_ae_file 字段。新增 PreviewVideoEntry（含 upload_status）。新增 **PreviewSettings**（default_fps/background_transparent），AppSettings 加 preview 字段。`GeneralSettings.ui_scale` 默认值 `1.0`（首次运行不再使用自动缩放）。`GeneralSettings.auto_start: bool`（开机自启，默认 false）。**WorkflowSettings** 新增 `tp_scale: f64`（默认 0.5）/ `tp_webp_quality: u32`（默认 80）。**StartConversionRequest** 新增同名字段 |
-| `commands.rs` | ~6245 | 65 个命令实现 + 辅助函数（含 regex_strip_version、**send_ctrl_end**、**scroll_to_bottom_via_wheel**）。psd + base64 依赖。**`DAILY_REPORT_INIT_JS`**（`pub(crate)` 常量，日报 WebView 初始化脚本 SSOT，scheduler 预热共用）。**`spawn_daily_report_scroll`**（后台轮询就绪 + 聚焦 + Ctrl+End，预热命中时跳过轮询直接滚动）。**`copy_icon_to_cache`**、**`collect_scales_for_proto_sequence`**（Prototype 序列帧专用 scale 收集）、**`find_game_exe`**（递归游戏原型检测，支持 Unity / Godot）。**`send_ctrl_end()`**（Win32 SendInput 发送真实 Ctrl+End 按键）。**`scroll_to_bottom_via_wheel()`**（Win32 MOUSEEVENTF_WHEEL，移光标到窗口中央后发 500×-120 delta，绕过键盘焦点链）。**`load_settings`** 首次运行仅创建空默认值（工具路径探测已移至前端 OnboardingDialog）。**`rename_file`**（保留扩展名重命名，校验非法字符/重名）。**`delete_file`**（SHFileOperationW 移入回收站）。**`scan_material_versions` Prototype 修复**：`split_prototype_name` 拆分 subcat，各阶段目录深入 subcat 子目录查找；`collect_versions_in_scale_dirs` / `collect_versions_in_done_dirs` 新增 `subcat: &str` 参数。**素材进度判定**：`find_file_in_dir` 精确匹配 `file_stem() == base_name`（v2.5.2）；`find_webp_in_subdirs` / `find_webp_in_proto_subdirs` multipack 感知匹配 `stem == base_name \|\| stem.starts_with("{base_name}-")`（v2.5.2 精确匹配 + multipack 修正，兼容 TexturePacker --multipack 输出的 name-0.webp） |
+| `lib.rs` | ~301 | Tauri 初始化、命令注册（70 个）、插件注册（opener/drag/dialog/clipboard/notification/**autostart**）、Windows Acrylic 毛玻璃、调度器初始化 + 补打检测、hotkey 全局快捷键初始化、**启动时同步 autolaunch 状态** |
+| `models.rs` | ~631 | 数据模型（29 个 struct + 3 个 enum，含贴图板 PinAnnotation/PinInfo/PinboardViewport/PinboardCanvas/PinboardData）。ProjectConfig 新增 default_ae_file 字段。新增 PreviewVideoEntry（含 upload_status）。新增 **PreviewSettings**（default_fps/background_transparent），AppSettings 加 preview 字段。`GeneralSettings.ui_scale` 默认值 `1.0`（首次运行不再使用自动缩放）。`GeneralSettings.auto_start: bool`（开机自启，默认 false）。**WorkflowSettings** 新增 `tp_scale: f64`（默认 0.5）/ `tp_webp_quality: u32`（默认 80）。**StartConversionRequest** 新增同名字段 |
+| `commands.rs` | ~6623 | 70 个命令实现 + 辅助函数（含 regex_strip_version、**send_ctrl_end**、**scroll_to_bottom_via_wheel**）。psd + base64 依赖。**`DAILY_REPORT_INIT_JS`**（`pub(crate)` 常量，日报 WebView 初始化脚本 SSOT，scheduler 预热共用）。**`spawn_daily_report_scroll`**（后台轮询就绪 + 聚焦 + Ctrl+End，预热命中时跳过轮询直接滚动）。**`copy_icon_to_cache`**、**`collect_scales_for_proto_sequence`**（Prototype 序列帧专用 scale 收集）、**`find_game_exe`**（递归游戏原型检测，支持 Unity / Godot）。**`send_ctrl_end()`**（Win32 SendInput 发送真实 Ctrl+End 按键）。**`scroll_to_bottom_via_wheel()`**（Win32 MOUSEEVENTF_WHEEL，移光标到窗口中央后发 500×-120 delta，绕过键盘焦点链）。**`load_settings`** 首次运行仅创建空默认值（工具路径探测已移至前端 OnboardingDialog）。**`rename_file`**（保留扩展名重命名，校验非法字符/重名）。**`delete_file`**（SHFileOperationW 移入回收站）。**`scan_material_versions` Prototype 修复**：`split_prototype_name` 拆分 subcat，各阶段目录深入 subcat 子目录查找；`collect_versions_in_scale_dirs` / `collect_versions_in_done_dirs` 新增 `subcat: &str` 参数。**素材进度判定**：`find_file_in_dir` 精确匹配 `file_stem() == base_name`（v2.5.2）；`find_webp_in_subdirs` / `find_webp_in_proto_subdirs` multipack 感知匹配 `stem == base_name \|\| stem.starts_with("{base_name}-")`（v2.5.2 精确匹配 + multipack 修正，兼容 TexturePacker --multipack 输出的 name-0.webp） |
 | `hotkey.rs` | ~143 | **全局快捷键**：`start_hotkey_listener`（独立线程 Win32 消息循环）、`do_toggle_window`、`parse_shortcut`。支持计算器键（0xB7） |
 | `scheduler.rs` | ~240 | **考勤调度器**：AttendanceScheduler、create_reminder_window（400×200 毛玻璃置顶弹窗，**visible(false) 创建** + Rust 侧 500ms 延迟 show() 双保险，由 ReminderPage onMounted 调 show()）、calc_duration_until。**日报预热**：`DAILY_REPORT_PRE_WARM_SECS`（90 秒）+ `pre_warm_daily_report`（提前创建隐藏 WebView 加载 Google Docs），在 `daily_timer_loop` 中日报提醒前 90 秒触发 |
 | `conversion.rs` | ~140 | **转换管理**：ConversionSession 状态管理（含 `tp_scale`/`tp_webp_quality` TP 预设参数）、`bring_window_to_front`（Win32 API）、`handle_file_event`（监控 01_scale/ 递归）。**双路径支持**：普通任务 `[XX]/file.webp`，Prototype `[XX]/{subcat}/file.webp`，目标分别为 `[img-XX]/` 和 `[img-XX]/{subcat}/`。**事件载荷修复**（v2.5.2）：`conversion-organized` 事件 payload 对 Prototype 携带 `subcat/stem` 格式（与前端 images map key 对齐），普通任务仍为 `stem` |
@@ -183,6 +188,7 @@
 | `reschedule_attendance` | app_handle, scheduler | () | 重置所有定时任务 |
 | `translate_text_stream` | app_handle, api_key, model, lang_a, lang_b, text | () | **流式翻译**：SSE 流式调用 Gemini API（`streamGenerateContent?alt=sse`），spawn 异步任务立即返回。逐块 emit `translate-chunk`（增量文本）→ 结束 emit `translate-done` → 异常 emit `translate-error`。buffer 累积 + `\n\n` 分割 SSE 事件 |
 | `toggle_translator_window` | app_handle | () | 切换翻译窗口显示/隐藏 |
+| `open_pinboard_window` | app_handle, dir_path, canvas_key, title | () | **贴图板窗口**：已存在 → emit `pinboard-open-tab` 事件 + show + focus；不存在 → spawn 异步创建 900×700 WebviewWindow（URL query params 编码初始标签，Acrylic 毛玻璃） |
 | `load_shortcuts` | app_handle | Vec\<Shortcut\> | 从 app_config_dir/shortcuts.json 加载快捷方式列表 |
 | `save_shortcuts` | app_handle, shortcuts | () | 序列化写入 shortcuts.json |
 | `launch_shortcut` | shortcut_type, path | () | 启动快捷方式：app=直接运行exe，folder=explorer打开，web=cmd start打开 |
@@ -209,6 +215,10 @@
 | `get_file_mtime` | path | u64 | 返回文件修改时间（Unix 秒），供前端 PSD 缓存失效判断用 |
 | `get_notes` | dir_path | HashMap\<String, String\> | **笔记系统**：读取 `{dir_path}/.pgb1_notes.json`，文件不存在返回空 Map。防御性 serde 解析 |
 | `set_note` | dir_path, key, note? | () | **笔记系统**：读-改-写 `.pgb1_notes.json`。note 为 None/空字符串时 remove key，Map 为空时删除文件（避免留空文件） |
+| `get_pinboard` | dir_path, key | PinboardCanvas | **贴图板**：读取 `{dir_path}/.pgb1_pinboard.json` 中指定 key 的画布数据（pins + viewport + annotations），文件不存在返回空画布 |
+| `save_pinboard` | dir_path, key, canvas | () | **贴图板**：读-改-写 `.pgb1_pinboard.json`。pins 和 annotations 均为空时 remove key，Map 为空时删除文件 |
+| `save_pin_image` | dir_path, image_data, width, height | (String, u32, u32) | **贴图板**：接收 RGBA 字节数组 + 尺寸，Rust 端编码为 PNG，写入 `.pgb1_pins/{uuid}.png`，返回 (filename, width, height) |
+| `delete_pin_image` | dir_path, filename | () | **贴图板**：删除 `.pgb1_pins/{filename}` 图片文件 |
 
 ### 数据模型
 
@@ -240,6 +250,11 @@
 | `Shortcut` | 快捷方式 DTO（id, shortcut_type, name, path, icon_cache, order） |
 | `ShortcutsConfig` | shortcuts.json 文件结构（shortcuts: Vec\<Shortcut\>） |
 | `AppShortcut` | Windows 应用快捷方式（name, target_path） |
+| `PinAnnotation` | 贴图标注 DTO（type: pen/arrow/rect/ellipse/text/eraser, color, stroke_width, points?, start?, end?, text?, position?, font_size?）。`#[serde(rename_all = "camelCase")]` |
+| `PinInfo` | 单张贴图 DTO（id, image, x, y, width, height, annotations, z_index, created_at）。`#[serde(rename_all = "camelCase")]` |
+| `PinboardViewport` | 画布视口 DTO（pan_x, pan_y, zoom）。`#[serde(rename_all = "camelCase")]` |
+| `PinboardCanvas` | 单个画布数据 DTO（pins, viewport?, annotations）。`#[serde(rename_all = "camelCase")]` |
+| `PinboardData` | `.pgb1_pinboard.json` 文件结构：`HashMap<String, PinboardCanvas>`，按 key 区分不同画布 |
 
 ---
 

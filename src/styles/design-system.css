@@ -1211,3 +1211,58 @@ html {
   border-color: var(--color-primary);
   color: var(--color-neutral-0);
 }
+
+/* ─── 贴图板 ─── */
+.pb-tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-bg);
+  flex-shrink: 0;
+}
+.pb-tool-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.pb-tool-btn.active {
+  background: var(--color-primary);
+  color: var(--color-neutral-0);
+  border-color: var(--color-primary);
+}
+.pb-tool-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.pb-separator {
+  width: 1px;
+  height: 18px;
+  background: var(--border-light);
+  margin: 0 var(--spacing-1);
+  flex-shrink: 0;
+}
+
+.pb-color-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: var(--transition-bg);
+  flex-shrink: 0;
+  padding: 0;
+}
+.pb-color-dot:hover {
+  transform: scale(1.2);
+}
+.pb-color-dot.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-primary);
+}

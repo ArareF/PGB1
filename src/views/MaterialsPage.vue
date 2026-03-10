@@ -54,6 +54,15 @@ const { loadNotes: loadPageNotes, hasNote: hasPageNote, getNote: getPageNote, sa
 const showPageNote = ref(false)
 const pageNoteText = ref('')
 
+async function openPinboard() {
+  if (!projectPathRef.value) return
+  await invoke('open_pinboard_window', {
+    dirPath: projectPathRef.value,
+    canvasKey: 'materials',
+    title: t('materialsPage.title'),
+  })
+}
+
 function onPageNoteCheckbox(key: string, lineIndex: number) {
   const raw = getPageNote(key) ?? ''
   const updated = toggleCheckbox(raw, lineIndex)
@@ -450,6 +459,13 @@ onUnmounted(() => {
           <line x1="16" y1="13" x2="8" y2="13" />
           <line x1="16" y1="17" x2="8" y2="17" />
         </svg>
+      </button>
+      <button
+        class="note-btn"
+        :title="$t('pinboard.title')"
+        @click="openPinboard"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h6"/></svg>
       </button>
       <div class="view-buttons">
         <button class="view-btn" @click="refreshAll">{{ $t('common.refresh') }}</button>

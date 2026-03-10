@@ -60,7 +60,7 @@ async function onOnboardingComplete(mode: 'off' | 'auto' | 'record_only') {
 // 提醒弹窗和加班设置页面不需要主布局
 const isPopupRoute = computed(() => {
   const name = route.name as string
-  return name === 'reminder' || name === 'overtime' || name === 'translator'
+  return name === 'reminder' || name === 'overtime' || name === 'translator' || name === 'pinboard'
 })
 </script>
 

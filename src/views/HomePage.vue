@@ -33,6 +33,14 @@ const noteTarget = ref<ProjectInfo | null>(null)
 const showNoteDialog = ref(false)
 const { loadNotes: loadPageNotes, getNote: getPageNote, saveNote: savePageNote, hasNote: hasPageNote } = useNotes(projectRootDir)
 const showPageNote = ref(false)
+async function openPinboard() {
+  if (!projectRootDir.value) return
+  await invoke('open_pinboard_window', {
+    dirPath: projectRootDir.value,
+    canvasKey: 'home',
+    title: t('home.myProjects'),
+  })
+}
 const pageNoteText = ref('')
 
 function onPageNoteCheckbox(key: string, lineIndex: number) {
@@ -264,6 +272,14 @@ function onProjectCreated(projectName: string) {
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       </button>
+      <button
+        v-if="projectRootDir"
+        class="note-btn"
+        :title="$t('pinboard.title')"
+        @click="openPinboard"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h6"/></svg>
+      </button>
       <div class="sort-tabs">
         <button
           v-for="mode in (['default', 'deadline', 'priority'] as const)"
@@ -327,6 +343,7 @@ function onProjectCreated(projectName: string) {
       @update="onPageNoteUpdate"
       @cancel="showPageNote = false"
     />
+
   </div>
 
   <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.home" @close="showGuide = false" />

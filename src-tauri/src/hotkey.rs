@@ -80,7 +80,7 @@ fn create_translator_window(app: &AppHandle) {
 
     match WebviewWindowBuilder::new(app, TRANSLATOR_WINDOW_LABEL, url)
         .title("翻译")
-        .inner_size(400.0, 500.0)
+        .inner_size(400.0, 250.0)
         .resizable(true)
         .decorations(false)
         .transparent(true)

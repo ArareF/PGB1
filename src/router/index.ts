@@ -63,6 +63,11 @@ const router = createRouter({
       name: 'translator',
       component: () => import('../views/TranslatorPage.vue'),
     },
+    {
+      path: '/pinboard',
+      name: 'pinboard',
+      component: () => import('../views/PinboardPage.vue'),
+    },
   ],
 })
 

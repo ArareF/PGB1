@@ -283,40 +283,7 @@ function onTextInputKeydown(e: KeyboardEvent) {
   }
 }
 
-// ─── 碰撞检测（橡皮擦） ───────────────────────────────
-function hitTest(ann: PinAnnotation, pos: [number, number], radius: number): boolean {
-  const [px, py] = pos
 
-  if (ann.type === 'pen' && ann.points) {
-    for (const pt of ann.points) {
-      if (Math.hypot(pt[0] - px, pt[1] - py) < radius) return true
-    }
-  } else if (ann.type === 'text' && ann.position) {
-    if (Math.hypot(ann.position[0] - px, ann.position[1] - py) < radius * 2) return true
-  } else if (ann.start && ann.end) {
-    // 线段/矩形/椭圆 — 简化：检测起止点和中点
-    const midX = (ann.start[0] + ann.end[0]) / 2
-    const midY = (ann.start[1] + ann.end[1]) / 2
-    if (Math.hypot(ann.start[0] - px, ann.start[1] - py) < radius) return true
-    if (Math.hypot(ann.end[0] - px, ann.end[1] - py) < radius) return true
-    if (Math.hypot(midX - px, midY - py) < radius) return true
-
-    // 边的中点
-    if (ann.type === 'rect' || ann.type === 'ellipse') {
-      const edges: [number, number][] = [
-        [ann.start[0], midY],
-        [ann.end[0], midY],
-        [midX, ann.start[1]],
-        [midX, ann.end[1]],
-      ]
-      for (const ep of edges) {
-        if (Math.hypot(ep[0] - px, ep[1] - py) < radius) return true
-      }
-    }
-  }
-
-  return false
-}
 
 // ─── Canvas 渲染 ───────────────────────────────────────
 function renderAnnotations() {

@@ -171,6 +171,7 @@ export default {
     skippedSequences: 'The following sequences were skipped (not published)',
     startMaking: 'Start',
     finishConversion: 'Finish',
+    cancelConversion: 'Cancel',
     tpPreset: 'TexturePacker Preset',
     tpScale: 'Scale',
     tpWebpQuality: 'WebP Quality',

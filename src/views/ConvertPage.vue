@@ -463,8 +463,16 @@ onMounted(async () => {
         </template>
         <template v-else>
           <button
+            v-if="conversionProgress.current < conversionProgress.total"
+            class="cancel-btn"
+            @click="handleFinish"
+          >
+            {{ $t('convert.cancelConversion') }}
+          </button>
+          <button
             class="execute-btn"
-            :class="{ done: conversionProgress.current >= conversionProgress.total }"
+            :class="{ done: conversionProgress.current >= conversionProgress.total && conversionProgress.total > 0 }"
+            :disabled="conversionProgress.current < conversionProgress.total || conversionProgress.total === 0"
             @click="handleFinish"
           >
             {{ $t('convert.finishConversion') }}

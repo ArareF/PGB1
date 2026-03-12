@@ -1,6 +1,6 @@
 [package]
 name = "pgb1"
-version = "2.8.0"
+version = "2.8.1"
 description = "PG素材管理系统 - 2D游戏特效师文件整理工具"
 authors = ["Fuchikami"]
 edition = "2021"

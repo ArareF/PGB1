@@ -179,6 +179,7 @@ export default {
     skippedSequences: '以下序列帧未发布，已跳过',
     startMaking: '开始制作',
     finishConversion: '完成转换',
+    cancelConversion: '取消转换',
     tpPreset: 'TexturePacker 预设',
     tpScale: '缩放比例',
     tpWebpQuality: 'WebP 质量',

@@ -4198,7 +4198,10 @@ pub(crate) const DAILY_REPORT_INIT_JS: &str = r#"(function(){
 
 /// 后台轮询日报 WebView 就绪状态，就绪后聚焦并滚到文档末尾
 /// 预热命中时（hash 已为 #pgb-ready），跳过轮询直接执行滚动
-fn spawn_daily_report_scroll(window: tauri::WebviewWindow) {
+/// force_immediate=true：跳过 hash 轮询，直接执行聚焦+滚动。
+/// 适用于"窗口已可见（用户之前打开过）"的场景——页面肯定已加载，
+/// 但 Google Docs 自行修改了 URL hash，导致 #pgb-ready 已不存在。
+fn spawn_daily_report_scroll(window: tauri::WebviewWindow, force_immediate: bool) {
     tauri::async_runtime::spawn(async move {
         // 提前提取 HWND raw（isize 满足 Send），不跨 await 点持有 HWND(*mut c_void)
         #[cfg(target_os = "windows")]
@@ -4206,15 +4209,20 @@ fn spawn_daily_report_scroll(window: tauri::WebviewWindow) {
             unsafe { *(&h as *const _ as *const isize) }
         });
 
-        // 检查是否已就绪（预热场景：init_script 已跑完，hash 为 #pgb-ready）
-        let already_ready = window
+        // force_immediate：窗口已可见/已加载，直接跳过轮询
+        // 否则：检查是否已就绪（预热场景：init_script 已跑完，hash 为 #pgb-ready）
+        let already_ready = force_immediate || window
             .url()
             .ok()
             .and_then(|u| u.fragment().map(|f| f == "pgb-ready"))
             .unwrap_or(false);
 
         let detected = if already_ready {
-            eprintln!("[daily-report] 预热命中，页面已就绪");
+            if force_immediate {
+                eprintln!("[daily-report] 窗口已可见，跳过轮询直接滚动");
+            } else {
+                eprintln!("[daily-report] 预热命中，页面已就绪");
+            }
             true
         } else {
             eprintln!("[daily-report] 页面未就绪，开始轮询...");
@@ -4312,9 +4320,13 @@ pub async fn open_daily_report(app_handle: tauri::AppHandle) -> Result<(), Strin
 
     // 如果已存在（包含预热创建的隐藏窗口），显示 + 聚焦 + 滚动
     if let Some(existing) = app_handle.get_webview_window(label) {
+        // 窗口已可见：说明用户之前就打开过，页面肯定已加载完成（但 Google Docs 可能已修改
+        // 了 URL hash，导致 #pgb-ready 已不存在）。跳过 hash 轮询直接滚动。
+        // 窗口不可见：预热创建的隐藏窗口，页面可能还在加载，走正常 hash 轮询。
+        let force_immediate = existing.is_visible().unwrap_or(false);
         let _ = existing.show();
         let _ = existing.set_focus();
-        spawn_daily_report_scroll(existing);
+        spawn_daily_report_scroll(existing, force_immediate);
         return Ok(());
     }
 
@@ -4332,8 +4344,8 @@ pub async fn open_daily_report(app_handle: tauri::AppHandle) -> Result<(), Strin
     .build()
     .map_err(|e| format!("创建日报窗口失败: {}", e))?;
 
-    // 后台轮询就绪状态 + 聚焦 + 滚到底部
-    spawn_daily_report_scroll(window);
+    // 后台轮询就绪状态 + 聚焦 + 滚到底部（新窗口，不跳过轮询）
+    spawn_daily_report_scroll(window, false);
 
     Ok(())
 }

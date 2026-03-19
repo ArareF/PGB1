@@ -1,0 +1,11 @@
+{
+  "version": "2.8.2",
+  "notes": "v2.8.2 — PSD 缩略图性能优化 + 全屏预览 + 多项修复",
+  "pub_date": "2026-03-20T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.2/PG._2.8.2_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkVybWQ4SnJ5aW94b2l4OWNFZGxPeVhvZEl3Yk1EUUhCYXJJaFZ0Ymg2R2pYZ2hEZUdtbkxkN1c5U2s5bDQ5cVhZQlM4Sjg2bFpvK2g1MjAza2c4RHdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczOTM0ODU0CWZpbGU6UEfntKDmnZDnrqHnkIbns7vnu59fMi44LjJfeDY0LXNldHVwLmV4ZQo1MHZ5Z2RQbjBpM3BRSkFvbE56Mk1GOCs5MmVNTUFkc01KYmJ4SGwxK1Ryc0xCRVNxWDJPRlFnWnI0VVFITXNkazB0TURGbnk3SmpnbitYdUgvcEdBQT09Cg=="
+    }
+  }
+}

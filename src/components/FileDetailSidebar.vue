@@ -2,7 +2,7 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
-import { getPsdThumbnail } from '../composables/usePsdThumbnail'
+import { getPsdThumbnail, invalidatePsdCache } from '../composables/usePsdThumbnail'
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import { toggleCheckbox } from '../composables/useNotes'
@@ -173,7 +173,10 @@ const txtLoading = ref(false)
 const psdThumbnail   = ref<string | null>(null)
 const psdThumbLoading = ref(false)
 
-watch(() => props.file, async (file) => {
+// 侧边栏进场动画时长，与 --duration-normal 保持一致
+const SIDEBAR_ENTER_MS = 300
+
+watch(() => props.file, async (file, prevFile) => {
   // 切换文件时重置视频状态
   isPlaying.value = false
   currentTime.value = 0
@@ -198,6 +201,16 @@ watch(() => props.file, async (file) => {
 
   if (fileType.value === 'psd') {
     psdThumbLoading.value = true
+
+    // 侧边栏刚打开时（prevFile 为 null）正在播放进场动画，等动画结束再加载
+    if (!prevFile) {
+      await new Promise(resolve => setTimeout(resolve, SIDEBAR_ENTER_MS))
+      // 延迟期间用户可能已切换文件，避免覆盖最新结果
+      if (props.file?.path !== file.path) return
+    }
+
+    // 800px 不走 JS 缓存（侧边栏需要感知文件修改，freshness > perf）
+    invalidatePsdCache(file.path, 800)
     psdThumbnail.value = await getPsdThumbnail(file.path, 800)
     psdThumbLoading.value = false
   }

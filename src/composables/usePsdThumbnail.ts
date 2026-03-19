@@ -7,6 +7,13 @@ const cache = new Map<string, string | null>()
 // 进行中的请求：同一 key 并发时只发一个 invoke
 const pending = new Map<string, Promise<string | null>>()
 
+/** 清除指定文件的 JS 缓存，用于 mtime 变化后强制重新生成 */
+export function invalidatePsdCache(path: string, maxSize: number): void {
+  const key = `${path}@${maxSize}`
+  cache.delete(key)
+  // pending 不清除：若有进行中的请求，完成后会以最新 Rust 结果覆盖缓存
+}
+
 export async function getPsdThumbnail(path: string, maxSize: number): Promise<string | null> {
   const key = `${path}@${maxSize}`
 

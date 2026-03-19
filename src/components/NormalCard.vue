@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { FileEntry } from '../composables/useDirectoryFiles'
-import { getPsdThumbnail } from '../composables/usePsdThumbnail'
+import { getPsdThumbnail, invalidatePsdCache } from '../composables/usePsdThumbnail'
 import NoteTooltip from './NoteTooltip.vue'
 
 const props = defineProps<{
@@ -71,6 +71,9 @@ onMounted(() => {
       if (entries[0].isIntersecting) {
         psdObserver?.disconnect()
         psdObserver = null
+        // thumbnail_path 为 null 意味着 Rust 磁盘缓存不命中（首次或文件已修改）
+        // 清除 JS 缓存，确保不会拿到同 session 内的旧缩略图
+        invalidatePsdCache(props.file.path, 256)
         getPsdThumbnail(props.file.path, 256).then(url => {
           psdThumbnail.value = url
         })

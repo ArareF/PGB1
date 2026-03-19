@@ -36,6 +36,8 @@ export default {
     pageGuide: 'Page Guide',
     longPressHint: ' (long press to select version)',
     reset: 'Reset',
+    fullscreen: 'Fullscreen Preview',
+    exitFullscreen: 'Exit Fullscreen',
   },
 
   app: {

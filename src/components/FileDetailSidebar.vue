@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
@@ -266,6 +266,68 @@ function confirmDelete() {
   closeSidebarDialog()
 }
 
+// ─── 页面内全屏 ──────────────────────────────────────
+
+const isFullscreen = ref(false)
+const fsLeft = ref('0px')
+const sidebarEl = ref<HTMLElement | null>(null)
+
+async function toggleFullscreen() {
+  const el = sidebarEl.value
+
+  if (!isFullscreen.value) {
+    // 测量 .main-content 相对于 #content-row 的左偏移，全屏只盖这一段
+    const mainEl = document.querySelector('.main-content') as HTMLElement | null
+    const crEl   = document.getElementById('content-row') as HTMLElement | null
+    if (mainEl && crEl) {
+      const offset = mainEl.getBoundingClientRect().left - crEl.getBoundingClientRect().left
+      fsLeft.value = `${offset}px`
+    } else {
+      fsLeft.value = '0px'
+    }
+  }
+
+  // FLIP：记录切换前的位置与尺寸
+  const startRect = el?.getBoundingClientRect()
+
+  isFullscreen.value = !isFullscreen.value
+
+  await nextTick()
+
+  if (!el || !startRect) return
+  const endRect = el.getBoundingClientRect()
+
+  const dx     = startRect.left - endRect.left
+  const dy     = startRect.top  - endRect.top
+  const scaleX = startRect.width  / endRect.width
+  const scaleY = startRect.height / endRect.height
+
+  // 瞬间还原到起始形态（无动画）
+  el.style.transformOrigin = 'top left'
+  el.style.transform  = `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})`
+  el.style.transition = 'none'
+  void el.offsetWidth // 强制 reflow
+
+  // 播放到终态
+  el.style.transition = `transform var(--duration-normal) var(--ease-out)`
+  el.style.transform  = ''
+
+  el.addEventListener('transitionend', () => {
+    el.style.transform      = ''
+    el.style.transition     = ''
+    el.style.transformOrigin = ''
+  }, { once: true })
+}
+
+function onGlobalKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && isFullscreen.value) {
+    isFullscreen.value = false
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onGlobalKeyDown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeyDown))
+
 // ─── 拖拽调整宽度 ────────────────────────────────────
 
 const isResizing = ref(false)
@@ -305,9 +367,10 @@ function startResize(e: MouseEvent) {
     <Transition name="file-sidebar">
       <div
         v-if="file"
+        ref="sidebarEl"
         class="file-detail-sidebar"
-        :class="{ 'is-resizing': isResizing }"
-        :style="{ width: currentWidth + '%' }"
+        :class="{ 'is-resizing': isResizing, 'is-fullscreen': isFullscreen }"
+        :style="isFullscreen ? { left: fsLeft } : { width: currentWidth + '%' }"
       >
         <!-- 拖拽把手 -->
         <div class="resize-handle" @mousedown="startResize" />
@@ -327,6 +390,16 @@ function startResize(e: MouseEvent) {
               :src="convertFileSrc(file.path)"
               :alt="file.name"
             />
+            <button v-if="!teleportDisabled" class="preview-fullscreen-btn" :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')" @click="toggleFullscreen">
+              <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
+                <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+              </svg>
+            </button>
           </div>
 
           <!-- 视频预览 -->
@@ -347,6 +420,16 @@ function startResize(e: MouseEvent) {
               @ended="onVideoEnded"
               @click="togglePlay"
             />
+            <button v-if="!teleportDisabled" class="preview-fullscreen-btn" :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')" @click.stop="toggleFullscreen">
+              <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
+                <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+              </svg>
+            </button>
             <!-- 自定义控制条 -->
             <div class="video-controls">
               <button class="video-play-btn" @click.stop="togglePlay">
@@ -396,6 +479,16 @@ function startResize(e: MouseEvent) {
               </div>
             </div>
             <button class="open-file-btn" @click="openFile">{{ $t('fileDetail.openInPhotoshop') }}</button>
+            <button v-if="!teleportDisabled" class="preview-fullscreen-btn" :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')" @click="toggleFullscreen">
+              <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
+                <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+              </svg>
+            </button>
           </div>
 
           <!-- PDF 预览 -->
@@ -406,6 +499,16 @@ function startResize(e: MouseEvent) {
               class="preview-pdf-frame"
               frameborder="0"
             />
+            <button v-if="!teleportDisabled" class="preview-fullscreen-btn" :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')" @click="toggleFullscreen">
+              <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
+                <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+              </svg>
+            </button>
           </div>
 
           <!-- 其他：文件类型图标 + 打开按钮 -->
@@ -618,6 +721,7 @@ function startResize(e: MouseEvent) {
 
 /* ─── 视频预览 ─── */
 .preview-video-wrap {
+  position: relative;
   width: 100%;
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -938,4 +1042,128 @@ function startResize(e: MouseEvent) {
 }
 
 /* .sidebar-actions / .sidebar-action-btn / .sidebar-dialog-* → design-system.css 公共类 */
+
+/* ─── 页面内全屏模式 ─── */
+
+.file-detail-sidebar.is-fullscreen {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  /* left 由 JS 动态注入（.main-content 左边缘偏移量），不盖左侧快捷应用 */
+  width: auto !important;
+  z-index: 1;
+  border-radius: var(--floating-main-radius);
+  box-shadow: none;
+  padding: 0;
+}
+
+/* 全屏时隐藏非预览元素 */
+.file-detail-sidebar.is-fullscreen .resize-handle,
+.file-detail-sidebar.is-fullscreen .sidebar-header,
+.file-detail-sidebar.is-fullscreen .sidebar-section,
+.file-detail-sidebar.is-fullscreen .sidebar-actions {
+  display: none;
+}
+
+/* body 用 display:contents 消除中间层，让预览区直接参与侧边栏 flex 布局 */
+.file-detail-sidebar.is-fullscreen .sidebar-body {
+  display: contents;
+}
+
+/* 图片/PDF/PSD 预览铺满 */
+.file-detail-sidebar.is-fullscreen .preview-image-wrap,
+.file-detail-sidebar.is-fullscreen .preview-pdf-wrap {
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: unset;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+/* PSD 全屏：图片充满，隐藏"用 PS 打开"按钮 */
+.file-detail-sidebar.is-fullscreen .preview-psd-wrap {
+  flex: 1;
+  min-height: 0;
+  justify-content: center;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.file-detail-sidebar.is-fullscreen .preview-psd-wrap .open-file-btn {
+  display: none;
+}
+
+.file-detail-sidebar.is-fullscreen .psd-thumb-img {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+}
+
+/* 视频全屏：wrap 铺满，video flex: 1 + contain 显示完整画面 */
+.file-detail-sidebar.is-fullscreen .preview-video-wrap {
+  flex: 1;
+  min-height: 0;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.file-detail-sidebar.is-fullscreen .preview-video {
+  flex: 1;
+  min-height: 0;
+  height: 0; /* 让 flex: 1 生效 */
+  object-fit: contain;
+}
+
+/* PDF iframe 全屏 min-height 解除 */
+.file-detail-sidebar.is-fullscreen .preview-pdf-frame {
+  min-height: 0;
+}
+
+/* ─── 全屏按钮（图片/PDF/PSD 预览区悬浮右下角） ─── */
+
+.preview-image-wrap,
+.preview-pdf-wrap,
+.preview-psd-wrap {
+  position: relative;
+}
+
+.preview-fullscreen-btn {
+  position: absolute;
+  top: var(--spacing-2);
+  right: var(--spacing-2);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--duration-fast), background var(--duration-fast);
+  z-index: 5;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.preview-image-wrap:hover .preview-fullscreen-btn,
+.preview-video-wrap:hover .preview-fullscreen-btn,
+.preview-pdf-wrap:hover .preview-fullscreen-btn,
+.preview-psd-wrap:hover .preview-fullscreen-btn {
+  opacity: 1;
+}
+
+/* 全屏模式下按钮常驻可见 */
+.file-detail-sidebar.is-fullscreen .preview-fullscreen-btn {
+  opacity: 1;
+}
+
+.preview-fullscreen-btn:hover {
+  background: rgba(0, 0, 0, 0.65);
+}
+
 </style>

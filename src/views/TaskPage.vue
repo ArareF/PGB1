@@ -956,6 +956,57 @@ function startResize(e: MouseEvent) {
   document.addEventListener('mouseup', onMouseUp)
 }
 
+// ─── 侧边栏页面内全屏 ────────────────────────────────────
+
+const sidebarEl = ref<HTMLElement | null>(null)
+const isFullscreen = ref(false)
+const fsLeft = ref('0px')
+
+async function toggleFullscreen() {
+  const el = sidebarEl.value
+
+  if (!isFullscreen.value) {
+    const mainEl = document.querySelector('.main-content') as HTMLElement | null
+    const crEl = document.getElementById('content-row') as HTMLElement | null
+    if (mainEl && crEl) {
+      fsLeft.value = `${mainEl.getBoundingClientRect().left - crEl.getBoundingClientRect().left}px`
+    } else {
+      fsLeft.value = '0px'
+    }
+  }
+
+  const startRect = el?.getBoundingClientRect()
+  isFullscreen.value = !isFullscreen.value
+  await nextTick()
+
+  if (!el || !startRect) return
+  const endRect = el.getBoundingClientRect()
+  const dx = startRect.left - endRect.left
+  const dy = startRect.top - endRect.top
+  const scaleX = startRect.width / endRect.width
+  const scaleY = startRect.height / endRect.height
+
+  el.style.transformOrigin = 'top left'
+  el.style.transform = `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})`
+  el.style.transition = 'none'
+  void el.offsetWidth
+
+  el.style.transition = `transform var(--duration-normal) var(--ease-out)`
+  el.style.transform = ''
+
+  el.addEventListener('transitionend', () => {
+    el.style.transform = ''
+    el.style.transition = ''
+    el.style.transformOrigin = ''
+  }, { once: true })
+}
+
+function onSidebarKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && isFullscreen.value) {
+    isFullscreen.value = false
+  }
+}
+
 /** 文件大小格式化 */
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -1112,8 +1163,10 @@ function onVisibilityChange() {
   }
 }
 document.addEventListener('visibilitychange', onVisibilityChange)
+window.addEventListener('keydown', onSidebarKeyDown)
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('keydown', onSidebarKeyDown)
 })
 </script>
 
@@ -1290,9 +1343,10 @@ onUnmounted(() => {
     <Transition name="sidebar">
     <div
       v-if="selectedMaterial"
+      ref="sidebarEl"
       class="detail-sidebar"
-      :class="{ 'is-resizing': isResizing }"
-      :style="{ width: sidebarWidthPercent + '%' }"
+      :class="{ 'is-resizing': isResizing, 'is-fullscreen': isFullscreen }"
+      :style="isFullscreen ? { left: fsLeft } : { width: sidebarWidthPercent + '%' }"
     >
       <!-- 拖拽把手 -->
       <div class="resize-handle" @mousedown="startResize" />
@@ -1318,6 +1372,21 @@ onUnmounted(() => {
             :alt="selectedMaterial.name"
           />
           <div v-else class="sidebar-no-preview">{{ $t('common.noPreview') }}</div>
+          <button
+            v-if="selectedMaterial.material_type === 'sequence' || selectedMaterial.preview_path"
+            class="preview-fullscreen-btn"
+            :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')"
+            @click="toggleFullscreen"
+          >
+            <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+              <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
+              <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+            </svg>
+          </button>
         </div>
         <!-- 基本信息 -->
         <div class="sidebar-section">
@@ -1877,6 +1946,7 @@ onUnmounted(() => {
 }
 
 .sidebar-preview {
+  position: relative;
   width: 100%;
   aspect-ratio: 4 / 3;
   border-radius: var(--radius-md);
@@ -1886,6 +1956,53 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.sidebar-preview:hover .preview-fullscreen-btn {
+  opacity: 1;
+}
+
+/* ─── 侧边栏页面内全屏模式 ─── */
+
+.detail-sidebar.is-fullscreen {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  /* left 由 JS 动态注入 */
+  width: auto !important;
+  z-index: 1;
+  border-radius: var(--floating-main-radius);
+  box-shadow: none;
+  padding: 0;
+}
+
+/* 全屏时隐藏非预览元素 */
+.detail-sidebar.is-fullscreen .resize-handle,
+.detail-sidebar.is-fullscreen .sidebar-header,
+.detail-sidebar.is-fullscreen .sidebar-section,
+.detail-sidebar.is-fullscreen .sidebar-actions,
+.detail-sidebar.is-fullscreen .sidebar-dialog-overlay {
+  display: none;
+}
+
+/* sidebar-body 用 display:contents 消除中间层 */
+.detail-sidebar.is-fullscreen .sidebar-body {
+  display: contents;
+}
+
+/* 预览区铺满 */
+.detail-sidebar.is-fullscreen .sidebar-preview {
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: unset;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+/* 全屏模式下全屏按钮常驻可见 */
+.detail-sidebar.is-fullscreen .preview-fullscreen-btn {
+  opacity: 1;
 }
 
 

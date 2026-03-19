@@ -262,7 +262,20 @@ function onUpdateViewport(vp: PinboardViewport) {
 // ─── 粘贴 ─────────────────────────────────────────────
 async function handlePaste() {
   if (!activeTab.value) return
-  const pin = await pasteImage()
+
+  // 计算当前画布视口中心的世界坐标，使贴图居中粘贴
+  let viewportCenter: { x: number; y: number } | undefined
+  const canvasEl = canvasRef.value?.$el as HTMLElement | null
+  if (canvasEl) {
+    const { width, height } = canvasEl.getBoundingClientRect()
+    const { panX, panY, zoom } = viewport.value
+    viewportCenter = {
+      x: (width / 2 - panX) / zoom,
+      y: (height / 2 - panY) / zoom,
+    }
+  }
+
+  const pin = await pasteImage(viewportCenter)
   if (pin) {
     selectedPinId.value = pin.id
   }

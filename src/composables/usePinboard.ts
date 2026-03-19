@@ -90,7 +90,7 @@ export function usePinboard(dirPath: Ref<string> | string, canvasKey: Ref<string
     }
   }
 
-  async function pasteImage(): Promise<PinInfo | null> {
+  async function pasteImage(viewportCenter?: { x: number; y: number }): Promise<PinInfo | null> {
     const dir = unref(dirPath)
     if (!dir) return null
 
@@ -120,11 +120,19 @@ export function usePinboard(dirPath: Ref<string> | string, canvasKey: Ref<string
         w = MAX_INITIAL_WIDTH
       }
 
+      // 贴图放置位置：优先居中于当前视口，fallback 随机偏移
+      const x = viewportCenter !== undefined
+        ? viewportCenter.x - w / 2
+        : 50 + Math.random() * 100
+      const y = viewportCenter !== undefined
+        ? viewportCenter.y - h / 2
+        : 50 + Math.random() * 100
+
       const pin: PinInfo = {
         id: filename.replace('.png', ''),
         image: filename,
-        x: 50 + Math.random() * 100,
-        y: 50 + Math.random() * 100,
+        x,
+        y,
         width: w,
         height: h,
         annotations: [],

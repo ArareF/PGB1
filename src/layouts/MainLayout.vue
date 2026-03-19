@@ -204,6 +204,7 @@ const allMoreMenuItems = computed(() => {
   gap: var(--spacing-5);
   flex: 1;
   min-height: 0;
+  position: relative;
 }
 
 .sidebar-area {

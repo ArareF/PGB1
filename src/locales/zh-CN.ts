@@ -36,6 +36,8 @@ export default {
     pageGuide: '页面指引',
     longPressHint: '（长按选择版本）',
     reset: '重置',
+    fullscreen: '全屏预览',
+    exitFullscreen: '退出全屏',
   },
 
   app: {

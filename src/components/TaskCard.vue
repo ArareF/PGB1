@@ -59,21 +59,21 @@ function filesAllUploaded(): boolean {
 
 /** 进度状态：未开始 / 制作中 / 已完成 */
 const statusInfo = computed(() => {
+  const { material_total: total, material_uploaded: uploaded, video_total: vTotal } = props.task
   const p = props.subtaskProgress
   if (p && p.total > 0) {
     if (p.completed >= p.total) {
       return { label: t('taskCard.completed'), cls: 'status-completed' }
     }
-    if (p.completed > 0) {
+    if (p.completed > 0 || vTotal > 0) {
       return { label: `${t('taskCard.inProgress')} ${p.completed}/${p.total}`, cls: 'status-wip' }
     }
     return { label: `${t('taskCard.notStarted')} 0/${p.total}`, cls: 'status-pending' }
   }
-  const { material_total: total, material_uploaded: uploaded } = props.task
   if (total > 0 && uploaded >= total && filesAllUploaded()) {
     return { label: t('taskCard.completed'), cls: 'status-completed' }
   }
-  if (total > 0) {
+  if (total > 0 || vTotal > 0) {
     return { label: t('taskCard.inProgress'), cls: 'status-wip' }
   }
   return { label: t('taskCard.notStarted'), cls: 'status-pending' }

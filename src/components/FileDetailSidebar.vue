@@ -666,15 +666,15 @@ function startResize(e: MouseEvent) {
   opacity: 0.5;
 }
 
-/* 文件侧边栏进入/离开动画
-   只动 transform（GPU compositor 负责），移除 width 动画：
-   width 每帧变化强制触发 flex layout 重排，有大量卡片时每帧代价极高 */
+/* 文件侧边栏进入/离开动画 */
 .file-sidebar-enter-active {
-  transition: transform var(--duration-normal) var(--ease-slide-in);
+  transition: transform var(--duration-normal) var(--ease-slide-in),
+              width var(--duration-normal) var(--ease-slide-in);
   overflow: hidden;
 }
 .file-sidebar-leave-active {
-  transition: transform var(--duration-fast) var(--ease-slide-out);
+  transition: transform var(--duration-fast) var(--ease-slide-out),
+              width var(--duration-fast) var(--ease-slide-out);
   overflow: hidden;
 }
 .file-sidebar-enter-from,

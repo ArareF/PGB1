@@ -123,6 +123,7 @@ onUnmounted(() => {
           :src="psdThumbnail"
           :alt="file.name"
           class="preview-img"
+          decoding="async"
         />
         <div v-else-if="isPsd" class="psd-icon">
           <svg width="36" height="36" viewBox="0 0 36 36" fill="none">

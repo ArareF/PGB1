@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
@@ -32,7 +32,10 @@ const isPdf   = computed(() => !props.file.is_dir && PDF_EXTS.has(props.file.ext
 const videoThumbnail = ref<string | null>(null)
 const psdThumbnail   = ref<string | null>(null)
 
-onMounted(async () => {
+// PSD 懒加载观察器，进入视口时才触发 IPC 请求
+let psdObserver: IntersectionObserver | null = null
+
+onMounted(() => {
   if (isVideo.value) {
     const video = document.createElement('video')
     video.crossOrigin = 'anonymous'
@@ -57,9 +60,24 @@ onMounted(async () => {
     }, { once: true })
   }
 
-  if (isPsd.value) {
-    psdThumbnail.value = await getPsdThumbnail(props.file.path, 256)
+  // PSD：进入视口后才发起 IPC 请求，避免批量挂载时的并发风暴
+  if (isPsd.value && cardRef.value) {
+    psdObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        psdObserver?.disconnect()
+        psdObserver = null
+        getPsdThumbnail(props.file.path, 256).then(url => {
+          psdThumbnail.value = url
+        })
+      }
+    }, { threshold: 0 })
+    psdObserver.observe(cardRef.value)
   }
+})
+
+onUnmounted(() => {
+  psdObserver?.disconnect()
+  psdObserver = null
 })
 </script>
 

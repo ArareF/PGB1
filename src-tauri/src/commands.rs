@@ -5924,9 +5924,10 @@ pub async fn extract_psd_thumbnail(
     use std::hash::{Hash, Hasher};
     use tauri::Manager;
 
-    // 用 mtime 做缓存失效判定
-    let mtime = fs::metadata(&path)
-        .and_then(|m| m.modified())
+    // 用 mtime 做缓存失效判定（tokio::fs 异步版本，不阻塞 executor 线程）
+    let mtime = tokio::fs::metadata(&path).await
+        .ok()
+        .and_then(|m| m.modified().ok())
         .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
         .unwrap_or(0);
 
@@ -5941,8 +5942,8 @@ pub async fn extract_psd_thumbnail(
         .join("psd_thumbnails");
     let cache_file = cache_dir.join(format!("{:016x}.jpg", hash));
 
-    // 磁盘缓存命中 → 直接返回路径
-    if cache_file.exists() {
+    // 磁盘缓存命中 → 直接返回路径（tokio::fs 异步检查，不阻塞 executor 线程）
+    if tokio::fs::metadata(&cache_file).await.is_ok() {
         return Ok(Some(cache_file.to_string_lossy().to_string()));
     }
 

@@ -425,12 +425,23 @@ fn scan_task_names(export_path: &Path) -> Result<Vec<String>, String> {
 }
 
 /// 扫描指定目录，返回文件和子目录列表（非递归，只扫一层）
+/// PSD/PSB 文件若磁盘缓存命中，thumbnail_path 直接填入路径，
+/// 前端可用 loading="lazy" 渲染，与 PNG/JPG 行为完全一致
 #[tauri::command]
-pub fn scan_directory(dir_path: String) -> Result<Vec<FileEntry>, String> {
+pub fn scan_directory(app_handle: tauri::AppHandle, dir_path: String) -> Result<Vec<FileEntry>, String> {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use tauri::Manager;
+
     let dir = Path::new(&dir_path);
     if !dir.exists() {
         return Ok(Vec::new());
     }
+
+    // 预取一次缓存目录（所有 PSD/PSB 文件复用）
+    let psd_cache_dir = app_handle.path().app_config_dir()
+        .ok()
+        .map(|d| d.join("psd_thumbnails"));
 
     let mut entries = Vec::new();
     let dir_entries = fs::read_dir(dir).map_err(|e| format!("无法读取目录: {}", e))?;
@@ -451,11 +462,9 @@ pub fn scan_directory(dir_path: String) -> Result<Vec<FileEntry>, String> {
         }
 
         let is_dir = path.is_dir();
-        let size_bytes = if is_dir {
-            0
-        } else {
-            path.metadata().map(|m| m.len()).unwrap_or(0)
-        };
+        // metadata 获取一次，size 和 mtime 共用
+        let meta = if !is_dir { path.metadata().ok() } else { None };
+        let size_bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
         let extension = if is_dir {
             String::new()
         } else {
@@ -465,12 +474,37 @@ pub fn scan_directory(dir_path: String) -> Result<Vec<FileEntry>, String> {
                 .to_lowercase()
         };
 
+        // PSD/PSB：检查 256px 缓存是否命中，hash 计算与 extract_psd_thumbnail 完全一致
+        let thumbnail_path = if !is_dir && (extension == "psd" || extension == "psb") {
+            psd_cache_dir.as_ref().and_then(|cache_dir| {
+                let mtime = meta.as_ref()
+                    .and_then(|m| m.modified().ok())
+                    .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
+                    .unwrap_or(0);
+                let path_str = path.to_string_lossy().to_string();
+                let mut hasher = DefaultHasher::new();
+                path_str.hash(&mut hasher);
+                mtime.hash(&mut hasher);
+                256u32.hash(&mut hasher);
+                let hash = hasher.finish();
+                let cache_file = cache_dir.join(format!("{:016x}.jpg", hash));
+                if cache_file.exists() {
+                    Some(cache_file.to_string_lossy().to_string())
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        };
+
         entries.push(FileEntry {
             name,
             path: path.to_string_lossy().to_string(),
             is_dir,
             size_bytes,
             extension,
+            thumbnail_path,
         });
     }
 

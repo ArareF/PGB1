@@ -7,6 +7,8 @@ export interface FileEntry {
   is_dir: boolean
   size_bytes: number
   extension: string
+  /** PSD/PSB 磁盘缓存缩略图路径（256px），scan 命中时由 Rust 填入 */
+  thumbnail_path?: string
 }
 
 export function useDirectoryFiles() {

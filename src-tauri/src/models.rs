@@ -97,6 +97,10 @@ pub struct FileEntry {
     pub size_bytes: u64,
     /// 文件扩展名（小写，无点号），如 "png"、"mp4"
     pub extension: String,
+    /// PSD/PSB 磁盘缓存缩略图路径（256px），scan 时命中则填入，
+    /// 前端用 convertFileSrc 转为 asset URL + loading="lazy"，与 PNG/JPG 行为完全一致
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumbnail_path: Option<String>,
 }
 
 /// 素材文件类型

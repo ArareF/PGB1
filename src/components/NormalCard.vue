@@ -32,7 +32,12 @@ const isPdf   = computed(() => !props.file.is_dir && PDF_EXTS.has(props.file.ext
 const videoThumbnail = ref<string | null>(null)
 const psdThumbnail   = ref<string | null>(null)
 
-// PSD 懒加载观察器，进入视口时才触发 IPC 请求
+// 缓存命中：scan 时 Rust 已提供路径，直接转为 asset URL，无需任何 IPC
+const cachedPsdUrl = computed(() =>
+  props.file.thumbnail_path ? convertFileSrc(props.file.thumbnail_path) : null
+)
+
+// PSD 懒加载观察器，仅在缓存未命中时使用
 let psdObserver: IntersectionObserver | null = null
 
 onMounted(() => {
@@ -60,8 +65,8 @@ onMounted(() => {
     }, { once: true })
   }
 
-  // PSD：进入视口后才发起 IPC 请求，避免批量挂载时的并发风暴
-  if (isPsd.value && cardRef.value) {
+  // PSD 缓存未命中：进入视口后才发起 IPC 请求（首次生成缩略图）
+  if (isPsd.value && !cachedPsdUrl.value && cardRef.value) {
     psdObserver = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting) {
         psdObserver?.disconnect()
@@ -117,7 +122,16 @@ onUnmounted(() => {
             <polygon points="5,3 19,12 5,21" fill="currentColor" stroke="none" opacity="0.6" />
           </svg>
         </div>
-        <!-- PSD/PSB：有内嵌缩略图则显示，否则降级为 PS 图标 -->
+        <!-- PSD/PSB 缓存命中：等同于 PNG/JPG，浏览器原生懒加载管理 -->
+        <img
+          v-else-if="isPsd && cachedPsdUrl"
+          :src="cachedPsdUrl"
+          :alt="file.name"
+          class="preview-img"
+          loading="lazy"
+          decoding="async"
+        />
+        <!-- PSD/PSB 缓存未命中：IPC 懒加载结果（首次生成后下次 scan 即命中） -->
         <img
           v-else-if="isPsd && psdThumbnail"
           :src="psdThumbnail"

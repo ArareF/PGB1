@@ -14,6 +14,13 @@ use tauri::{
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // 已有实例在运行：把主窗口带到前台
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_drag::init())
@@ -100,6 +107,9 @@ pub fn run() {
             commands::delete_pin_image,
             commands::get_notes,
             commands::set_note,
+            commands::extract_pdf_pages_text,
+            commands::translate_text_once,
+            commands::build_translated_pdf,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main 窗口必须在 tauri.conf.json 中声明");

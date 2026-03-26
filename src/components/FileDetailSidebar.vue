@@ -6,6 +6,7 @@ import { getPsdThumbnail, invalidatePsdCache } from '../composables/usePsdThumbn
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import { toggleCheckbox } from '../composables/useNotes'
+import { useSettings } from '../composables/useSettings'
 import NoteEditor from './NoteEditor.vue'
 import ImageViewer from './ImageViewer.vue'
 
@@ -132,6 +133,86 @@ const emit = defineEmits<{
 
 const { openInExplorer } = useDirectoryFiles()
 const { t } = useI18n()
+const { loadSettings } = useSettings()
+
+// ─── PDF 翻译 ────────────────────────────────────────
+
+type PdfTranslateState = 'idle' | 'extracting' | 'translating' | 'building' | 'done' | 'error'
+const pdfTranslateState = ref<PdfTranslateState>('idle')
+const pdfTranslateProgress = ref({ current: 0, total: 0 })
+const pdfTranslateError = ref('')
+const pdfOutputPath = ref('')
+
+// 切换文件时重置翻译状态
+watch(() => props.file, () => {
+  pdfTranslateState.value = 'idle'
+  pdfTranslateError.value = ''
+  pdfOutputPath.value = ''
+  pdfTranslateProgress.value = { current: 0, total: 0 }
+})
+
+async function handleTranslatePdf() {
+  if (!props.file || pdfTranslateState.value !== 'idle') return
+
+  const settings = await loadSettings()
+  if (!settings?.translation?.apiKey) {
+    pdfTranslateState.value = 'error'
+    pdfTranslateError.value = t('fileDetail.translatePdfNoKey')
+    return
+  }
+
+  const { apiKey, model } = settings.translation
+
+  try {
+    // 提取文字
+    pdfTranslateState.value = 'extracting'
+    const pages = await invoke<string[]>('extract_pdf_pages_text', { path: props.file.path })
+
+    pdfTranslateProgress.value = { current: 0, total: pages.length }
+
+    // 逐页翻译
+    pdfTranslateState.value = 'translating'
+    const translations: string[] = []
+
+    for (let i = 0; i < pages.length; i++) {
+      pdfTranslateProgress.value = { current: i + 1, total: pages.length }
+      const translated = await invoke<string>('translate_text_once', {
+        apiKey,
+        model,
+        text: pages[i],
+      })
+      translations.push(translated)
+    }
+
+    // 生成 PDF
+    pdfTranslateState.value = 'building'
+    const outputPath = await invoke<string>('build_translated_pdf', {
+      path: props.file.path,
+      translations,
+    })
+
+    pdfOutputPath.value = outputPath
+    pdfTranslateState.value = 'done'
+  } catch (e: any) {
+    pdfTranslateState.value = 'error'
+    const msg = String(e)
+    if (msg.includes('扫描版')) {
+      pdfTranslateError.value = t('fileDetail.translatePdfScanned')
+    } else {
+      pdfTranslateError.value = `${t('fileDetail.translatePdfError')}: ${msg}`
+    }
+    console.error('PDF 翻译失败:', e)
+  }
+}
+
+async function openPdfCopy() {
+  if (!pdfOutputPath.value) return
+  try {
+    await invoke('open_file', { path: pdfOutputPath.value })
+  } catch (e) {
+    console.error('打开副本失败:', e)
+  }
+}
 
 // 笔记编辑
 const noteText = ref('')
@@ -536,6 +617,50 @@ function startResize(e: MouseEvent) {
             <button class="open-file-btn" @click="openFile">{{ $t('fileDetail.openFile') }}</button>
           </div>
 
+          <!-- PDF 翻译区块 -->
+          <div v-if="fileType === 'pdf'" class="pdf-translate-section">
+            <!-- idle：显示翻译按钮 -->
+            <template v-if="pdfTranslateState === 'idle'">
+              <button class="pdf-translate-btn" @click="handleTranslatePdf">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                  <line x1="2" y1="12" x2="22" y2="12"/>
+                </svg>
+                {{ $t('fileDetail.translatePdf') }}
+              </button>
+            </template>
+
+            <!-- 进行中 -->
+            <template v-else-if="pdfTranslateState === 'extracting' || pdfTranslateState === 'translating' || pdfTranslateState === 'building'">
+              <div class="pdf-translate-progress">
+                <span class="pdf-translate-spinner"/>
+                <span v-if="pdfTranslateState === 'extracting'">{{ $t('fileDetail.loading') }}</span>
+                <span v-else-if="pdfTranslateState === 'translating'">
+                  {{ $t('fileDetail.translatePdfProgress', pdfTranslateProgress) }}
+                </span>
+                <span v-else>{{ $t('fileDetail.translatePdfBuilding') }}</span>
+              </div>
+            </template>
+
+            <!-- 完成 -->
+            <template v-else-if="pdfTranslateState === 'done'">
+              <div class="pdf-translate-done">
+                <span class="pdf-translate-done-label">{{ $t('fileDetail.translatePdfDone') }}</span>
+                <button class="pdf-translate-open-btn" @click="openPdfCopy">{{ $t('fileDetail.translatePdfOpen') }}</button>
+                <button class="pdf-translate-reset-btn" title="重新翻译" @click="pdfTranslateState = 'idle'">↺</button>
+              </div>
+            </template>
+
+            <!-- 出错 -->
+            <template v-else-if="pdfTranslateState === 'error'">
+              <div class="pdf-translate-error">
+                <span class="pdf-translate-error-msg">{{ pdfTranslateError }}</span>
+                <button class="pdf-translate-reset-btn" title="重试" @click="pdfTranslateState = 'idle'">↺</button>
+              </div>
+            </template>
+          </div>
+
           <!-- 基本信息（文本类不显示） -->
           <div v-if="fileType !== 'text'" class="sidebar-section">
             <p class="section-title">{{ $t('fileDetail.basicInfo') }}</p>
@@ -886,6 +1011,118 @@ function startResize(e: MouseEvent) {
   border: none;
   display: block;
   border-radius: var(--radius-lg);
+}
+
+/* ─── PDF 翻译区块 ─── */
+.pdf-translate-section {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-2) var(--spacing-3);
+  border-top: var(--glass-border);
+  flex-shrink: 0;
+}
+
+.pdf-translate-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3);
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+
+.pdf-translate-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+}
+
+.pdf-translate-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.pdf-translate-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-medium);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: pdf-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pdf-spin {
+  to { transform: rotate(360deg); }
+}
+
+.pdf-translate-done {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) 0;
+  font-size: var(--font-size-sm);
+}
+
+.pdf-translate-done-label {
+  color: var(--color-success);
+  flex: 1;
+}
+
+.pdf-translate-open-btn {
+  padding: var(--spacing-1) var(--spacing-3);
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: opacity var(--duration-fast);
+  white-space: nowrap;
+}
+
+.pdf-translate-open-btn:hover { opacity: 0.85; }
+
+.pdf-translate-reset-btn {
+  padding: var(--spacing-1) var(--spacing-2);
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: color var(--duration-fast);
+  flex-shrink: 0;
+}
+
+.pdf-translate-reset-btn:hover { color: var(--text-primary); }
+
+.pdf-translate-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) 0;
+  font-size: var(--font-size-sm);
+}
+
+.pdf-translate-error-msg {
+  color: var(--color-danger);
+  flex: 1;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 /* ─── 其他文件 ─── */

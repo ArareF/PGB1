@@ -364,6 +364,14 @@ export default {
     deleteTitle: 'Delete File',
     deleteDesc: 'Move "{name}" to the Recycle Bin. You can restore it later.',
     confirmDelete: 'Confirm Delete',
+    translatePdf: 'Translate PDF',
+    translatePdfProgress: 'Translating page {current}/{total}...',
+    translatePdfBuilding: 'Building translated file...',
+    translatePdfDone: 'Translation complete',
+    translatePdfOpen: 'Open copy',
+    translatePdfNoKey: 'Please configure your Gemini API Key in Settings → Translation',
+    translatePdfScanned: 'No translatable text detected (scanned PDFs not supported)',
+    translatePdfError: 'Translation failed',
   },
 
   shortcut: {

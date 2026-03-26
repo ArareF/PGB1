@@ -381,6 +381,14 @@ export default {
     deleteTitle: '删除文件',
     deleteDesc: '将把「{name}」移入回收站，可从回收站恢复。',
     confirmDelete: '确认删除',
+    translatePdf: '翻译 PDF',
+    translatePdfProgress: '翻译第 {current}/{total} 页...',
+    translatePdfBuilding: '生成译文文件...',
+    translatePdfDone: '翻译完成',
+    translatePdfOpen: '打开副本',
+    translatePdfNoKey: '请先在设置 → 翻译中配置 Gemini API Key',
+    translatePdfScanned: '未检测到可翻译的文字（扫描版 PDF 暂不支持）',
+    translatePdfError: '翻译失败',
   },
 
   shortcut: {

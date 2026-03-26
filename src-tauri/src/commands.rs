@@ -6751,7 +6751,10 @@ pub async fn translate_text_once(
         "generationConfig": { "temperature": 0.1 }
     });
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
     let response = client
         .post(&url)
         .header("Content-Type", "application/json")

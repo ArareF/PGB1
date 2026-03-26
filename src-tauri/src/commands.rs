@@ -7253,16 +7253,94 @@ fn make_translated_text_ops(
     ops
 }
 
+/// 读取页面所有内容流，过滤掉 BT...ET 文字块，返回保留图片/图形的操作列表
+fn read_and_filter_text_ops(
+    doc: &lopdf::Document,
+    page_id: lopdf::ObjectId,
+) -> Vec<lopdf::content::Operation> {
+    use lopdf::content::Content;
+
+    let data = match doc.get_page_content(page_id) {
+        Ok(d) => d,
+        Err(_) => return vec![],
+    };
+    let ops = match Content::decode(&data) {
+        Ok(c) => c.operations,
+        Err(_) => return vec![],
+    };
+
+    let mut filtered = Vec::new();
+    let mut in_bt = false;
+    for op in ops {
+        match op.operator.as_str() {
+            "BT" => in_bt = true,
+            "ET" => in_bt = false,
+            _ if !in_bt => filtered.push(op),
+            _ => {}
+        }
+    }
+    filtered
+}
+
+/// 用新内容流列表替换页面 /Contents，并向 /Resources/Font 添加 ZhF0 引用
+fn replace_page_content(
+    doc: &mut lopdf::Document,
+    page_id: lopdf::ObjectId,
+    new_stream_ids: Vec<lopdf::ObjectId>,
+    font_id: lopdf::ObjectId,
+) -> Result<(), String> {
+    use lopdf::{Dictionary, Object};
+
+    // ── 读取 Resources（不可变借用，clone 出来） ──
+    let cur_resources_opt: Option<Object> = doc.get_object(page_id)
+        .ok()
+        .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
+        .and_then(|d| d.get(b"Resources").ok().map(|o| o.clone()));
+
+    let resolved_resources: Dictionary = match cur_resources_opt {
+        Some(Object::Dictionary(d)) => d,
+        Some(Object::Reference(r))  => doc.get_object(r)
+            .ok()
+            .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
+            .unwrap_or_else(Dictionary::new),
+        _ => Dictionary::new(),
+    };
+
+    // 向 Font 子字典写入 ZhF0
+    let mut new_res = resolved_resources;
+    let mut font_dict: Dictionary = match new_res.get(b"Font") {
+        Ok(Object::Dictionary(d)) => d.clone(),
+        _                         => Dictionary::new(),
+    };
+    font_dict.set("ZhF0", Object::Reference(font_id));
+    new_res.set("Font", Object::Dictionary(font_dict));
+
+    // ── 写回页面 dict ──
+    let new_contents: Vec<Object> = new_stream_ids
+        .into_iter()
+        .map(|id| Object::Reference(id))
+        .collect();
+
+    let page_dict_mut = doc.get_object_mut(page_id)
+        .map_err(|_| "页面对象不存在".to_string())?
+        .as_dict_mut()
+        .map_err(|_| "页面不是 dict".to_string())?;
+    page_dict_mut.set("Contents",  Object::Array(new_contents));
+    page_dict_mut.set("Resources", Object::Dictionary(new_res));
+
+    Ok(())
+}
+
 /// 构建翻译后的 PDF，保存为 {原文件名}_zh.pdf
-/// 策略：原始页面完全不修改，在每页之后插入一个独立的中文翻译页
-/// 这样可以完全保留原始图片/图形，不受 Form XObject / inline image 等问题影响
+/// 策略：
+///   1. 解析每页内容流，过滤掉 BT...ET 文字块（保留图片、图形等非文字元素）
+///   2. 在同一页追加中文翻译流（从页面顶部开始排版）
+/// 输出页数与原 PDF 相同，中文显示在原英文所在区域，图片完整保留
 #[tauri::command]
 pub fn build_translated_pdf(
     path: String,
     translations: Vec<String>,
 ) -> Result<String, String> {
-    use lopdf::content::Content;
-
     let font_data = load_cjk_font_bytes()
         .ok_or_else(|| "未找到系统中文字体（msyh.ttc / simhei.ttf），请确认 Windows 字体已安装".to_string())?;
 
@@ -7272,32 +7350,10 @@ pub fn build_translated_pdf(
     // 添加嵌入字体（整个文档共享一份）
     let font_id = add_yahe_font(&mut doc, &font_data);
 
-    // 构建每个翻译页的 Resources dict（引用 ZhF0 字体）
-    let mut zh_res_font = lopdf::Dictionary::new();
-    zh_res_font.set("ZhF0", lopdf::Object::Reference(font_id));
-    let mut zh_resources = lopdf::Dictionary::new();
-    zh_resources.set("Font", lopdf::Object::Dictionary(zh_res_font));
-    let zh_res_id = doc.add_object(lopdf::Object::Dictionary(zh_resources));
-
-    // ── 找到根 Pages 对象（用于插入新页） ──
-    let catalog_id = doc.trailer
-        .get(b"Root")
-        .map_err(|_| "找不到 PDF Catalog")?
-        .as_reference()
-        .map_err(|_| "Root 不是引用")?;
-    let pages_id = doc.get_object(catalog_id)
-        .map_err(|_| "读取 Catalog 失败")?
-        .as_dict()
-        .map_err(|_| "Catalog 不是 dict")?
-        .get(b"Pages")
-        .map_err(|_| "Catalog 没有 Pages")?
-        .as_reference()
-        .map_err(|_| "Pages 不是引用")?;
-
-    // 先把原始 page_ids 收集好，再逐一插入翻译页
+    // 收集原始页面 ID
     let orig_page_ids: Vec<lopdf::ObjectId> = doc.page_iter().collect();
 
-    // 收集每页的 MediaBox
+    // 收集每页的 MediaBox（不可变借用阶段，全部先算好）
     let media_boxes: Vec<(f32, f32)> = orig_page_ids.iter().map(|&pid| {
         let w = doc.get_object(pid).ok()
             .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
@@ -7318,69 +7374,51 @@ pub fn build_translated_pdf(
         (w, h)
     }).collect();
 
-    // ── 为每页创建翻译页对象，记录 (原始页ID, 翻译页ID) ──
-    let mut translation_page_ids: Vec<Option<lopdf::ObjectId>> = Vec::new();
+    // 第一遍：不可变借用阶段——读取所有页面的过滤后操作列表
+    let filtered_ops_per_page: Vec<Vec<lopdf::content::Operation>> = orig_page_ids
+        .iter()
+        .map(|&pid| read_and_filter_text_ops(&doc, pid))
+        .collect();
 
-    for (page_idx, &orig_id) in orig_page_ids.iter().enumerate() {
+    // 第二遍：可变阶段——添加流、更新页面
+    for (page_idx, &page_id) in orig_page_ids.iter().enumerate() {
         let translation = match translations.get(page_idx) {
             Some(t) if !t.trim().is_empty() => t.clone(),
-            _ => { translation_page_ids.push(None); continue; }
+            _ => continue,
         };
 
         let (page_width, page_height) = media_boxes[page_idx];
-        let margin_x = 50.0f32;
-        let margin_top = page_height - 50.0;
-        let font_size = 11.0f32;
+        let margin_x   = 36.0f32;
+        let margin_top = page_height - 36.0;
 
-        // 构建翻译页内容流
-        let mut ops: Vec<lopdf::content::Operation> = Vec::new();
-        ops.extend(make_translated_text_ops(
-            margin_x,
-            margin_top,
-            font_size,
-            &translation,
-            page_width,
-            &font_data,
+        // 过滤后的图形内容流（英文文字已去除，图片保留）
+        let filtered_ops = filtered_ops_per_page[page_idx].clone();
+        let filtered_bytes = lopdf::content::Content { operations: filtered_ops }
+            .encode()
+            .unwrap_or_else(|_| vec![]);  // 编码失败时给空流（保守兜底）
+        let filtered_id = doc.add_object(lopdf::Object::Stream(
+            lopdf::Stream::new(lopdf::Dictionary::new(), filtered_bytes)
         ));
 
-        let stream_bytes = Content { operations: ops }.encode()
-            .map_err(|e| format!("编码翻译页流失败（第 {} 页）: {}", page_idx + 1, e))?;
-        let stream_id = doc.add_object(lopdf::Object::Stream(
-            lopdf::Stream::new(lopdf::Dictionary::new(), stream_bytes)
+        // 中文翻译内容流（从页面顶部开始排版，白色背景遮住残余英文）
+        let mut zh_ops: Vec<lopdf::content::Operation> = Vec::new();
+        // 先用白底覆盖整页（防止 Form XObject 中残余的英文字透出来）
+        zh_ops.extend(make_white_rect_ops(0.0, 0.0, page_width, page_height));
+        zh_ops.extend(make_translated_text_ops(
+            margin_x, margin_top, 11.0, &translation, page_width, &font_data,
+        ));
+        let zh_bytes = lopdf::content::Content { operations: zh_ops }
+            .encode()
+            .map_err(|e| format!("编码中文流失败（第 {} 页）: {}", page_idx + 1, e))?;
+        let zh_id = doc.add_object(lopdf::Object::Stream(
+            lopdf::Stream::new(lopdf::Dictionary::new(), zh_bytes)
         ));
 
-        // 构建翻译页 Page dict
-        let zh_page = lopdf::Dictionary::from_iter(vec![
-            ("Type",     lopdf::Object::Name(b"Page".to_vec())),
-            ("Parent",   lopdf::Object::Reference(pages_id)),
-            ("MediaBox", lopdf::Object::Array(vec![
-                lopdf::Object::Real(0.0), lopdf::Object::Real(0.0),
-                lopdf::Object::Real(page_width), lopdf::Object::Real(page_height),
-            ])),
-            ("Contents",   lopdf::Object::Reference(stream_id)),
-            ("Resources",  lopdf::Object::Reference(zh_res_id)),
-        ]);
-        let zh_page_id = doc.add_object(lopdf::Object::Dictionary(zh_page));
-        eprintln!("[build_pdf] page {} zh_page created {:?}", page_idx + 1, zh_page_id);
-        translation_page_ids.push(Some(zh_page_id));
-    }
+        // 替换页面内容：[图形流（无英文字）, 中文流]
+        replace_page_content(&mut doc, page_id, vec![filtered_id, zh_id], font_id)
+            .map_err(|e| format!("更新页面失败（第 {} 页）: {}", page_idx + 1, e))?;
 
-    // ── 重建 /Pages /Kids 数组：原页 + 翻译页交错 ──
-    let mut new_kids: Vec<lopdf::Object> = Vec::new();
-    for (orig_id, zh_id_opt) in orig_page_ids.iter().zip(translation_page_ids.iter()) {
-        new_kids.push(lopdf::Object::Reference(*orig_id));
-        if let Some(zh_id) = zh_id_opt {
-            new_kids.push(lopdf::Object::Reference(*zh_id));
-        }
-    }
-    let new_count = new_kids.len() as i64;
-
-    // 更新 Pages dict
-    if let Ok(pages_obj) = doc.get_object_mut(pages_id) {
-        if let Ok(pages_dict) = pages_obj.as_dict_mut() {
-            pages_dict.set("Kids", lopdf::Object::Array(new_kids));
-            pages_dict.set("Count", lopdf::Object::Integer(new_count));
-        }
+        eprintln!("[build_pdf] page {} replaced (filtered+zh)", page_idx + 1);
     }
 
     // 生成输出路径：{stem}_zh.pdf

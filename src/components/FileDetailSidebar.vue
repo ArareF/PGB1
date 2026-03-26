@@ -142,6 +142,14 @@ const pdfTranslateState = ref<PdfTranslateState>('idle')
 const pdfTranslateProgress = ref({ current: 0, total: 0 })
 const pdfTranslateError = ref('')
 const pdfOutputPath = ref('')
+const showingTranslated = ref(false)
+
+const activePdfSrc = computed(() => {
+  if (showingTranslated.value && pdfOutputPath.value) {
+    return convertFileSrc(pdfOutputPath.value)
+  }
+  return props.file ? convertFileSrc(props.file.path) : ''
+})
 
 // 切换文件时重置翻译状态
 watch(() => props.file, () => {
@@ -149,6 +157,7 @@ watch(() => props.file, () => {
   pdfTranslateError.value = ''
   pdfOutputPath.value = ''
   pdfTranslateProgress.value = { current: 0, total: 0 }
+  showingTranslated.value = false
 })
 
 async function handleTranslatePdf() {
@@ -192,6 +201,7 @@ async function handleTranslatePdf() {
     })
 
     pdfOutputPath.value = outputPath
+    showingTranslated.value = true
     pdfTranslateState.value = 'done'
   } catch (e: any) {
     pdfTranslateState.value = 'error'
@@ -205,13 +215,8 @@ async function handleTranslatePdf() {
   }
 }
 
-async function openPdfCopy() {
-  if (!pdfOutputPath.value) return
-  try {
-    await invoke('open_file', { path: pdfOutputPath.value })
-  } catch (e) {
-    console.error('打开副本失败:', e)
-  }
+function togglePdfView() {
+  showingTranslated.value = !showingTranslated.value
 }
 
 // 笔记编辑
@@ -588,8 +593,8 @@ function startResize(e: MouseEvent) {
           <!-- PDF 预览 -->
           <div v-else-if="fileType === 'pdf'" class="preview-pdf-wrap">
             <iframe
-              :key="file.path"
-              :src="convertFileSrc(file.path)"
+              :key="activePdfSrc"
+              :src="activePdfSrc"
               class="preview-pdf-frame"
               frameborder="0"
             />
@@ -646,9 +651,10 @@ function startResize(e: MouseEvent) {
             <!-- 完成 -->
             <template v-else-if="pdfTranslateState === 'done'">
               <div class="pdf-translate-done">
-                <span class="pdf-translate-done-label">{{ $t('fileDetail.translatePdfDone') }}</span>
-                <button class="pdf-translate-open-btn" @click="openPdfCopy">{{ $t('fileDetail.translatePdfOpen') }}</button>
-                <button class="pdf-translate-reset-btn" title="重新翻译" @click="pdfTranslateState = 'idle'">↺</button>
+                <button class="pdf-translate-btn" @click="togglePdfView">
+                  {{ showingTranslated ? $t('fileDetail.translatePdfViewOriginal') : $t('fileDetail.translatePdfViewTranslated') }}
+                </button>
+                <button class="pdf-translate-reset-btn" title="重新翻译" @click="pdfTranslateState = 'idle'; showingTranslated = false">↺</button>
               </div>
             </template>
 

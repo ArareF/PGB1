@@ -6674,49 +6674,59 @@ pub fn delete_pin_image(dir_path: String, filename: String) -> Result<(), String
 // ═══════════════════════════════════════════════════════════════
 
 /// 提取 PDF 每页文字，返回 Vec<String>（按页序，索引与页号一一对应）
+/// 策略：用 pdf_extract 正确解析字体 encoding 获得文字，用 lopdf 获得页数，再做分页
 #[tauri::command]
 pub fn extract_pdf_pages_text(path: String) -> Result<Vec<String>, String> {
-    use lopdf::content::Content;
+    const PAGE_TEXT_LIMIT: usize = 3000;
 
+    // ① 用 lopdf 获取准确页数
     let doc = lopdf::Document::load(&path)
         .map_err(|e| format!("读取 PDF 失败: {}", e))?;
-
-    let page_ids: Vec<lopdf::ObjectId> = doc.page_iter().collect();
-    if page_ids.is_empty() {
+    let page_count = doc.page_iter().count();
+    if page_count == 0 {
         return Err("PDF 无页面".to_string());
     }
 
-    let mut pages: Vec<String> = Vec::with_capacity(page_ids.len());
+    // ② 用 pdf_extract 提取全文（正确处理字体 encoding）
+    let bytes = std::fs::read(&path)
+        .map_err(|e| format!("读取文件字节失败: {}", e))?;
+    let text_all = pdf_extract::extract_text_from_mem(&bytes)
+        .map_err(|e| format!("提取文字失败: {}", e))?;
 
-    for &page_id in &page_ids {
-        let content_data = match doc.get_page_content(page_id) {
-            Ok(d) => d,
-            Err(_) => { pages.push(String::new()); continue; }
-        };
-        let content = match Content::decode(&content_data) {
-            Ok(c) => c,
-            Err(_) => { pages.push(String::new()); continue; }
-        };
+    // ③ 优先按换页符 \x0C 分页；分段数不足时按字符数均分
+    let ff_segments: Vec<&str> = text_all.split('\x0C').collect();
 
-        let text_blocks = extract_text_blocks_from_ops(&content.operations);
-        let mut page_text = text_blocks.iter()
-            .map(|b| b.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
-        // 单页文字上限 3000 字符，防止超长页面导致 API 超时
-        const PAGE_TEXT_LIMIT: usize = 3000;
-        let char_count = page_text.chars().count();
-        if char_count > PAGE_TEXT_LIMIT {
-            let truncated: String = page_text.chars().take(PAGE_TEXT_LIMIT).collect();
-            page_text = truncated;
-            eprintln!("[PDF] page {} truncated {} -> {} chars", pages.len() + 1, char_count, PAGE_TEXT_LIMIT);
+    let raw_pages: Vec<String> = if ff_segments.len() >= page_count {
+        // 换页符分页足够——直接取前 page_count 段
+        ff_segments.iter()
+            .take(page_count)
+            .map(|s| s.trim().to_string())
+            .collect()
+    } else {
+        // 换页符不足——按字符数均分
+        let all_chars: Vec<char> = text_all.chars().collect();
+        let total = all_chars.len();
+        let per_page = (total / page_count).max(1);
+        (0..page_count).map(|i| {
+            let start = i * per_page;
+            if start >= total { return String::new(); }
+            let end = if i + 1 == page_count { total } else { ((i + 1) * per_page).min(total) };
+            all_chars[start..end].iter().collect::<String>().trim().to_string()
+        }).collect()
+    };
+
+    // ④ 截断超长页 + 打印调试日志
+    let pages: Vec<String> = raw_pages.into_iter().enumerate().map(|(i, text)| {
+        let count = text.chars().count();
+        if count > PAGE_TEXT_LIMIT {
+            eprintln!("[PDF] page {} truncated {} -> {} chars", i + 1, count, PAGE_TEXT_LIMIT);
+            text.chars().take(PAGE_TEXT_LIMIT).collect()
         } else {
-            eprintln!("[PDF] page {} extracted {} chars", pages.len() + 1, char_count);
+            eprintln!("[PDF] page {} extracted {} chars", i + 1, count);
+            text
         }
-        pages.push(page_text);
-    }
+    }).collect();
 
-    // 检查是否所有页面都无文字（扫描版 PDF）
     let has_text = pages.iter().any(|p| !p.trim().is_empty());
     if !has_text {
         return Err("未检测到可翻译的文字（可能是扫描版 PDF）".to_string());

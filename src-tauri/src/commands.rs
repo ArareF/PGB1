@@ -6755,31 +6755,59 @@ pub async fn translate_text_once(
         .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
-    let response = client
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .header("X-goog-api-key", &api_key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("网络错误: {}", e))?;
 
-    if !response.status().is_success() {
+    // 遇到 503/429 时自动重试，最多 3 次，指数退避 5s → 15s → 45s
+    const MAX_RETRIES: u32 = 3;
+    let mut last_err = String::new();
+    let mut translated = String::new();
+    let mut success = false;
+
+    for attempt in 0..=MAX_RETRIES {
+        if attempt > 0 {
+            let wait_secs = 5u64 * 3u64.pow(attempt - 1);
+            tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+        }
+
+        let response = match client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .header("X-goog-api-key", &api_key)
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => { last_err = format!("网络错误: {}", e); continue; }
+        };
+
         let status = response.status();
-        let err_text = response.text().await.unwrap_or_default();
-        return Err(format!("API 错误 {}: {}", status, err_text));
+        if status.as_u16() == 503 || status.as_u16() == 429 {
+            let err_text = response.text().await.unwrap_or_default();
+            last_err = format!("API 错误 {}: {}", status, err_text);
+            continue; // 重试
+        }
+        if !status.is_success() {
+            let err_text = response.text().await.unwrap_or_default();
+            return Err(format!("API 错误 {}: {}", status, err_text));
+        }
+
+        let json: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| format!("解析响应失败: {}", e))?;
+
+        translated = json["candidates"][0]["content"]["parts"][0]["text"]
+            .as_str()
+            .ok_or_else(|| "响应格式异常，无法提取翻译文本".to_string())?
+            .trim()
+            .to_string();
+        success = true;
+        break;
     }
 
-    let json: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("解析响应失败: {}", e))?;
-
-    let translated = json["candidates"][0]["content"]["parts"][0]["text"]
-        .as_str()
-        .ok_or_else(|| "响应格式异常，无法提取翻译文本".to_string())?
-        .trim()
-        .to_string();
+    if !success {
+        return Err(format!("翻译失败（重试 {} 次后）: {}", MAX_RETRIES, last_err));
+    }
 
     Ok(translated)
 }

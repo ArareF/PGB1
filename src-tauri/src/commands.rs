@@ -6774,19 +6774,46 @@ fn obj_to_f32(obj: &lopdf::Object) -> f32 {
     }
 }
 
-/// 将字符串编码为 PDF 使用的 UTF-16BE 十六进制字符串（含 BOM）
-fn encode_pdf_utf16be_hex(s: &str) -> String {
-    let mut hex = String::from("FEFF"); // BOM
-    for c in s.chars() {
-        let code = c as u32;
-        if code <= 0xFFFF {
-            hex.push_str(&format!("{:04X}", code));
-        } else {
-            let code = code - 0x10000;
-            let high = 0xD800 + (code >> 10);
-            let low  = 0xDC00 + (code & 0x3FF);
-            hex.push_str(&format!("{:04X}{:04X}", high, low));
+/// 加载系统中文字体文件（msyh.ttc 优先，fallback simhei.ttf）
+fn load_cjk_font_bytes() -> Option<Vec<u8>> {
+    let candidates = [
+        r"C:\Windows\Fonts\msyh.ttc",
+        r"C:\Windows\Fonts\msyhbd.ttc",
+        r"C:\Windows\Fonts\simhei.ttf",
+        r"C:\Windows\Fonts\simsun.ttc",
+    ];
+    for path in &candidates {
+        if let Ok(data) = std::fs::read(path) {
+            return Some(data);
         }
+    }
+    None
+}
+
+/// 将文字编码为 Identity-H CID hex（使用 ttf-parser 查找实际 GlyphID）
+/// Identity-H 下 CID 直接作为 GlyphID 使用，必须用真实值否则乱码
+fn encode_chars_to_cid_hex(text: &str, font_data: &[u8]) -> String {
+    use ttf_parser::Face;
+    let face = match Face::parse(font_data, 0) {
+        Ok(f) => f,
+        Err(_) => {
+            // 解析失败：fallback 到 Unicode codepoint（大概率乱码但至少写进去）
+            let mut hex = String::new();
+            for c in text.chars() {
+                if (c as u32) <= 0xFFFF {
+                    hex.push_str(&format!("{:04X}", c as u32));
+                }
+            }
+            return hex;
+        }
+    };
+
+    let mut hex = String::new();
+    for c in text.chars() {
+        if let Some(glyph_id) = face.glyph_index(c) {
+            hex.push_str(&format!("{:04X}", glyph_id.0));
+        }
+        // 找不到字形（如特殊控制字符）则跳过
     }
     hex
 }
@@ -6967,58 +6994,72 @@ fn make_white_rect_ops(x: f32, y: f32, w: f32, h: f32) -> Vec<lopdf::content::Op
     ]
 }
 
-/// 生成 BT...ET 中文翻译文字块操作（Identity-H UTF-16BE hex 编码）
+/// 生成 BT...ET 中文翻译文字块操作（Identity-H GlyphID hex 编码）
+/// font_data: 字体文件字节（用于 ttf-parser GlyphID 查找）
 fn make_translated_text_ops(
     x: f32,
     y: f32,
     font_size: f32,
     translated: &str,
     page_width: f32,
+    font_data: &[u8],
 ) -> Vec<lopdf::content::Operation> {
     use lopdf::{content::Operation, Object, StringFormat};
 
     let fs = font_size.max(9.0).min(16.0);
-    // 每行最多字符数（粗估：每个汉字约 fs pt，页宽换算）
-    let max_per_line = ((page_width / fs) as usize).max(20).min(60);
+    // 每行最多字符数（汉字约 fs pt 宽，可用宽度 = 页宽 - 左边距 - 右边距）
+    let avail_width = page_width - x - 40.0;
+    let max_per_line = ((avail_width / fs) as usize).max(15).min(80);
 
     let mut ops = vec![
         Operation::new("q", vec![]),
+        // 黑色文字
         Operation::new("rg", vec![Object::Real(0.0), Object::Real(0.0), Object::Real(0.0)]),
         Operation::new("BT", vec![]),
         Operation::new("Tf", vec![
             Object::Name(b"ZhF0".to_vec()),
             Object::Real(fs),
         ]),
+        // 行间距 = 1.5 倍字号
         Operation::new("TL", vec![Object::Real(fs * 1.5)]),
+        // 移动到起始位置（PDF y 轴向上，从 max_y 开始向下排）
         Operation::new("Td", vec![Object::Real(x), Object::Real(y)]),
     ];
 
-    let mut first = true;
+    let mut first_line = true;
     for line in translated.lines() {
         let line = line.trim();
-        if line.is_empty() {
+
+        if !first_line {
             ops.push(Operation::new("T*", vec![]));
-            first = false;
+        }
+        first_line = false;
+
+        if line.is_empty() {
+            // 空行：已 T*，继续
             continue;
         }
-        let mut remaining = line;
-        let mut first_chunk = true;
-        while !remaining.is_empty() {
-            let take = remaining.char_indices().nth(max_per_line)
-                .map(|(i, _)| i).unwrap_or(remaining.len());
-            let chunk = &remaining[..take];
-            remaining = &remaining[take..];
 
-            if !first || !first_chunk {
+        // 按最大字符数分块
+        let chars: Vec<char> = line.chars().collect();
+        let mut pos = 0;
+        let mut first_chunk = true;
+        while pos < chars.len() {
+            let end = (pos + max_per_line).min(chars.len());
+            let chunk: String = chars[pos..end].iter().collect();
+            pos = end;
+
+            if !first_chunk {
                 ops.push(Operation::new("T*", vec![]));
             }
-            first = false;
             first_chunk = false;
 
-            let hex_bytes = encode_pdf_utf16be_hex(chunk).into_bytes();
-            ops.push(Operation::new("Tj", vec![
-                Object::String(hex_bytes, StringFormat::Hexadecimal),
-            ]));
+            let hex = encode_chars_to_cid_hex(&chunk, font_data);
+            if !hex.is_empty() {
+                ops.push(Operation::new("Tj", vec![
+                    Object::String(hex.into_bytes(), StringFormat::Hexadecimal),
+                ]));
+            }
         }
     }
 
@@ -7035,6 +7076,10 @@ pub fn build_translated_pdf(
     translations: Vec<String>,
 ) -> Result<String, String> {
     use lopdf::content::Content;
+
+    // 一次性加载中文字体（供 GlyphID 查找 + 后续字体引用）
+    let font_data = load_cjk_font_bytes()
+        .ok_or_else(|| "未找到系统中文字体（msyh.ttc / simhei.ttf），请确认 Windows 字体已安装".to_string())?;
 
     let mut doc = lopdf::Document::load(&path)
         .map_err(|e| format!("打开 PDF 失败: {}", e))?;
@@ -7080,25 +7125,28 @@ pub fn build_translated_pdf(
 
         // 计算文字区域包围框
         let min_x = text_blocks.iter().map(|b| b.x).fold(f32::MAX, f32::min);
-        let max_x = text_blocks.iter().map(|b| b.x + b.font_size * 10.0).fold(f32::MIN, f32::max);
         let min_y = text_blocks.iter().map(|b| b.y).fold(f32::MAX, f32::min);
         let max_y = text_blocks.iter().map(|b| b.y).fold(f32::MIN, f32::max);
 
         let font_size = text_blocks.iter()
             .map(|b| b.font_size).fold(0.0f32, f32::max).max(10.0);
-        let first_x = text_blocks[0].x;
-        let rect_w = (max_x - min_x).max(page_width * 0.5);
-        let rect_h = (max_y - min_y + font_size * 3.0).max(font_size * 4.0);
+
+        // 白色矩形：从文字区域左边延伸到页面右边距（确保覆盖所有文字，无论行长）
+        let rect_x = min_x.min(36.0);  // 向左扩展到至少 36pt（约 1.27cm）页边
+        let rect_y = min_y - font_size * 2.0;
+        let rect_w = page_width - rect_x + 10.0;  // 覆盖到右边界
+        let rect_h = (max_y - min_y + font_size * 5.0).max(font_size * 6.0);
 
         // 在原内容流末尾追加：白色矩形 + 中文译文
         let mut all_ops = content.operations;
-        all_ops.extend(make_white_rect_ops(min_x, min_y - font_size, rect_w, rect_h));
+        all_ops.extend(make_white_rect_ops(rect_x, rect_y, rect_w, rect_h));
         all_ops.extend(make_translated_text_ops(
-            first_x,
-            max_y,
+            min_x,       // 翻译文字从原文字左边界开始
+            max_y,       // 从最高文字行位置开始向下排
             font_size,
             &translation,
             page_width,
+            &font_data,
         ));
 
         let new_bytes = Content { operations: all_ops }.encode()

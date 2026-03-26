@@ -6699,10 +6699,16 @@ pub fn extract_pdf_pages_text(path: String) -> Result<Vec<String>, String> {
         };
 
         let text_blocks = extract_text_blocks_from_ops(&content.operations);
-        let page_text = text_blocks.iter()
+        let mut page_text = text_blocks.iter()
             .map(|b| b.text.as_str())
             .collect::<Vec<_>>()
             .join("\n");
+        // 单页文字上限 3000 字符，防止超长页面导致 API 超时
+        const PAGE_TEXT_LIMIT: usize = 3000;
+        if page_text.chars().count() > PAGE_TEXT_LIMIT {
+            let truncated: String = page_text.chars().take(PAGE_TEXT_LIMIT).collect();
+            page_text = truncated;
+        }
         pages.push(page_text);
     }
 
@@ -6752,7 +6758,7 @@ pub async fn translate_text_once(
     });
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
 

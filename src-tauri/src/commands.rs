@@ -6673,23 +6673,42 @@ pub fn delete_pin_image(dir_path: String, filename: String) -> Result<(), String
 // PDF 翻译功能
 // ═══════════════════════════════════════════════════════════════
 
-/// 提取 PDF 每页文字，返回 Vec<String>（按页序）
+/// 提取 PDF 每页文字，返回 Vec<String>（按页序，索引与页号一一对应）
 #[tauri::command]
 pub fn extract_pdf_pages_text(path: String) -> Result<Vec<String>, String> {
-    let bytes = std::fs::read(&path)
+    use lopdf::content::Content;
+
+    let doc = lopdf::Document::load(&path)
         .map_err(|e| format!("读取 PDF 失败: {}", e))?;
 
-    let text_all = pdf_extract::extract_text_from_mem(&bytes)
-        .map_err(|e| format!("提取 PDF 文字失败: {}", e))?;
+    let page_ids: Vec<lopdf::ObjectId> = doc.page_iter().collect();
+    if page_ids.is_empty() {
+        return Err("PDF 无页面".to_string());
+    }
 
-    // pdf-extract 返回全文，按换页符 \x0C 拆分
-    let pages: Vec<String> = text_all
-        .split('\x0C')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
+    let mut pages: Vec<String> = Vec::with_capacity(page_ids.len());
 
-    if pages.is_empty() {
+    for &page_id in &page_ids {
+        let content_data = match doc.get_page_content(page_id) {
+            Ok(d) => d,
+            Err(_) => { pages.push(String::new()); continue; }
+        };
+        let content = match Content::decode(&content_data) {
+            Ok(c) => c,
+            Err(_) => { pages.push(String::new()); continue; }
+        };
+
+        let text_blocks = extract_text_blocks_from_ops(&content.operations);
+        let page_text = text_blocks.iter()
+            .map(|b| b.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        pages.push(page_text);
+    }
+
+    // 检查是否所有页面都无文字（扫描版 PDF）
+    let has_text = pages.iter().any(|p| !p.trim().is_empty());
+    if !has_text {
         return Err("未检测到可翻译的文字（可能是扫描版 PDF）".to_string());
     }
 

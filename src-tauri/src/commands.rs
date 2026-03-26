@@ -7400,10 +7400,8 @@ pub fn build_translated_pdf(
             lopdf::Stream::new(lopdf::Dictionary::new(), filtered_bytes)
         ));
 
-        // 中文翻译内容流（从页面顶部开始排版，白色背景遮住残余英文）
+        // 中文翻译内容流（从页面顶部开始排版）
         let mut zh_ops: Vec<lopdf::content::Operation> = Vec::new();
-        // 先用白底覆盖整页（防止 Form XObject 中残余的英文字透出来）
-        zh_ops.extend(make_white_rect_ops(0.0, 0.0, page_width, page_height));
         zh_ops.extend(make_translated_text_ops(
             margin_x, margin_top, 11.0, &translation, page_width, &font_data,
         ));

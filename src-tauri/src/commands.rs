@@ -6703,28 +6703,30 @@ pub fn extract_pdf_pages_text(path: String) -> Result<Vec<String>, String> {
             .map(|s| s.trim().to_string())
             .collect()
     } else {
-        // 换页符不足——按字符数均分
-        let all_chars: Vec<char> = text_all.chars().collect();
-        let total = all_chars.len();
-        let per_page = (total / page_count).max(1);
-        (0..page_count).map(|i| {
-            let start = i * per_page;
-            if start >= total { return String::new(); }
-            let end = if i + 1 == page_count { total } else { ((i + 1) * per_page).min(total) };
-            all_chars[start..end].iter().collect::<String>().trim().to_string()
-        }).collect()
+        // 换页符不足——按段落（双换行）边界分配，避免截断在单词中间
+        let paragraphs: Vec<&str> = text_all.split("\n\n")
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if paragraphs.is_empty() {
+            vec![text_all.trim().to_string()]
+        } else {
+            let para_per_page = (paragraphs.len() + page_count - 1) / page_count;
+            let mut result: Vec<String> = paragraphs
+                .chunks(para_per_page.max(1))
+                .map(|chunk| chunk.join("\n\n"))
+                .collect();
+            while result.len() < page_count { result.push(String::new()); }
+            result.truncate(page_count);
+            result
+        }
     };
 
-    // ④ 截断超长页 + 打印调试日志
+    // ④ 打印调试日志（不再截断，让 Gemini 收到完整页面文字）
     let pages: Vec<String> = raw_pages.into_iter().enumerate().map(|(i, text)| {
-        let count = text.chars().count();
-        if count > PAGE_TEXT_LIMIT {
-            eprintln!("[PDF] page {} truncated {} -> {} chars", i + 1, count, PAGE_TEXT_LIMIT);
-            text.chars().take(PAGE_TEXT_LIMIT).collect()
-        } else {
-            eprintln!("[PDF] page {} extracted {} chars", i + 1, count);
-            text
-        }
+        eprintln!("[PDF] page {} extracted {} chars", i + 1, text.chars().count());
+        text
     }).collect();
 
     let has_text = pages.iter().any(|p| !p.trim().is_empty());
@@ -7289,7 +7291,7 @@ pub fn build_translated_pdf(
                 .unwrap_or(595.0)
         };
 
-        // 读取并解析原始内容流
+        // 解析原始内容流，仅用于提取文字块位置，不修改原始流
         let content_data = match doc.get_page_content(page_id) {
             Ok(d) => d,
             Err(_) => continue,
@@ -7299,11 +7301,14 @@ pub fn build_translated_pdf(
             Err(_) => continue,
         };
 
-        // 提取文字块位置信息
+        // 提取文字块位置信息（用于确定覆盖区域）
         let text_blocks = extract_text_blocks_from_ops(&content.operations);
         if text_blocks.is_empty() {
+            eprintln!("[build_pdf] page {} no text blocks, skip", page_idx + 1);
             continue;
         }
+        eprintln!("[build_pdf] page {} {} blocks, translation {} chars",
+            page_idx + 1, text_blocks.len(), translation.len());
 
         // 计算文字区域包围框
         let min_x = text_blocks.iter().map(|b| b.x).fold(f32::MAX, f32::min);
@@ -7313,28 +7318,57 @@ pub fn build_translated_pdf(
         let font_size = text_blocks.iter()
             .map(|b| b.font_size).fold(0.0f32, f32::max).max(10.0);
 
-        // 白色矩形：从文字区域左边延伸到页面右边距（确保覆盖所有文字，无论行长）
-        let rect_x = min_x.min(36.0);  // 向左扩展到至少 36pt（约 1.27cm）页边
+        // 白色矩形：从文字区域左边延伸到页面右边距
+        let rect_x = min_x.min(36.0);
         let rect_y = min_y - font_size * 2.0;
-        let rect_w = page_width - rect_x + 10.0;  // 覆盖到右边界
+        let rect_w = page_width - rect_x + 10.0;
         let rect_h = (max_y - min_y + font_size * 5.0).max(font_size * 6.0);
 
-        // 在原内容流末尾追加：白色矩形 + 中文译文
-        let mut all_ops = content.operations;
-        all_ops.extend(make_white_rect_ops(rect_x, rect_y, rect_w, rect_h));
-        all_ops.extend(make_translated_text_ops(
-            min_x,       // 翻译文字从原文字左边界开始
-            max_y,       // 从最高文字行位置开始向下排
+        // ── 关键修改：不修改原始内容流，而是追加新的 overlay stream ──
+        // 这样可以完全保留原始图片、图形等内容
+        let mut overlay_ops: Vec<lopdf::content::Operation> = Vec::new();
+        overlay_ops.extend(make_white_rect_ops(rect_x, rect_y, rect_w, rect_h));
+        overlay_ops.extend(make_translated_text_ops(
+            min_x,
+            max_y,
             font_size,
             &translation,
             page_width,
             &font_data,
         ));
 
-        let new_bytes = Content { operations: all_ops }.encode()
-            .map_err(|e| format!("编码内容流失败（第 {} 页）: {}", page_idx + 1, e))?;
-        doc.change_page_content(page_id, new_bytes)
-            .map_err(|e| format!("写入内容流失败（第 {} 页）: {}", page_idx + 1, e))?;
+        let overlay_bytes = Content { operations: overlay_ops }.encode()
+            .map_err(|e| format!("编码 overlay 流失败（第 {} 页）: {}", page_idx + 1, e))?;
+
+        // 将 overlay stream 作为新对象加入文档
+        let overlay_id = doc.add_object(lopdf::Object::Stream(
+            lopdf::Stream::new(lopdf::Dictionary::new(), overlay_bytes)
+        ));
+
+        // 把 overlay 追加到页面的 /Contents 数组
+        // 先读取当前 Contents，再修改 Page dict
+        let current_contents = doc.get_object(page_id).ok()
+            .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
+            .and_then(|d| d.get(b"Contents").ok().map(|o| o.clone()));
+
+        let new_contents = match current_contents {
+            Some(lopdf::Object::Reference(r)) =>
+                lopdf::Object::Array(vec![
+                    lopdf::Object::Reference(r),
+                    lopdf::Object::Reference(overlay_id),
+                ]),
+            Some(lopdf::Object::Array(mut arr)) => {
+                arr.push(lopdf::Object::Reference(overlay_id));
+                lopdf::Object::Array(arr)
+            }
+            _ => lopdf::Object::Reference(overlay_id),
+        };
+
+        if let Ok(page_obj) = doc.get_object_mut(page_id) {
+            if let Ok(page_dict) = page_obj.as_dict_mut() {
+                page_dict.set("Contents", new_contents);
+            }
+        }
 
         // 将 ZhF0 字体注入本页 /Resources/Font 字典
         // 先取出 Resources dict，修改后再写回

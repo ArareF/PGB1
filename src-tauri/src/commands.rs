@@ -7254,7 +7254,8 @@ fn make_translated_text_ops(
 }
 
 /// 构建翻译后的 PDF，保存为 {原文件名}_zh.pdf
-/// translations: 与页序一一对应的简体中文译文
+/// 策略：原始页面完全不修改，在每页之后插入一个独立的中文翻译页
+/// 这样可以完全保留原始图片/图形，不受 Form XObject / inline image 等问题影响
 #[tauri::command]
 pub fn build_translated_pdf(
     path: String,
@@ -7262,161 +7263,123 @@ pub fn build_translated_pdf(
 ) -> Result<String, String> {
     use lopdf::content::Content;
 
-    // 一次性加载中文字体（供 GlyphID 查找 + 后续字体引用）
     let font_data = load_cjk_font_bytes()
         .ok_or_else(|| "未找到系统中文字体（msyh.ttc / simhei.ttf），请确认 Windows 字体已安装".to_string())?;
 
     let mut doc = lopdf::Document::load(&path)
         .map_err(|e| format!("打开 PDF 失败: {}", e))?;
 
-    // 添加微软雅黑字体资源到文档
+    // 添加嵌入字体（整个文档共享一份）
     let font_id = add_yahe_font(&mut doc, &font_data);
 
-    let page_ids: Vec<lopdf::ObjectId> = doc.page_iter().collect();
+    // 构建每个翻译页的 Resources dict（引用 ZhF0 字体）
+    let mut zh_res_font = lopdf::Dictionary::new();
+    zh_res_font.set("ZhF0", lopdf::Object::Reference(font_id));
+    let mut zh_resources = lopdf::Dictionary::new();
+    zh_resources.set("Font", lopdf::Object::Dictionary(zh_res_font));
+    let zh_res_id = doc.add_object(lopdf::Object::Dictionary(zh_resources));
 
-    for (page_idx, &page_id) in page_ids.iter().enumerate() {
+    // ── 找到根 Pages 对象（用于插入新页） ──
+    let catalog_id = doc.trailer
+        .get(b"Root")
+        .map_err(|_| "找不到 PDF Catalog")?
+        .as_reference()
+        .map_err(|_| "Root 不是引用")?;
+    let pages_id = doc.get_object(catalog_id)
+        .map_err(|_| "读取 Catalog 失败")?
+        .as_dict()
+        .map_err(|_| "Catalog 不是 dict")?
+        .get(b"Pages")
+        .map_err(|_| "Catalog 没有 Pages")?
+        .as_reference()
+        .map_err(|_| "Pages 不是引用")?;
+
+    // 先把原始 page_ids 收集好，再逐一插入翻译页
+    let orig_page_ids: Vec<lopdf::ObjectId> = doc.page_iter().collect();
+
+    // 收集每页的 MediaBox
+    let media_boxes: Vec<(f32, f32)> = orig_page_ids.iter().map(|&pid| {
+        let w = doc.get_object(pid).ok()
+            .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
+            .and_then(|d| d.get(b"MediaBox").ok().map(|o| o.clone()))
+            .and_then(|o| o.as_array().ok().map(|a| a.clone()))
+            .and_then(|arr| arr.get(2).cloned())
+            .map(|o| obj_to_f32(&o))
+            .filter(|&v| v > 0.0)
+            .unwrap_or(595.0);
+        let h = doc.get_object(pid).ok()
+            .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
+            .and_then(|d| d.get(b"MediaBox").ok().map(|o| o.clone()))
+            .and_then(|o| o.as_array().ok().map(|a| a.clone()))
+            .and_then(|arr| arr.get(3).cloned())
+            .map(|o| obj_to_f32(&o))
+            .filter(|&v| v > 0.0)
+            .unwrap_or(842.0);
+        (w, h)
+    }).collect();
+
+    // ── 为每页创建翻译页对象，记录 (原始页ID, 翻译页ID) ──
+    let mut translation_page_ids: Vec<Option<lopdf::ObjectId>> = Vec::new();
+
+    for (page_idx, &orig_id) in orig_page_ids.iter().enumerate() {
         let translation = match translations.get(page_idx) {
             Some(t) if !t.trim().is_empty() => t.clone(),
-            _ => continue,
+            _ => { translation_page_ids.push(None); continue; }
         };
 
-        // 获取页面宽度（MediaBox[2]），用于自动换行
-        let page_width: f32 = {
-            let obj = doc.get_object(page_id).ok()
-                .and_then(|o| o.as_dict().ok().map(|d| d.clone()));
-            obj.and_then(|d| d.get(b"MediaBox").ok().map(|o| o.clone()))
-                .and_then(|o| o.as_array().ok().map(|a| a.clone()))
-                .and_then(|arr| arr.get(2).cloned())
-                .map(|o| obj_to_f32(&o))
-                .filter(|&v| v > 0.0)
-                .unwrap_or(595.0)
-        };
+        let (page_width, page_height) = media_boxes[page_idx];
+        let margin_x = 50.0f32;
+        let margin_top = page_height - 50.0;
+        let font_size = 11.0f32;
 
-        // 解析原始内容流，仅用于提取文字块位置，不修改原始流
-        let content_data = match doc.get_page_content(page_id) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-        let content = match Content::decode(&content_data) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-
-        // 提取文字块位置信息（用于确定覆盖区域）
-        let text_blocks = extract_text_blocks_from_ops(&content.operations);
-        if text_blocks.is_empty() {
-            eprintln!("[build_pdf] page {} no text blocks, skip", page_idx + 1);
-            continue;
-        }
-        eprintln!("[build_pdf] page {} {} blocks, translation {} chars",
-            page_idx + 1, text_blocks.len(), translation.len());
-
-        // 计算文字区域包围框
-        let min_x = text_blocks.iter().map(|b| b.x).fold(f32::MAX, f32::min);
-        let min_y = text_blocks.iter().map(|b| b.y).fold(f32::MAX, f32::min);
-        let max_y = text_blocks.iter().map(|b| b.y).fold(f32::MIN, f32::max);
-
-        let font_size = text_blocks.iter()
-            .map(|b| b.font_size).fold(0.0f32, f32::max).max(10.0);
-
-        // 白色矩形：从文字区域左边延伸到页面右边距
-        let rect_x = min_x.min(36.0);
-        let rect_y = min_y - font_size * 2.0;
-        let rect_w = page_width - rect_x + 10.0;
-        let rect_h = (max_y - min_y + font_size * 5.0).max(font_size * 6.0);
-
-        // ── 关键修改：不修改原始内容流，而是追加新的 overlay stream ──
-        // 这样可以完全保留原始图片、图形等内容
-        let mut overlay_ops: Vec<lopdf::content::Operation> = Vec::new();
-        overlay_ops.extend(make_white_rect_ops(rect_x, rect_y, rect_w, rect_h));
-        overlay_ops.extend(make_translated_text_ops(
-            min_x,
-            max_y,
+        // 构建翻译页内容流
+        let mut ops: Vec<lopdf::content::Operation> = Vec::new();
+        ops.extend(make_translated_text_ops(
+            margin_x,
+            margin_top,
             font_size,
             &translation,
             page_width,
             &font_data,
         ));
 
-        let overlay_bytes = Content { operations: overlay_ops }.encode()
-            .map_err(|e| format!("编码 overlay 流失败（第 {} 页）: {}", page_idx + 1, e))?;
-
-        // 将 overlay stream 作为新对象加入文档
-        let overlay_id = doc.add_object(lopdf::Object::Stream(
-            lopdf::Stream::new(lopdf::Dictionary::new(), overlay_bytes)
+        let stream_bytes = Content { operations: ops }.encode()
+            .map_err(|e| format!("编码翻译页流失败（第 {} 页）: {}", page_idx + 1, e))?;
+        let stream_id = doc.add_object(lopdf::Object::Stream(
+            lopdf::Stream::new(lopdf::Dictionary::new(), stream_bytes)
         ));
 
-        // 把 overlay 追加到页面的 /Contents 数组
-        // 先读取当前 Contents，再修改 Page dict
-        let current_contents = doc.get_object(page_id).ok()
-            .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
-            .and_then(|d| d.get(b"Contents").ok().map(|o| o.clone()));
+        // 构建翻译页 Page dict
+        let zh_page = lopdf::Dictionary::from_iter(vec![
+            ("Type",     lopdf::Object::Name(b"Page".to_vec())),
+            ("Parent",   lopdf::Object::Reference(pages_id)),
+            ("MediaBox", lopdf::Object::Array(vec![
+                lopdf::Object::Real(0.0), lopdf::Object::Real(0.0),
+                lopdf::Object::Real(page_width), lopdf::Object::Real(page_height),
+            ])),
+            ("Contents",   lopdf::Object::Reference(stream_id)),
+            ("Resources",  lopdf::Object::Reference(zh_res_id)),
+        ]);
+        let zh_page_id = doc.add_object(lopdf::Object::Dictionary(zh_page));
+        eprintln!("[build_pdf] page {} zh_page created {:?}", page_idx + 1, zh_page_id);
+        translation_page_ids.push(Some(zh_page_id));
+    }
 
-        let new_contents = match current_contents {
-            Some(lopdf::Object::Reference(r)) =>
-                lopdf::Object::Array(vec![
-                    lopdf::Object::Reference(r),
-                    lopdf::Object::Reference(overlay_id),
-                ]),
-            Some(lopdf::Object::Array(mut arr)) => {
-                arr.push(lopdf::Object::Reference(overlay_id));
-                lopdf::Object::Array(arr)
-            }
-            _ => lopdf::Object::Reference(overlay_id),
-        };
-
-        if let Ok(page_obj) = doc.get_object_mut(page_id) {
-            if let Ok(page_dict) = page_obj.as_dict_mut() {
-                page_dict.set("Contents", new_contents);
-            }
+    // ── 重建 /Pages /Kids 数组：原页 + 翻译页交错 ──
+    let mut new_kids: Vec<lopdf::Object> = Vec::new();
+    for (orig_id, zh_id_opt) in orig_page_ids.iter().zip(translation_page_ids.iter()) {
+        new_kids.push(lopdf::Object::Reference(*orig_id));
+        if let Some(zh_id) = zh_id_opt {
+            new_kids.push(lopdf::Object::Reference(*zh_id));
         }
+    }
+    let new_count = new_kids.len() as i64;
 
-        // 将 ZhF0 字体注入本页 /Resources/Font 字典
-        // 先取出 Resources dict，修改后再写回
-        let resources_obj = doc.get_object(page_id).ok()
-            .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
-            .and_then(|d| d.get(b"Resources").ok().map(|o| o.clone()));
-
-        if let Some(res_ref_or_dict) = resources_obj {
-            // Resources 可能是直接引用的 object，也可能内联在 Page dict 里
-            let res_id_opt: Option<lopdf::ObjectId> = match &res_ref_or_dict {
-                lopdf::Object::Reference(id) => Some(*id),
-                _ => None,
-            };
-
-            if let Some(res_id) = res_id_opt {
-                // Resources 是独立对象 —— 直接修改该对象
-                if let Ok(res_obj) = doc.get_object_mut(res_id) {
-                    if let Ok(res_dict) = res_obj.as_dict_mut() {
-                        if !res_dict.has(b"Font") {
-                            res_dict.set("Font", lopdf::Object::Dictionary(lopdf::Dictionary::new()));
-                        }
-                        if let Ok(font_obj) = res_dict.get_mut(b"Font") {
-                            if let Ok(font_dict) = font_obj.as_dict_mut() {
-                                font_dict.set("ZhF0", lopdf::Object::Reference(font_id));
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Resources 内联在 Page dict 里 —— 需要整体修改 Page 对象
-                if let Ok(page_obj) = doc.get_object_mut(page_id) {
-                    if let Ok(page_dict) = page_obj.as_dict_mut() {
-                        if let Ok(res) = page_dict.get_mut(b"Resources") {
-                            if let Ok(res_dict) = res.as_dict_mut() {
-                                if !res_dict.has(b"Font") {
-                                    res_dict.set("Font", lopdf::Object::Dictionary(lopdf::Dictionary::new()));
-                                }
-                                if let Ok(font_obj) = res_dict.get_mut(b"Font") {
-                                    if let Ok(font_dict) = font_obj.as_dict_mut() {
-                                        font_dict.set("ZhF0", lopdf::Object::Reference(font_id));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    // 更新 Pages dict
+    if let Ok(pages_obj) = doc.get_object_mut(pages_id) {
+        if let Ok(pages_dict) = pages_obj.as_dict_mut() {
+            pages_dict.set("Kids", lopdf::Object::Array(new_kids));
+            pages_dict.set("Count", lopdf::Object::Integer(new_count));
         }
     }
 

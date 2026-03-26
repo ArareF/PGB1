@@ -7331,11 +7331,90 @@ fn replace_page_content(
     Ok(())
 }
 
+/// 检测页面文字块的坐标包围盒
+/// 返回 (y_top, y_bottom, avg_font_size)，PDF 坐标系（y 向上）
+/// 若无文字块则返回 None（如全 XObject 页面）
+fn get_page_text_bbox(
+    doc: &lopdf::Document,
+    page_id: lopdf::ObjectId,
+) -> Option<(f32, f32, f32)> {
+    use lopdf::content::Content;
+
+    let data = doc.get_page_content(page_id).ok()?;
+    let ops  = Content::decode(&data).ok()?.operations;
+    let blocks = extract_text_blocks_from_ops(&ops);
+    if blocks.is_empty() { return None; }
+
+    let y_max  = blocks.iter().map(|b| b.y + b.font_size).fold(f32::NEG_INFINITY, f32::max);
+    let y_min  = blocks.iter().map(|b| b.y - b.font_size * 0.3).fold(f32::INFINITY, f32::min);
+    let avg_fs = blocks.iter().map(|b| b.font_size).sum::<f32>() / blocks.len() as f32;
+
+    Some((y_max, y_min.max(0.0), avg_fs.max(8.0)))
+}
+
+/// 将覆盖层追加到页面 /Contents，并向 /Resources/Font 添加 ZhF0 引用
+fn append_overlay_to_page(
+    doc: &mut lopdf::Document,
+    page_id: lopdf::ObjectId,
+    overlay_id: lopdf::ObjectId,
+    font_id: lopdf::ObjectId,
+) -> Result<(), String> {
+    use lopdf::{Dictionary, Object};
+
+    // 读取现有内容（clone 释放不可变借用）
+    let cur_contents_opt: Option<Object> = doc.get_object(page_id).ok()
+        .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
+        .and_then(|d| d.get(b"Contents").ok().map(|o| o.clone()));
+
+    let cur_resources_opt: Option<Object> = doc.get_object(page_id).ok()
+        .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
+        .and_then(|d| d.get(b"Resources").ok().map(|o| o.clone()));
+
+    let resolved_resources: Dictionary = match cur_resources_opt {
+        Some(Object::Dictionary(d)) => d,
+        Some(Object::Reference(r))  => doc.get_object(r).ok()
+            .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
+            .unwrap_or_else(Dictionary::new),
+        _ => Dictionary::new(),
+    };
+
+    // 追加 overlay 到 Contents 数组
+    let new_contents: Vec<Object> = {
+        let mut arr = match cur_contents_opt {
+            Some(Object::Reference(r)) => vec![Object::Reference(r)],
+            Some(Object::Array(a))     => a,
+            _                          => vec![],
+        };
+        arr.push(Object::Reference(overlay_id));
+        arr
+    };
+
+    // 向 Font 子字典写入 ZhF0
+    let mut new_res = resolved_resources;
+    let mut font_dict: Dictionary = match new_res.get(b"Font") {
+        Ok(Object::Dictionary(d)) => d.clone(),
+        _                         => Dictionary::new(),
+    };
+    font_dict.set("ZhF0", Object::Reference(font_id));
+    new_res.set("Font", Object::Dictionary(font_dict));
+
+    let page_dict_mut = doc.get_object_mut(page_id)
+        .map_err(|_| "页面对象不存在".to_string())?
+        .as_dict_mut()
+        .map_err(|_| "页面不是 dict".to_string())?;
+    page_dict_mut.set("Contents",  Object::Array(new_contents));
+    page_dict_mut.set("Resources", Object::Dictionary(new_res));
+
+    Ok(())
+}
+
 /// 构建翻译后的 PDF，保存为 {原文件名}_zh.pdf
+///
 /// 策略：
-///   1. 解析每页内容流，过滤掉 BT...ET 文字块（保留图片、图形等非文字元素）
-///   2. 在同一页追加中文翻译流（从页面顶部开始排版）
-/// 输出页数与原 PDF 相同，中文显示在原英文所在区域，图片完整保留
+///   - 原始内容流完全不动（图片/图形保持原始坐标不受影响）
+///   - 检测每页文字块的 y 坐标范围，用白矩形只盖住文字区域（不盖图片）
+///   - 在文字区域的顶部坐标开始排版中文翻译，位置与原英文对齐
+///   - 对无法检测到文字块的页面（全 XObject 页）回退到从页顶排版
 #[tauri::command]
 pub fn build_translated_pdf(
     path: String,
@@ -7347,40 +7426,35 @@ pub fn build_translated_pdf(
     let mut doc = lopdf::Document::load(&path)
         .map_err(|e| format!("打开 PDF 失败: {}", e))?;
 
-    // 添加嵌入字体（整个文档共享一份）
     let font_id = add_yahe_font(&mut doc, &font_data);
 
-    // 收集原始页面 ID
     let orig_page_ids: Vec<lopdf::ObjectId> = doc.page_iter().collect();
 
-    // 收集每页的 MediaBox（不可变借用阶段，全部先算好）
+    // ── 不可变借用阶段：预先收集所有页面数据 ──
+    // MediaBox
     let media_boxes: Vec<(f32, f32)> = orig_page_ids.iter().map(|&pid| {
         let w = doc.get_object(pid).ok()
             .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
             .and_then(|d| d.get(b"MediaBox").ok().map(|o| o.clone()))
             .and_then(|o| o.as_array().ok().map(|a| a.clone()))
             .and_then(|arr| arr.get(2).cloned())
-            .map(|o| obj_to_f32(&o))
-            .filter(|&v| v > 0.0)
-            .unwrap_or(595.0);
+            .map(|o| obj_to_f32(&o)).filter(|&v| v > 0.0).unwrap_or(595.0);
         let h = doc.get_object(pid).ok()
             .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
             .and_then(|d| d.get(b"MediaBox").ok().map(|o| o.clone()))
             .and_then(|o| o.as_array().ok().map(|a| a.clone()))
             .and_then(|arr| arr.get(3).cloned())
-            .map(|o| obj_to_f32(&o))
-            .filter(|&v| v > 0.0)
-            .unwrap_or(842.0);
+            .map(|o| obj_to_f32(&o)).filter(|&v| v > 0.0).unwrap_or(842.0);
         (w, h)
     }).collect();
 
-    // 第一遍：不可变借用阶段——读取所有页面的过滤后操作列表
-    let filtered_ops_per_page: Vec<Vec<lopdf::content::Operation>> = orig_page_ids
+    // 文字块 bbox（y_top, y_bottom, avg_font_size）
+    let text_bboxes: Vec<Option<(f32, f32, f32)>> = orig_page_ids
         .iter()
-        .map(|&pid| read_and_filter_text_ops(&doc, pid))
+        .map(|&pid| get_page_text_bbox(&doc, pid))
         .collect();
 
-    // 第二遍：可变阶段——添加流、更新页面
+    // ── 可变阶段：添加 overlay 流 ──
     for (page_idx, &page_id) in orig_page_ids.iter().enumerate() {
         let translation = match translations.get(page_idx) {
             Some(t) if !t.trim().is_empty() => t.clone(),
@@ -7388,38 +7462,47 @@ pub fn build_translated_pdf(
         };
 
         let (page_width, page_height) = media_boxes[page_idx];
-        let margin_x   = 36.0f32;
-        let margin_top = page_height - 36.0;
+        let margin_x = 36.0f32;
 
-        // 过滤后的图形内容流（英文文字已去除，图片保留）
-        let filtered_ops = filtered_ops_per_page[page_idx].clone();
-        let filtered_bytes = lopdf::content::Content { operations: filtered_ops }
+        // 文字起始 y 及白矩形范围
+        let (text_start_y, white_rect_y, white_rect_h) =
+            match text_bboxes[page_idx] {
+                Some((y_top, y_bottom, avg_fs)) => {
+                    // 从检测到的文字区域顶部开始排版
+                    let start = y_top;
+                    // 白矩形覆盖整个文字竖向范围（全页宽，保证水平完全覆盖）
+                    let rect_h = (y_top - y_bottom + avg_fs * 2.0).max(40.0);
+                    eprintln!("[build_pdf] page {} text_bbox y_top={:.1} y_bottom={:.1}", page_idx+1, y_top, y_bottom);
+                    (start, y_bottom - avg_fs, rect_h)
+                }
+                None => {
+                    // 回退：从页面顶部开始，白矩形覆盖整页
+                    eprintln!("[build_pdf] page {} no text bbox detected, fallback", page_idx+1);
+                    (page_height - 36.0, 0.0, page_height)
+                }
+            };
+
+        let mut overlay_ops: Vec<lopdf::content::Operation> = Vec::new();
+        // 白矩形只盖文字竖向范围（不盖文字区域外的图片）
+        overlay_ops.extend(make_white_rect_ops(
+            0.0, white_rect_y, page_width, white_rect_h,
+        ));
+        // 中文翻译文字，从文字区域顶部坐标开始向下排版
+        overlay_ops.extend(make_translated_text_ops(
+            margin_x, text_start_y, 11.0, &translation, page_width, &font_data,
+        ));
+
+        let overlay_bytes = lopdf::content::Content { operations: overlay_ops }
             .encode()
-            .unwrap_or_else(|_| vec![]);  // 编码失败时给空流（保守兜底）
-        let filtered_id = doc.add_object(lopdf::Object::Stream(
-            lopdf::Stream::new(lopdf::Dictionary::new(), filtered_bytes)
+            .map_err(|e| format!("编码 overlay 失败（第 {} 页）: {}", page_idx + 1, e))?;
+        let overlay_id = doc.add_object(lopdf::Object::Stream(
+            lopdf::Stream::new(lopdf::Dictionary::new(), overlay_bytes)
         ));
 
-        // 中文翻译内容流（从页面顶部开始排版）
-        let mut zh_ops: Vec<lopdf::content::Operation> = Vec::new();
-        zh_ops.extend(make_translated_text_ops(
-            margin_x, margin_top, 11.0, &translation, page_width, &font_data,
-        ));
-        let zh_bytes = lopdf::content::Content { operations: zh_ops }
-            .encode()
-            .map_err(|e| format!("编码中文流失败（第 {} 页）: {}", page_idx + 1, e))?;
-        let zh_id = doc.add_object(lopdf::Object::Stream(
-            lopdf::Stream::new(lopdf::Dictionary::new(), zh_bytes)
-        ));
-
-        // 替换页面内容：[图形流（无英文字）, 中文流]
-        replace_page_content(&mut doc, page_id, vec![filtered_id, zh_id], font_id)
-            .map_err(|e| format!("更新页面失败（第 {} 页）: {}", page_idx + 1, e))?;
-
-        eprintln!("[build_pdf] page {} replaced (filtered+zh)", page_idx + 1);
+        append_overlay_to_page(&mut doc, page_id, overlay_id, font_id)
+            .map_err(|e| format!("追加 overlay 失败（第 {} 页）: {}", page_idx + 1, e))?;
     }
 
-    // 生成输出路径：{stem}_zh.pdf
     let input_path = std::path::Path::new(&path);
     let stem = input_path.file_stem()
         .and_then(|s| s.to_str()).unwrap_or("translated");

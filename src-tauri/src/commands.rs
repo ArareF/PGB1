@@ -7106,8 +7106,20 @@ fn make_translated_text_ops(
 
             let hex = encode_chars_to_cid_hex(&chunk, font_data);
             if !hex.is_empty() {
+                // hex 是 ASCII hex 字符串如 "00F70043"，必须先还原为实际字节 [0x00,0xF7,0x00,0x43]
+                // 直接 hex.into_bytes() 会把 ASCII 码再次 hex 编码（双重编码 bug）
+                let cid_bytes: Vec<u8> = (0..hex.len())
+                    .step_by(2)
+                    .filter_map(|i| {
+                        if i + 2 <= hex.len() {
+                            u8::from_str_radix(&hex[i..i + 2], 16).ok()
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 ops.push(Operation::new("Tj", vec![
-                    Object::String(hex.into_bytes(), StringFormat::Hexadecimal),
+                    Object::String(cid_bytes, StringFormat::Hexadecimal),
                 ]));
             }
         }

@@ -6705,9 +6705,13 @@ pub fn extract_pdf_pages_text(path: String) -> Result<Vec<String>, String> {
             .join("\n");
         // 单页文字上限 3000 字符，防止超长页面导致 API 超时
         const PAGE_TEXT_LIMIT: usize = 3000;
-        if page_text.chars().count() > PAGE_TEXT_LIMIT {
+        let char_count = page_text.chars().count();
+        if char_count > PAGE_TEXT_LIMIT {
             let truncated: String = page_text.chars().take(PAGE_TEXT_LIMIT).collect();
             page_text = truncated;
+            eprintln!("[PDF] page {} truncated {} -> {} chars", pages.len() + 1, char_count, PAGE_TEXT_LIMIT);
+        } else {
+            eprintln!("[PDF] page {} extracted {} chars", pages.len() + 1, char_count);
         }
         pages.push(page_text);
     }
@@ -6771,9 +6775,11 @@ pub async fn translate_text_once(
     for attempt in 0..=MAX_RETRIES {
         if attempt > 0 {
             let wait_secs = 5u64 * 3u64.pow(attempt - 1);
+            eprintln!("[translate] attempt {} waiting {}s...", attempt, wait_secs);
             tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
         }
 
+        eprintln!("[translate] attempt {} sending ({} chars)...", attempt, trimmed.len());
         let response = match client
             .post(&url)
             .header("Content-Type", "application/json")
@@ -6783,10 +6789,15 @@ pub async fn translate_text_once(
             .await
         {
             Ok(r) => r,
-            Err(e) => { last_err = format!("网络错误: {}", e); continue; }
+            Err(e) => {
+                last_err = format!("网络错误: {}", e);
+                eprintln!("[translate] attempt {} send error: {}", attempt, last_err);
+                continue;
+            }
         };
 
         let status = response.status();
+        eprintln!("[translate] attempt {} status: {}", attempt, status);
         if status.as_u16() == 503 || status.as_u16() == 429 {
             let err_text = response.text().await.unwrap_or_default();
             last_err = format!("API 错误 {}: {}", status, err_text);

@@ -6791,7 +6791,8 @@ pub async fn translate_text_once(
             tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
         }
 
-        eprintln!("[translate] attempt {} sending ({} chars): {:?}", attempt, trimmed.len(), &trimmed[..trimmed.len().min(120)]);
+        let preview: String = trimmed.chars().take(120).collect();
+        eprintln!("[translate] attempt {} sending ({} chars): {:?}", attempt, trimmed.len(), preview);
         let response = match client
             .post(&url)
             .header("Content-Type", "application/json")

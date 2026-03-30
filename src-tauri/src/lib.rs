@@ -110,6 +110,7 @@ pub fn run() {
             commands::extract_pdf_pages_text,
             commands::translate_text_once,
             commands::build_translated_pdf,
+            commands::check_translated_pdf_exists,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main 窗口必须在 tauri.conf.json 中声明");

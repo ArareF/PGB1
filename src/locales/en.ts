@@ -373,6 +373,9 @@ export default {
     translatePdfNoKey: 'Please configure your Gemini API Key in Settings → Translation',
     translatePdfScanned: 'No translatable text detected (scanned PDFs not supported)',
     translatePdfError: 'Translation failed',
+    translatePdfRetrying: 'Retrying page {page} (attempt {attempt}/{max})...',
+    translatePdfRetranslate: 'Retranslate',
+    translatePdfRetry: 'Retry',
   },
 
   shortcut: {

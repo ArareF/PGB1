@@ -10,7 +10,7 @@
 | 目录 | 文件数 | 总行数 | 备注 |
 |------|--------|--------|------|
 | src/components/ | 27 | ~10380 | UI 组件（笔记四件套 + FolderBrowserDialog + 贴图板组件 PinboardCanvas/PinItem + PinboardDialog[废弃]） |
-| src/composables/ | 11 | ~1500 | 逻辑组件（usePinboard，useStatusBar ~430 行） |
+| src/composables/ | 12 | ~1750 | 逻辑组件（usePinboard，useStatusBar ~430 行，usePdfTranslate） |
 | src/views/ | 13 | ~9640 | 页面（新增 PinboardPage 独立窗口） |
 | src/styles/ | 3 | ~1400 | CSS 设计系统（贴图板工具栏公共类 .pb-tool-btn/.pb-separator/.pb-color-dot） |
 | src/i18n + src/locales/ | 3 | ~1280 | 国际化：i18n 实例 + zh-CN/en locale 文件（note 命名空间含 toolbar 子对象） |
@@ -95,6 +95,7 @@
 | `usePsdThumbnail.ts` | ~42 | `getPsdThumbnail(path, maxSize)`, `invalidatePsdCache(path, maxSize)` | PSD 缩略图模块级缓存。key = `path@maxSize`，并发去重（同一 key 只发一个 invoke）。调用 `extract_psd_thumbnail`，返回 `convertFileSrc(cachePath)` asset URL。**`invalidatePsdCache`**：清除指定 key 的 JS 缓存，在 Rust 磁盘缓存不命中时调用（防止同 session 内文件被修改后 JS 缓存返回旧图） |
 | `useStatusBar.ts` | ~420 | `useStatusBar()`, `saveConfig()`, `reloadConfig()` | 状态栏数据单例。分钟级 tick，从 `load_attendance_config` 读上下班+午休时间。**节假日**：`CalendarRegion`（auto/CN/JP/none），auto 模式用 `ipapi.co/country/` 检测 IP（7天缓存），CN 走 timor.tech（含调休概念），其他国家走 date.nager.at（按年缓存）；标签简短：`休息日 🎉`/`调休`/`明天休 🎉`。**打卡状态感知**：每分钟 tick 调 `load_attendance_record`，`hasClockIn`/`hasClockOut` 驱动胶囊显隐（未打卡不显示，打下班卡触发"下班咯"）。**番茄钟**：5 阶段状态机（idle→work→work-done→break→break-done→idle），秒级倒计时，归零发系统通知。配置项（localStorage）：`showPomodoro`/`pomodoroWork`（25m）/`pomodoroBreak`（5m）/`calendarRegion`（auto）。暴露：`timeStr`/`dateStr`/`holidayLabel`/`hasClockIn`/`hasClockOut`/`workedMinutes`/`countdownMinutes`/`isLunch`/`toLunchMinutes`/`lunchLeftMinutes`/`formatMinutes`/`pomodoroPhase`/`pomodoroDisplay`/`onPomodoroClick`/`reloadHoliday` |
 | `usePinboard.ts` | ~205 | `usePinboard(dirPath, canvasKey)` | **贴图板 composable**。管理 pins/canvasAnnotations/viewport 状态。`loadPinboard` → invoke `get_pinboard`；`savePinboard` → invoke `save_pinboard`（含 pins + viewport + canvasAnnotations）；`pasteImage(viewportCenter?)` → clipboard readImage → RGBA → invoke `save_pin_image` → 写 `.pgb1_pins/{id}.png`；`viewportCenter` 为世界坐标系中心点，有值时贴图居中于该点，无值时 fallback 随机偏移（PinboardPage 传入当前画布视口中心）；`deletePin` → invoke `delete_pin_image` + 移除 pin。`getPinImageUrl` 用 `convertFileSrc` 构建 asset URL。`bringToFront` 调整 zIndex。接受 `Ref<string> \| string` 参数 |
+| `usePdfTranslate.ts` | ~245 | `usePdfTranslate(filePath)` | **PDF 翻译全局状态 composable**。模块级 `Map<filePath, PdfTranslateSession>` 管理翻译会话（组件卸载不中断）。Session 含 state/progress/error/outputPath/showingTranslated/retryInfo。`startTranslation` 流程：loadSettings → extract_pdf_pages_text → 逐页 translate_text_once（跳过空白页）→ build_translated_pdf。模块级 `listen('pdf-translate-retry')` 更新重试状态。`checkExisting` 首次访问时调 `check_translated_pdf_exists` 自动检测 `_zh.pdf`。返回 state/progress/error/activePdfSrc/start/toggleView/reset |
 | `useRubberBandSelect.ts` | ~75 | `useRubberBandSelect()` | 框选多选逻辑。mousedown（空白区域）→ mousemove（视口矩形 + data-path 碰撞）→ onSelect 回调。justFinished ref 屏蔽框选后 click 事件。onContainerScroll 终止框选防止起点失效 |
 
 ---
@@ -219,6 +220,10 @@
 | `save_pinboard` | dir_path, key, canvas | () | **贴图板**：读-改-写 `.pgb1_pinboard.json`。pins 和 annotations 均为空时 remove key，Map 为空时删除文件 |
 | `save_pin_image` | dir_path, image_data, width, height | (String, u32, u32) | **贴图板**：接收 RGBA 字节数组 + 尺寸，Rust 端编码为 PNG，写入 `.pgb1_pins/{uuid}.png`，返回 (filename, width, height) |
 | `delete_pin_image` | dir_path, filename | () | **贴图板**：删除 `.pgb1_pins/{filename}` 图片文件 |
+| `extract_pdf_pages_text` | path | Vec\<String\> | **async + spawn_blocking**：pdf-extract 提取 PDF 每页文字，空白页检测（< 20 字符视为扫描版报错） |
+| `translate_text_once` | app_handle, api_key, model, text, page_index? | String | Gemini API 单次翻译（英→中），6 次重试 + 指数退避（10s×2^n，上限 120s）。重试前 emit `pdf-translate-retry` 事件（page/attempt/maxRetries/waitSecs/error）供前端显示 |
+| `build_translated_pdf` | path, translations | String | **async + spawn_blocking，reflow 架构**：从原 PDF 提取图片（CTM 跟踪 XObject 显示尺寸），与翻译文本按流式布局混排生成全新页面，页数自动增减。内嵌微软雅黑 CID 字体（ttf-parser 真实度量）+ beginbfchar ToUnicode CMap。输出 `{stem}_zh.pdf` |
+| `check_translated_pdf_exists` | path | Option\<String\> | **async**：检测 `{stem}_zh.pdf` 是否存在，存在返回路径 |
 
 ### 数据模型
 

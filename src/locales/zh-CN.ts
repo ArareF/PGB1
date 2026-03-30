@@ -390,6 +390,9 @@ export default {
     translatePdfNoKey: '请先在设置 → 翻译中配置 Gemini API Key',
     translatePdfScanned: '未检测到可翻译的文字（扫描版 PDF 暂不支持）',
     translatePdfError: '翻译失败',
+    translatePdfRetrying: '第 {page} 页重试中（第 {attempt}/{max} 次）...',
+    translatePdfRetranslate: '重新翻译',
+    translatePdfRetry: '重试',
   },
 
   shortcut: {

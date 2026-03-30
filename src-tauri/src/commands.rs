@@ -6676,9 +6676,13 @@ pub fn delete_pin_image(dir_path: String, filename: String) -> Result<(), String
 /// 提取 PDF 每页文字，返回 Vec<String>（按页序，索引与页号一一对应）
 /// 策略：用 pdf_extract 正确解析字体 encoding 获得文字，用 lopdf 获得页数，再做分页
 #[tauri::command]
-pub fn extract_pdf_pages_text(path: String) -> Result<Vec<String>, String> {
-    const PAGE_TEXT_LIMIT: usize = 3000;
+pub async fn extract_pdf_pages_text(path: String) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || extract_pdf_pages_text_inner(&path))
+        .await
+        .map_err(|e| format!("提取任务失败: {}", e))?
+}
 
+fn extract_pdf_pages_text_inner(path: &str) -> Result<Vec<String>, String> {
     // ① 用 lopdf 获取准确页数
     let doc = lopdf::Document::load(&path)
         .map_err(|e| format!("读取 PDF 失败: {}", e))?;
@@ -6741,9 +6745,11 @@ pub fn extract_pdf_pages_text(path: String) -> Result<Vec<String>, String> {
 /// 固定翻译为简体中文输出
 #[tauri::command]
 pub async fn translate_text_once(
+    app_handle: tauri::AppHandle,
     api_key: String,
     model: String,
     text: String,
+    page_index: Option<u32>,
 ) -> Result<String, String> {
     if api_key.is_empty() {
         return Err("请先在设置中配置 Gemini API Key".to_string());
@@ -6778,16 +6784,24 @@ pub async fn translate_text_once(
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
 
-    // 遇到 503/429 时自动重试，最多 3 次，指数退避 5s → 15s → 45s
-    const MAX_RETRIES: u32 = 3;
+    // 遇到 503/429 时自动重试，最多 6 次，指数退避 10s→20s→40s→80s→120s→120s（cap 120s）
+    const MAX_RETRIES: u32 = 6;
+    const MAX_WAIT_SECS: u64 = 120;
     let mut last_err = String::new();
     let mut translated = String::new();
     let mut success = false;
 
     for attempt in 0..=MAX_RETRIES {
         if attempt > 0 {
-            let wait_secs = 5u64 * 3u64.pow(attempt - 1);
+            let wait_secs = (10u64 * 2u64.pow(attempt - 1)).min(MAX_WAIT_SECS);
             eprintln!("[translate] attempt {} waiting {}s...", attempt, wait_secs);
+            let _ = app_handle.emit("pdf-translate-retry", serde_json::json!({
+                "page": page_index.unwrap_or(0),
+                "attempt": attempt,
+                "maxRetries": MAX_RETRIES,
+                "waitSecs": wait_secs,
+                "error": &last_err,
+            }));
             tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
         }
 
@@ -6898,106 +6912,76 @@ fn encode_chars_to_cid_hex(text: &str, font_data: &[u8]) -> String {
     hex
 }
 
-/// 尝试解码 PDF 字符串字节（UTF-16BE BOM → UTF-8 → Latin-1 回退）
-fn decode_pdf_string(bytes: &[u8]) -> String {
-    if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
-        let utf16: Vec<u16> = bytes[2..]
-            .chunks(2)
-            .filter(|c| c.len() == 2)
-            .map(|c| u16::from_be_bytes([c[0], c[1]]))
-            .collect();
-        return String::from_utf16_lossy(&utf16).to_string();
-    }
-    if let Ok(s) = std::str::from_utf8(bytes) {
-        return s.to_string();
-    }
-    bytes.iter().map(|&b| b as char).collect()
-}
-
-/// 文字块信息（位置 + 内容）
+/// 文字块信息（字号，用于计算页面平均字号）
 struct TextBlock {
-    x: f32,
-    y: f32,
     font_size: f32,
-    text: String,
 }
 
-/// 从 lopdf 内容流操作中提取所有文字块
+/// 从 lopdf 内容流操作中提取所有文字块（每次位置变更拆分为独立 block）
 fn extract_text_blocks_from_ops(operations: &[lopdf::content::Operation]) -> Vec<TextBlock> {
+    // 每次位置变更（Tm/Td/TD/T*）将累积文字刷新为一个 TextBlock
+    fn flush(has_text: &mut bool, tf: f32, tmd: f32, out: &mut Vec<TextBlock>) {
+        if *has_text {
+            let efs = tf * tmd.abs();
+            let fs = if efs > 0.5 { efs } else { tf };
+            out.push(TextBlock { font_size: fs });
+            *has_text = false;
+        }
+    }
+
     let mut blocks: Vec<TextBlock> = Vec::new();
     let mut in_bt = false;
-    let mut cur_x: f32 = 0.0;
-    let mut cur_y: f32 = 0.0;
-    let mut base_x: f32 = 0.0;
-    let mut base_y: f32 = 0.0;
-    let mut font_size: f32 = 12.0;
-    let mut block_text = String::new();
-    let mut block_start_x: f32 = 0.0;
-    let mut block_start_y: f32 = 0.0;
-    let mut block_has_pos = false;
+    let mut tf_size: f32 = 12.0;
+    let mut tm_d: f32 = 1.0;          // Tm 矩阵竖直缩放分量
+    let mut has_text = false;          // 当前 run 是否有文字
 
     for op in operations {
         match op.operator.as_str() {
             "BT" => {
                 in_bt = true;
-                block_text.clear();
-                block_has_pos = false;
-                cur_x = 0.0; cur_y = 0.0;
-                base_x = 0.0; base_y = 0.0;
+                tm_d = 1.0;
+                has_text = false;
             }
             "ET" => {
-                if in_bt && !block_text.trim().is_empty() {
-                    blocks.push(TextBlock {
-                        x: block_start_x,
-                        y: block_start_y,
-                        font_size,
-                        text: block_text.trim().to_string(),
-                    });
+                if in_bt {
+                    flush(&mut has_text, tf_size, tm_d, &mut blocks);
                 }
                 in_bt = false;
             }
-            "Tm" if in_bt => {
-                if op.operands.len() >= 6 {
-                    cur_x = obj_to_f32(&op.operands[4]);
-                    cur_y = obj_to_f32(&op.operands[5]);
-                    base_x = cur_x; base_y = cur_y;
-                    if !block_has_pos {
-                        block_start_x = cur_x;
-                        block_start_y = cur_y;
-                        block_has_pos = true;
-                    }
-                }
-            }
-            "Td" | "TD" if in_bt => {
-                if op.operands.len() >= 2 {
-                    base_x += obj_to_f32(&op.operands[0]);
-                    base_y += obj_to_f32(&op.operands[1]);
-                    cur_x = base_x; cur_y = base_y;
-                    if !block_has_pos {
-                        block_start_x = cur_x;
-                        block_start_y = cur_y;
-                        block_has_pos = true;
-                    }
-                }
-            }
-            "T*" if in_bt => { block_text.push('\n'); }
             "Tf" if in_bt => {
                 if op.operands.len() >= 2 {
-                    font_size = obj_to_f32(&op.operands[1]);
-                    if font_size <= 0.0 { font_size = 12.0; }
+                    tf_size = obj_to_f32(&op.operands[1]);
+                    if tf_size <= 0.0 { tf_size = 12.0; }
                 }
             }
+            "Tm" if in_bt => {
+                if op.operands.len() >= 6 {
+                    flush(&mut has_text, tf_size, tm_d, &mut blocks);
+                    tm_d = obj_to_f32(&op.operands[3]);
+                }
+            }
+            "Td" if in_bt => {
+                if op.operands.len() >= 2 {
+                    flush(&mut has_text, tf_size, tm_d, &mut blocks);
+                }
+            }
+            "TD" if in_bt => {
+                if op.operands.len() >= 2 {
+                    flush(&mut has_text, tf_size, tm_d, &mut blocks);
+                }
+            }
+            "T*" if in_bt => {
+                flush(&mut has_text, tf_size, tm_d, &mut blocks);
+            }
             "Tj" if in_bt => {
-                if let Some(lopdf::Object::String(bytes, _)) = op.operands.first() {
-                    block_text.push_str(&decode_pdf_string(bytes));
+                if op.operands.first().and_then(|o| if let lopdf::Object::String(_, _) = o { Some(()) } else { None }).is_some() {
+                    has_text = true;
                 }
             }
             "TJ" if in_bt => {
                 if let Some(lopdf::Object::Array(arr)) = op.operands.first() {
-                    for item in arr {
-                        if let lopdf::Object::String(bytes, _) = item {
-                            block_text.push_str(&decode_pdf_string(bytes));
-                        }
+                    if arr.iter().any(|item| matches!(item, lopdf::Object::String(_, _))) {
+                        has_text = true;
                     }
                 }
             }
@@ -7075,31 +7059,59 @@ fn extract_single_ttf_from_data(data: &[u8]) -> Vec<u8> {
 
 /// 向文档添加嵌入 CJK 字体（Identity-H + FontFile2），返回 Type0 字体 ObjectId
 /// 嵌入字体文件保证 PDF 查看器能正确渲染中文，不依赖系统字体
-fn add_yahe_font(doc: &mut lopdf::Document, raw_font_data: &[u8]) -> lopdf::ObjectId {
+/// `used_chars`: 翻译中实际使用的字符集，用于生成正确的 ToUnicode CMap
+fn add_yahe_font(
+    doc: &mut lopdf::Document,
+    raw_font_data: &[u8],
+    used_chars: &std::collections::BTreeSet<char>,
+) -> lopdf::ObjectId {
     use lopdf::{Dictionary, Object, Stream, StringFormat};
 
     // 从 TTC 提取单独 TTF（若已是 TTF 则直接使用）
     let ttf_bytes = extract_single_ttf_from_data(raw_font_data);
     let ttf_len = ttf_bytes.len() as i64;
 
+    // 从 ttf-parser 读取真实字体度量值
+    let (ascent, descent, cap_height, bbox) = {
+        use ttf_parser::Face;
+        match Face::parse(&ttf_bytes, 0) {
+            Ok(face) => {
+                let em = face.units_per_em() as f32;
+                let scale = 1000.0 / em;
+                let a = (face.ascender() as f32 * scale) as i64;
+                let d = (face.descender() as f32 * scale) as i64;
+                let ch = face.capital_height().map(|h| (h as f32 * scale) as i64).unwrap_or(a);
+                let bb = face.global_bounding_box();
+                let bbox_arr = [
+                    (bb.x_min as f32 * scale) as i64,
+                    (bb.y_min as f32 * scale) as i64,
+                    (bb.x_max as f32 * scale) as i64,
+                    (bb.y_max as f32 * scale) as i64,
+                ];
+                (a, d, ch, bbox_arr)
+            }
+            Err(_) => (859, -141, 731, [-30, -141, 1030, 859]),
+        }
+    };
+
     // FontFile2 流
     let mut ffs_dict = Dictionary::new();
     ffs_dict.set("Length1", Object::Integer(ttf_len));
     let font_file_id = doc.add_object(Object::Stream(Stream::new(ffs_dict, ttf_bytes)));
 
-    // FontDescriptor
+    // FontDescriptor（使用真实字体度量）
     let descriptor = Dictionary::from_iter(vec![
         ("Type",        Object::Name(b"FontDescriptor".to_vec())),
         ("FontName",    Object::Name(b"ZhCJKFont".to_vec())),
         ("Flags",       Object::Integer(4)),
         ("FontBBox",    Object::Array(vec![
-            Object::Integer(-30), Object::Integer(-141),
-            Object::Integer(1030), Object::Integer(859),
+            Object::Integer(bbox[0]), Object::Integer(bbox[1]),
+            Object::Integer(bbox[2]), Object::Integer(bbox[3]),
         ])),
         ("ItalicAngle", Object::Integer(0)),
-        ("Ascent",      Object::Integer(859)),
-        ("Descent",     Object::Integer(-141)),
-        ("CapHeight",   Object::Integer(731)),
+        ("Ascent",      Object::Integer(ascent)),
+        ("Descent",     Object::Integer(descent)),
+        ("CapHeight",   Object::Integer(cap_height)),
         ("StemV",       Object::Integer(80)),
         ("FontFile2",   Object::Reference(font_file_id)),
     ]);
@@ -7120,22 +7132,41 @@ fn add_yahe_font(doc: &mut lopdf::Document, raw_font_data: &[u8]) -> lopdf::Obje
     ]);
     let cid_id = doc.add_object(Object::Dictionary(cid_font));
 
-    // ToUnicode CMap（Identity mapping）
-    let cmap_content = b"/CIDInit /ProcSet findresource begin\n\
-        12 dict begin\n\
-        begincmap\n\
-        /CIDSystemInfo\n\
-        << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> def\n\
-        /CMapName /Identity-H def\n\
-        /CMapType 2 def\n\
-        1 begincodespacerange\n\
-        <0000> <FFFF>\n\
-        endcodespacerange\n\
-        1 beginbfrange\n\
-        <0000> <FFFF> <0000>\n\
-        endbfrange\n\
-        endcmap\n\
-        CMap currentdict end end\n".to_vec();
+    // ToUnicode CMap — 逐字符 GlyphID → Unicode 映射（保证翻译后文本可复制）
+    let cmap_content = {
+        use ttf_parser::Face;
+        let mut bfchar_lines = Vec::new();
+        if let Ok(face) = Face::parse(raw_font_data, 0) {
+            for &ch in used_chars {
+                if let Some(gid) = face.glyph_index(ch) {
+                    bfchar_lines.push(format!("<{:04X}> <{:04X}>", gid.0, ch as u32));
+                }
+            }
+        }
+        // CMap 规范：每个 beginbfchar 最多 100 条
+        let mut cmap = String::from(
+            "/CIDInit /ProcSet findresource begin\n\
+             12 dict begin\n\
+             begincmap\n\
+             /CIDSystemInfo\n\
+             << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> def\n\
+             /CMapName /Identity-H def\n\
+             /CMapType 2 def\n\
+             1 begincodespacerange\n\
+             <0000> <FFFF>\n\
+             endcodespacerange\n"
+        );
+        for chunk in bfchar_lines.chunks(100) {
+            cmap.push_str(&format!("{} beginbfchar\n", chunk.len()));
+            for line in chunk {
+                cmap.push_str(line);
+                cmap.push('\n');
+            }
+            cmap.push_str("endbfchar\n");
+        }
+        cmap.push_str("endcmap\nCMap currentdict end end\n");
+        cmap.into_bytes()
+    };
     let cmap_id = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), cmap_content)));
 
     // Type0（composite）font
@@ -7150,289 +7181,368 @@ fn add_yahe_font(doc: &mut lopdf::Document, raw_font_data: &[u8]) -> lopdf::Obje
     doc.add_object(Object::Dictionary(type0_font))
 }
 
-/// 生成覆盖文字区域的白色矩形 PDF 路径操作
-fn make_white_rect_ops(x: f32, y: f32, w: f32, h: f32) -> Vec<lopdf::content::Operation> {
-    use lopdf::{content::Operation, Object};
-    vec![
-        Operation::new("q", vec![]),
-        Operation::new("rg", vec![Object::Real(1.0), Object::Real(1.0), Object::Real(1.0)]),
-        Operation::new("re", vec![
-            Object::Real(x - 4.0),
-            Object::Real(y - 4.0),
-            Object::Real(w + 8.0),
-            Object::Real(h + 8.0),
-        ]),
-        Operation::new("f", vec![]),
-        Operation::new("Q", vec![]),
+/// 生成覆盖文字区域的白色矩形 PDF 路径操作（调用方自行包含 padding）
+/// 将 hex 字符串编码的 CID 转为字节并输出 Tj 操作
+fn emit_cid_text(
+    chunk: &str,
+    font_data: &[u8],
+    ops: &mut Vec<lopdf::content::Operation>,
+) {
+    use lopdf::{content::Operation, Object, StringFormat};
+    let hex = encode_chars_to_cid_hex(chunk, font_data);
+    if hex.is_empty() { return; }
+    let cid_bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .filter_map(|i| {
+            if i + 2 <= hex.len() { u8::from_str_radix(&hex[i..i + 2], 16).ok() } else { None }
+        })
+        .collect();
+    ops.push(Operation::new("Tj", vec![
+        Object::String(cid_bytes, StringFormat::Hexadecimal),
+    ]));
+}
+
+// ── Reflow PDF 生成：图片提取 + 流式排版 + 自适应分页 ──
+
+/// 从内容流中提取的图片位置信息
+struct ImagePlacement {
+    xobject_name: String,
+    y: f32,           // 原始 y 坐标（用于排序）
+    display_w: f32,   // 显示宽度 pt
+    display_h: f32,   // 显示高度 pt
+}
+
+/// 2D 仿射矩阵乘法 [a b c d e f] 代表 [[a,b,0],[c,d,0],[e,f,1]]
+fn multiply_ctm(m: &[f32; 6], cur: &[f32; 6]) -> [f32; 6] {
+    [
+        m[0] * cur[0] + m[1] * cur[2],
+        m[0] * cur[1] + m[1] * cur[3],
+        m[2] * cur[0] + m[3] * cur[2],
+        m[2] * cur[1] + m[3] * cur[3],
+        m[4] * cur[0] + m[5] * cur[2] + cur[4],
+        m[4] * cur[1] + m[5] * cur[3] + cur[5],
     ]
 }
 
-/// 生成 BT...ET 中文翻译文字块操作（Identity-H GlyphID hex 编码）
-/// font_data: 字体文件字节（用于 ttf-parser GlyphID 查找）
-fn make_translated_text_ops(
-    x: f32,
-    y: f32,
-    font_size: f32,
-    translated: &str,
-    page_width: f32,
-    font_data: &[u8],
-) -> Vec<lopdf::content::Operation> {
-    use lopdf::{content::Operation, Object, StringFormat};
+/// 从内容流操作中提取所有图片 XObject 的位置和显示尺寸
+fn extract_image_placements(ops: &[lopdf::content::Operation]) -> Vec<ImagePlacement> {
+    let identity: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+    let mut ctm_stack: Vec<[f32; 6]> = vec![identity];
+    let mut images = Vec::new();
 
-    let fs = font_size.max(9.0).min(16.0);
-    // 每行最多字符数（汉字约 fs pt 宽，可用宽度 = 页宽 - 左边距 - 右边距）
-    let avail_width = page_width - x - 40.0;
-    let max_per_line = ((avail_width / fs) as usize).max(15).min(80);
-
-    let mut ops = vec![
-        Operation::new("q", vec![]),
-        // 黑色文字
-        Operation::new("rg", vec![Object::Real(0.0), Object::Real(0.0), Object::Real(0.0)]),
-        Operation::new("BT", vec![]),
-        Operation::new("Tf", vec![
-            Object::Name(b"ZhF0".to_vec()),
-            Object::Real(fs),
-        ]),
-        // 行间距 = 1.5 倍字号
-        Operation::new("TL", vec![Object::Real(fs * 1.5)]),
-        // 移动到起始位置（PDF y 轴向上，从 max_y 开始向下排）
-        Operation::new("Td", vec![Object::Real(x), Object::Real(y)]),
-    ];
-
-    let mut first_line = true;
-    for line in translated.lines() {
-        let line = line.trim();
-
-        if !first_line {
-            ops.push(Operation::new("T*", vec![]));
-        }
-        first_line = false;
-
-        if line.is_empty() {
-            // 空行：已 T*，继续
-            continue;
-        }
-
-        // 按最大字符数分块
-        let chars: Vec<char> = line.chars().collect();
-        let mut pos = 0;
-        let mut first_chunk = true;
-        while pos < chars.len() {
-            let end = (pos + max_per_line).min(chars.len());
-            let chunk: String = chars[pos..end].iter().collect();
-            pos = end;
-
-            if !first_chunk {
-                ops.push(Operation::new("T*", vec![]));
-            }
-            first_chunk = false;
-
-            let hex = encode_chars_to_cid_hex(&chunk, font_data);
-            if !hex.is_empty() {
-                // hex 是 ASCII hex 字符串如 "00F70043"，必须先还原为实际字节 [0x00,0xF7,0x00,0x43]
-                // 直接 hex.into_bytes() 会把 ASCII 码再次 hex 编码（双重编码 bug）
-                let cid_bytes: Vec<u8> = (0..hex.len())
-                    .step_by(2)
-                    .filter_map(|i| {
-                        if i + 2 <= hex.len() {
-                            u8::from_str_radix(&hex[i..i + 2], 16).ok()
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                ops.push(Operation::new("Tj", vec![
-                    Object::String(cid_bytes, StringFormat::Hexadecimal),
-                ]));
-            }
-        }
-    }
-
-    ops.push(Operation::new("ET", vec![]));
-    ops.push(Operation::new("Q", vec![]));
-    ops
-}
-
-/// 读取页面所有内容流，过滤掉 BT...ET 文字块，返回保留图片/图形的操作列表
-fn read_and_filter_text_ops(
-    doc: &lopdf::Document,
-    page_id: lopdf::ObjectId,
-) -> Vec<lopdf::content::Operation> {
-    use lopdf::content::Content;
-
-    let data = match doc.get_page_content(page_id) {
-        Ok(d) => d,
-        Err(_) => return vec![],
-    };
-    let ops = match Content::decode(&data) {
-        Ok(c) => c.operations,
-        Err(_) => return vec![],
-    };
-
-    let mut filtered = Vec::new();
-    let mut in_bt = false;
     for op in ops {
         match op.operator.as_str() {
-            "BT" => in_bt = true,
-            "ET" => in_bt = false,
-            _ if !in_bt => filtered.push(op),
+            "q" => { ctm_stack.push(*ctm_stack.last().unwrap_or(&identity)); }
+            "Q" => { if ctm_stack.len() > 1 { ctm_stack.pop(); } }
+            "cm" => {
+                if op.operands.len() >= 6 {
+                    let m = [
+                        obj_to_f32(&op.operands[0]), obj_to_f32(&op.operands[1]),
+                        obj_to_f32(&op.operands[2]), obj_to_f32(&op.operands[3]),
+                        obj_to_f32(&op.operands[4]), obj_to_f32(&op.operands[5]),
+                    ];
+                    let cur = ctm_stack.last_mut().unwrap();
+                    *cur = multiply_ctm(&m, cur);
+                }
+            }
+            "Do" => {
+                if let Some(lopdf::Object::Name(name)) = op.operands.first() {
+                    let ctm = ctm_stack.last().unwrap_or(&identity);
+                    let dw = (ctm[0].powi(2) + ctm[1].powi(2)).sqrt();
+                    let dh = (ctm[2].powi(2) + ctm[3].powi(2)).sqrt();
+                    if dw > 1.0 && dh > 1.0 {
+                        images.push(ImagePlacement {
+                            xobject_name: String::from_utf8_lossy(name).to_string(),
+                            y: ctm[5],
+                            display_w: dw,
+                            display_h: dh,
+                        });
+                    }
+                }
+            }
             _ => {}
         }
     }
-    filtered
+    images
 }
 
-/// 用新内容流列表替换页面 /Contents，并向 /Resources/Font 添加 ZhF0 引用
-fn replace_page_content(
-    doc: &mut lopdf::Document,
-    page_id: lopdf::ObjectId,
-    new_stream_ids: Vec<lopdf::ObjectId>,
-    font_id: lopdf::ObjectId,
-) -> Result<(), String> {
-    use lopdf::{Dictionary, Object};
-
-    // ── 读取 Resources（不可变借用，clone 出来） ──
-    let cur_resources_opt: Option<Object> = doc.get_object(page_id)
-        .ok()
-        .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
-        .and_then(|d| d.get(b"Resources").ok().map(|o| o.clone()));
-
-    let resolved_resources: Dictionary = match cur_resources_opt {
-        Some(Object::Dictionary(d)) => d,
-        Some(Object::Reference(r))  => doc.get_object(r)
-            .ok()
-            .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
-            .unwrap_or_else(Dictionary::new),
-        _ => Dictionary::new(),
-    };
-
-    // 向 Font 子字典写入 ZhF0
-    let mut new_res = resolved_resources;
-    let mut font_dict: Dictionary = match new_res.get(b"Font") {
-        Ok(Object::Dictionary(d)) => d.clone(),
-        _                         => Dictionary::new(),
-    };
-    font_dict.set("ZhF0", Object::Reference(font_id));
-    new_res.set("Font", Object::Dictionary(font_dict));
-
-    // ── 写回页面 dict ──
-    let new_contents: Vec<Object> = new_stream_ids
-        .into_iter()
-        .map(|id| Object::Reference(id))
-        .collect();
-
-    let page_dict_mut = doc.get_object_mut(page_id)
-        .map_err(|_| "页面对象不存在".to_string())?
-        .as_dict_mut()
-        .map_err(|_| "页面不是 dict".to_string())?;
-    page_dict_mut.set("Contents",  Object::Array(new_contents));
-    page_dict_mut.set("Resources", Object::Dictionary(new_res));
-
-    Ok(())
-}
-
-/// 检测页面文字块的坐标包围盒
-/// 返回 (y_top, y_bottom, avg_font_size)，PDF 坐标系（y 向上）
-/// 若无文字块则返回 None（如全 XObject 页面）
-fn get_page_text_bbox(
+/// 获取页面 Resources/XObject 字典（解引用间接对象）
+fn get_page_xobject_dict(
     doc: &lopdf::Document,
     page_id: lopdf::ObjectId,
-) -> Option<(f32, f32, f32)> {
-    use lopdf::content::Content;
-
-    let data = doc.get_page_content(page_id).ok()?;
-    let ops  = Content::decode(&data).ok()?.operations;
-    let blocks = extract_text_blocks_from_ops(&ops);
-    if blocks.is_empty() { return None; }
-
-    let y_max  = blocks.iter().map(|b| b.y + b.font_size).fold(f32::NEG_INFINITY, f32::max);
-    let y_min  = blocks.iter().map(|b| b.y - b.font_size * 0.3).fold(f32::INFINITY, f32::min);
-    let avg_fs = blocks.iter().map(|b| b.font_size).sum::<f32>() / blocks.len() as f32;
-
-    Some((y_max, y_min.max(0.0), avg_fs.max(8.0)))
-}
-
-/// 将覆盖层追加到页面 /Contents，并向 /Resources/Font 添加 ZhF0 引用
-fn append_overlay_to_page(
-    doc: &mut lopdf::Document,
-    page_id: lopdf::ObjectId,
-    overlay_id: lopdf::ObjectId,
-    font_id: lopdf::ObjectId,
-) -> Result<(), String> {
+) -> lopdf::Dictionary {
     use lopdf::{Dictionary, Object};
-
-    // 读取现有内容（clone 释放不可变借用）
-    let cur_contents_opt: Option<Object> = doc.get_object(page_id).ok()
-        .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
-        .and_then(|d| d.get(b"Contents").ok().map(|o| o.clone()));
-
-    let cur_resources_opt: Option<Object> = doc.get_object(page_id).ok()
+    let res_opt: Option<Object> = doc.get_object(page_id).ok()
         .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
         .and_then(|d| d.get(b"Resources").ok().map(|o| o.clone()));
-
-    let resolved_resources: Dictionary = match cur_resources_opt {
+    let res_dict: Dictionary = match res_opt {
         Some(Object::Dictionary(d)) => d,
-        Some(Object::Reference(r))  => doc.get_object(r).ok()
-            .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
+        Some(Object::Reference(r))  => doc.get_object(r)
+            .ok().and_then(|o| o.as_dict().ok().map(|d| d.clone()))
             .unwrap_or_else(Dictionary::new),
         _ => Dictionary::new(),
     };
-
-    // 追加 overlay 到 Contents 数组
-    let new_contents: Vec<Object> = {
-        let mut arr = match cur_contents_opt {
-            Some(Object::Reference(r)) => vec![Object::Reference(r)],
-            Some(Object::Array(a))     => a,
-            _                          => vec![],
-        };
-        arr.push(Object::Reference(overlay_id));
-        arr
-    };
-
-    // 向 Font 子字典写入 ZhF0
-    let mut new_res = resolved_resources;
-    let mut font_dict: Dictionary = match new_res.get(b"Font") {
+    match res_dict.get(b"XObject") {
         Ok(Object::Dictionary(d)) => d.clone(),
-        _                         => Dictionary::new(),
+        Ok(Object::Reference(r))  => doc.get_object(*r)
+            .ok().and_then(|o| o.as_dict().ok().map(|d| d.clone()))
+            .unwrap_or_else(Dictionary::new),
+        _ => Dictionary::new(),
+    }
+}
+
+/// 按字符宽度自动换行
+fn wrap_text_lines(text: &str, avail_width: f32, fs: f32) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() { lines.push(String::new()); continue; }
+        let chars: Vec<char> = line.chars().collect();
+        let mut start = 0;
+        let mut w = 0.0f32;
+        for (i, &ch) in chars.iter().enumerate() {
+            let cw = if ch > '\u{2E7F}' { fs * 0.95 } else { fs * 0.55 };
+            if w + cw > avail_width && i > start {
+                lines.push(chars[start..i].iter().collect());
+                start = i;
+                w = 0.0;
+            }
+            w += cw;
+        }
+        if start < chars.len() { lines.push(chars[start..].iter().collect()); }
+    }
+    lines
+}
+
+/// 渲染后的单页内容
+struct RenderedPage {
+    content_bytes: Vec<u8>,
+    xobject_names: Vec<String>,
+}
+
+/// 将翻译文字和图片流式排版到一页或多页
+fn render_flow_pages(
+    translated: &str,
+    images: &[ImagePlacement],
+    page_w: f32,
+    page_h: f32,
+    font_size: f32,
+    font_data: &[u8],
+) -> Vec<RenderedPage> {
+    use lopdf::{content::{Content, Operation}, Object};
+
+    let margin = 36.0f32;
+    let content_w = page_w - 2.0 * margin;
+    let fs = font_size.max(8.0).min(20.0);
+    let line_height = fs * 1.5;
+    let img_gap = fs; // 图片前后间距
+
+    let wrapped = wrap_text_lines(translated, content_w, fs);
+    let total_lines = wrapped.len();
+
+    // 按 y 坐标降序排列图片（页面顶部先出）
+    let mut sorted_imgs: Vec<&ImagePlacement> = images.iter().collect();
+    sorted_imgs.sort_by(|a, b| b.y.partial_cmp(&a.y).unwrap_or(std::cmp::Ordering::Equal));
+
+    // 计算每张图片在文字流中的插入位置（0.0=最顶，1.0=最底）
+    let usable_h = page_h - 2.0 * margin;
+    let insert_fracs: Vec<f32> = sorted_imgs.iter().map(|img| {
+        ((page_h - margin - img.y) / usable_h).clamp(0.0, 1.0)
+    }).collect();
+
+    // ── 渲染状态 ──
+    let mut pages: Vec<RenderedPage> = Vec::new();
+    let mut ops: Vec<Operation> = Vec::new();
+    let mut xobj_names: Vec<String> = Vec::new();
+    let mut y = page_h - margin;
+    let mut in_text = false;
+    let mut first_text_line = true;
+    let mut line_idx = 0;
+    let mut img_idx = 0;
+
+    // 开始文字块
+    fn begin_text(ops: &mut Vec<Operation>, x: f32, y: f32, fs: f32, lh: f32) {
+        ops.push(Operation::new("q", vec![]));
+        ops.push(Operation::new("rg", vec![Object::Real(0.0), Object::Real(0.0), Object::Real(0.0)]));
+        ops.push(Operation::new("BT", vec![]));
+        ops.push(Operation::new("Tf", vec![Object::Name(b"ZhF0".to_vec()), Object::Real(fs)]));
+        ops.push(Operation::new("TL", vec![Object::Real(lh)]));
+        ops.push(Operation::new("Td", vec![Object::Real(x), Object::Real(y)]));
+    }
+    fn end_text(ops: &mut Vec<Operation>) {
+        ops.push(Operation::new("ET", vec![]));
+        ops.push(Operation::new("Q", vec![]));
+    }
+
+    // 分页：将当前 ops 存为一页，重置状态
+    let flush_page = |pages: &mut Vec<RenderedPage>,
+                      ops: &mut Vec<Operation>,
+                      xobj_names: &mut Vec<String>,
+                      in_text: &mut bool,
+                      y: &mut f32,
+                      first_text_line: &mut bool| {
+        if *in_text { end_text(ops); *in_text = false; }
+        if !ops.is_empty() {
+            let bytes = Content { operations: std::mem::take(ops) }.encode().unwrap_or_default();
+            pages.push(RenderedPage { content_bytes: bytes, xobject_names: std::mem::take(xobj_names) });
+        }
+        *y = page_h - margin;
+        *first_text_line = true;
     };
-    font_dict.set("ZhF0", Object::Reference(font_id));
-    new_res.set("Font", Object::Dictionary(font_dict));
 
-    let page_dict_mut = doc.get_object_mut(page_id)
-        .map_err(|_| "页面对象不存在".to_string())?
-        .as_dict_mut()
-        .map_err(|_| "页面不是 dict".to_string())?;
-    page_dict_mut.set("Contents",  Object::Array(new_contents));
-    page_dict_mut.set("Resources", Object::Dictionary(new_res));
+    loop {
+        // 检查是否该插入图片
+        let text_frac = if total_lines > 0 { line_idx as f32 / total_lines as f32 } else { 1.0 };
+        let should_insert_img = img_idx < insert_fracs.len() && text_frac >= insert_fracs[img_idx];
 
-    Ok(())
+        if should_insert_img {
+            let img = sorted_imgs[img_idx];
+            let scale = (content_w / img.display_w).min(1.0);
+            let img_w = img.display_w * scale;
+            let img_h = img.display_h * scale;
+
+            // 图片前间距
+            y -= img_gap;
+
+            // 不够放则分页
+            if y - img_h < margin {
+                flush_page(&mut pages, &mut ops, &mut xobj_names, &mut in_text, &mut y, &mut first_text_line);
+            }
+
+            // 关闭文字块
+            if in_text { end_text(&mut ops); in_text = false; }
+
+            // 绘制图片（居中）
+            let img_x = margin + (content_w - img_w) / 2.0;
+            let img_y = y - img_h;
+            ops.push(Operation::new("q", vec![]));
+            ops.push(Operation::new("cm", vec![
+                Object::Real(img_w), Object::Real(0.0),
+                Object::Real(0.0),   Object::Real(img_h),
+                Object::Real(img_x), Object::Real(img_y),
+            ]));
+            ops.push(Operation::new("Do", vec![Object::Name(img.xobject_name.as_bytes().to_vec())]));
+            ops.push(Operation::new("Q", vec![]));
+            xobj_names.push(img.xobject_name.clone());
+
+            y = img_y - img_gap;
+            img_idx += 1;
+            first_text_line = true; // 图片后重新开始文字块
+            continue;
+        }
+
+        if line_idx >= wrapped.len() { break; }
+
+        // 不够放一行则分页
+        if y - line_height < margin {
+            flush_page(&mut pages, &mut ops, &mut xobj_names, &mut in_text, &mut y, &mut first_text_line);
+        }
+
+        // 确保文字块已打开
+        if !in_text {
+            begin_text(&mut ops, margin, y, fs, line_height);
+            in_text = true;
+            first_text_line = true;
+        }
+
+        let line = &wrapped[line_idx];
+        if !first_text_line {
+            ops.push(Operation::new("T*", vec![]));
+        }
+        first_text_line = false;
+
+        if !line.is_empty() {
+            emit_cid_text(line, font_data, &mut ops);
+        }
+
+        y -= line_height;
+        line_idx += 1;
+    }
+
+    // 插入剩余图片
+    while img_idx < sorted_imgs.len() {
+        let img = sorted_imgs[img_idx];
+        let scale = (content_w / img.display_w).min(1.0);
+        let img_w = img.display_w * scale;
+        let img_h = img.display_h * scale;
+        y -= img_gap;
+        if y - img_h < margin {
+            flush_page(&mut pages, &mut ops, &mut xobj_names, &mut in_text, &mut y, &mut first_text_line);
+        }
+        if in_text { end_text(&mut ops); in_text = false; }
+        let img_x = margin + (content_w - img_w) / 2.0;
+        let img_y = y - img_h;
+        ops.push(Operation::new("q", vec![]));
+        ops.push(Operation::new("cm", vec![
+            Object::Real(img_w), Object::Real(0.0),
+            Object::Real(0.0),   Object::Real(img_h),
+            Object::Real(img_x), Object::Real(img_y),
+        ]));
+        ops.push(Operation::new("Do", vec![Object::Name(img.xobject_name.as_bytes().to_vec())]));
+        ops.push(Operation::new("Q", vec![]));
+        xobj_names.push(img.xobject_name.clone());
+        y = img_y - img_gap;
+        img_idx += 1;
+    }
+
+    // 末页收尾
+    if in_text { end_text(&mut ops); }
+    if !ops.is_empty() {
+        let bytes = Content { operations: ops }.encode().unwrap_or_default();
+        pages.push(RenderedPage { content_bytes: bytes, xobject_names: xobj_names });
+    }
+
+    // 保底：至少返回一个空页（避免下游 panic）
+    if pages.is_empty() {
+        pages.push(RenderedPage { content_bytes: vec![], xobject_names: vec![] });
+    }
+    pages
 }
 
 /// 构建翻译后的 PDF，保存为 {原文件名}_zh.pdf
 ///
-/// 策略：
-///   - 原始内容流完全不动（图片/图形保持原始坐标不受影响）
-///   - 检测每页文字块的 y 坐标范围，用白矩形只盖住文字区域（不盖图片）
-///   - 在文字区域的顶部坐标开始排版中文翻译，位置与原英文对齐
-///   - 对无法检测到文字块的页面（全 XObject 页）回退到从页顶排版
+/// 策略（Reflow）：
+///   - 从原始内容流中提取图片 XObject 位置和尺寸
+///   - 将翻译文字和图片按流式布局重新排版到全新页面
+///   - 页数自适应内容量（不够自动加页，多余自动减）
+///   - 图片按原始相对位置穿插在翻译文字之间，居中显示
 #[tauri::command]
-pub fn build_translated_pdf(
+pub async fn build_translated_pdf(
     path: String,
     translations: Vec<String>,
 ) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || build_translated_pdf_inner(&path, &translations))
+        .await
+        .map_err(|e| format!("构建任务失败: {}", e))?
+}
+
+fn build_translated_pdf_inner(
+    path: &str,
+    translations: &[String],
+) -> Result<String, String> {
+    use lopdf::{content::Content, Dictionary, Object, Stream};
+
     let font_data = load_cjk_font_bytes()
         .ok_or_else(|| "未找到系统中文字体（msyh.ttc / simhei.ttf），请确认 Windows 字体已安装".to_string())?;
 
-    let mut doc = lopdf::Document::load(&path)
+    let mut doc = lopdf::Document::load(path)
         .map_err(|e| format!("打开 PDF 失败: {}", e))?;
 
-    let font_id = add_yahe_font(&mut doc, &font_data);
+    let used_chars: std::collections::BTreeSet<char> = translations.iter()
+        .flat_map(|t| t.chars()).collect();
+    let font_id = add_yahe_font(&mut doc, &font_data, &used_chars);
 
     let orig_page_ids: Vec<lopdf::ObjectId> = doc.page_iter().collect();
 
-    // ── 不可变借用阶段：预先收集所有页面数据 ──
-    // MediaBox
-    let media_boxes: Vec<(f32, f32)> = orig_page_ids.iter().map(|&pid| {
+    // ── 不可变阶段：逐页收集 MediaBox、图片、文字 bbox、XObject 字典 ──
+    struct PageData {
+        media_box: (f32, f32),
+        images: Vec<ImagePlacement>,
+        avg_fs: f32,
+        xobject_dict: Dictionary,
+    }
+
+    let page_data: Vec<PageData> = orig_page_ids.iter().map(|&pid| {
         let w = doc.get_object(pid).ok()
             .and_then(|o| o.as_dict().ok().map(|d| d.clone()))
             .and_then(|d| d.get(b"MediaBox").ok().map(|o| o.clone()))
@@ -7445,75 +7555,133 @@ pub fn build_translated_pdf(
             .and_then(|o| o.as_array().ok().map(|a| a.clone()))
             .and_then(|arr| arr.get(3).cloned())
             .map(|o| obj_to_f32(&o)).filter(|&v| v > 0.0).unwrap_or(842.0);
-        (w, h)
-    }).collect();
 
-    // 文字块 bbox（y_top, y_bottom, avg_font_size）
-    let text_bboxes: Vec<Option<(f32, f32, f32)>> = orig_page_ids
-        .iter()
-        .map(|&pid| get_page_text_bbox(&doc, pid))
-        .collect();
-
-    // ── 可变阶段：添加 overlay 流 ──
-    for (page_idx, &page_id) in orig_page_ids.iter().enumerate() {
-        let translation = match translations.get(page_idx) {
-            Some(t) if !t.trim().is_empty() => t.clone(),
-            _ => continue,
+        let (images, avg_fs) = match doc.get_page_content(pid) {
+            Ok(data) => match Content::decode(&data) {
+                Ok(c) => {
+                    let imgs = extract_image_placements(&c.operations);
+                    let blocks = extract_text_blocks_from_ops(&c.operations);
+                    let fs = if blocks.is_empty() { 11.0 } else {
+                        (blocks.iter().map(|b| b.font_size).sum::<f32>() / blocks.len() as f32).max(8.0)
+                    };
+                    (imgs, fs)
+                }
+                Err(_) => (vec![], 11.0),
+            },
+            Err(_) => (vec![], 11.0),
         };
 
-        let (page_width, page_height) = media_boxes[page_idx];
-        let margin_x = 36.0f32;
+        let xobject_dict = get_page_xobject_dict(&doc, pid);
 
-        // 文字起始 y 及白矩形范围
-        let (text_start_y, white_rect_y, white_rect_h) =
-            match text_bboxes[page_idx] {
-                Some((y_top, y_bottom, avg_fs)) => {
-                    // 从检测到的文字区域顶部开始排版
-                    let start = y_top;
-                    // 白矩形覆盖整个文字竖向范围（全页宽，保证水平完全覆盖）
-                    let rect_h = (y_top - y_bottom + avg_fs * 2.0).max(40.0);
-                    eprintln!("[build_pdf] page {} text_bbox y_top={:.1} y_bottom={:.1}", page_idx+1, y_top, y_bottom);
-                    (start, y_bottom - avg_fs, rect_h)
+        PageData { media_box: (w, h), images, avg_fs, xobject_dict }
+    }).collect();
+
+    // 找到 Pages 根节点 ID
+    let pages_root_id = doc.catalog()
+        .map_err(|e| format!("无法读取 Catalog: {}", e))?
+        .get(b"Pages").map_err(|_| "Catalog 无 Pages".to_string())?
+        .as_reference().map_err(|_| "Pages 不是引用".to_string())?;
+
+    // ── 可变阶段：逐页生成 reflow 内容，构建新页面树 ──
+    let mut new_kids: Vec<Object> = Vec::new();
+
+    for (page_idx, &orig_page_id) in orig_page_ids.iter().enumerate() {
+        let translation = match translations.get(page_idx) {
+            Some(t) if !t.trim().is_empty() => t.as_str(),
+            _ => {
+                // 无翻译：保留原页
+                new_kids.push(Object::Reference(orig_page_id));
+                continue;
+            }
+        };
+
+        let data = &page_data[page_idx];
+        let (pw, ph) = data.media_box;
+
+        // 渲染为一页或多页
+        let rendered = render_flow_pages(
+            translation, &data.images, pw, ph, data.avg_fs, &font_data,
+        );
+
+        for rp in &rendered {
+            // 创建内容流对象
+            let content_id = doc.add_object(Object::Stream(
+                Stream::new(Dictionary::new(), rp.content_bytes.clone())
+            ));
+
+            // 构建 Resources：字体 + 需要的 XObject
+            let mut font_dict = Dictionary::new();
+            font_dict.set("ZhF0", Object::Reference(font_id));
+
+            let mut resources = Dictionary::new();
+            resources.set("Font", Object::Dictionary(font_dict));
+
+            if !rp.xobject_names.is_empty() {
+                let mut xobj = Dictionary::new();
+                for name in &rp.xobject_names {
+                    if let Ok(obj_ref) = data.xobject_dict.get(name.as_bytes()) {
+                        xobj.set(name.as_str(), obj_ref.clone());
+                    }
                 }
-                None => {
-                    // 回退：从页面顶部开始，白矩形覆盖整页
-                    eprintln!("[build_pdf] page {} no text bbox detected, fallback", page_idx+1);
-                    (page_height - 36.0, 0.0, page_height)
+                if !xobj.is_empty() {
+                    resources.set("XObject", Object::Dictionary(xobj));
                 }
-            };
+            }
 
-        let mut overlay_ops: Vec<lopdf::content::Operation> = Vec::new();
-        // 白矩形只盖文字竖向范围（不盖文字区域外的图片）
-        overlay_ops.extend(make_white_rect_ops(
-            0.0, white_rect_y, page_width, white_rect_h,
-        ));
-        // 中文翻译文字，从文字区域顶部坐标开始向下排版
-        overlay_ops.extend(make_translated_text_ops(
-            margin_x, text_start_y, 11.0, &translation, page_width, &font_data,
-        ));
+            // 创建新页面对象
+            let mut page_dict = Dictionary::new();
+            page_dict.set("Type", Object::Name(b"Page".to_vec()));
+            page_dict.set("Parent", Object::Reference(pages_root_id));
+            page_dict.set("MediaBox", Object::Array(vec![
+                Object::Integer(0), Object::Integer(0),
+                Object::Real(pw), Object::Real(ph),
+            ]));
+            page_dict.set("Contents", Object::Reference(content_id));
+            page_dict.set("Resources", Object::Dictionary(resources));
 
-        let overlay_bytes = lopdf::content::Content { operations: overlay_ops }
-            .encode()
-            .map_err(|e| format!("编码 overlay 失败（第 {} 页）: {}", page_idx + 1, e))?;
-        let overlay_id = doc.add_object(lopdf::Object::Stream(
-            lopdf::Stream::new(lopdf::Dictionary::new(), overlay_bytes)
-        ));
-
-        append_overlay_to_page(&mut doc, page_id, overlay_id, font_id)
-            .map_err(|e| format!("追加 overlay 失败（第 {} 页）: {}", page_idx + 1, e))?;
+            let new_page_id = doc.add_object(Object::Dictionary(page_dict));
+            new_kids.push(Object::Reference(new_page_id));
+        }
     }
 
-    let input_path = std::path::Path::new(&path);
-    let stem = input_path.file_stem()
-        .and_then(|s| s.to_str()).unwrap_or("translated");
+    // 更新 Pages 根节点
+    let pages_root = doc.get_object_mut(pages_root_id)
+        .map_err(|_| "Pages 根节点不存在".to_string())?
+        .as_dict_mut()
+        .map_err(|_| "Pages 根节点不是 dict".to_string())?;
+    pages_root.set("Kids", Object::Array(new_kids.clone()));
+    pages_root.set("Count", Object::Integer(new_kids.len() as i64));
+
+    // 确保所有新页的 Parent 指向根节点
+    for kid in &new_kids {
+        if let Ok(pid) = kid.as_reference() {
+            if let Ok(obj) = doc.get_object_mut(pid) {
+                if let Ok(d) = obj.as_dict_mut() {
+                    d.set("Parent", Object::Reference(pages_root_id));
+                }
+            }
+        }
+    }
+
+    let input_path = std::path::Path::new(path);
+    let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("translated");
     let output_path = input_path
         .with_file_name(format!("{}_zh.pdf", stem))
-        .to_str()
-        .ok_or("输出路径生成失败")?
-        .to_string();
+        .to_str().ok_or("输出路径生成失败")?.to_string();
 
-    doc.save(&output_path)
-        .map_err(|e| format!("保存 PDF 失败: {}", e))?;
-
+    doc.save(&output_path).map_err(|e| format!("保存 PDF 失败: {}", e))?;
     Ok(output_path)
+}
+
+/// 检测已有翻译文件 {stem}_zh.pdf 是否存在
+#[tauri::command]
+pub async fn check_translated_pdf_exists(path: String) -> Result<Option<String>, String> {
+    let input = std::path::Path::new(&path);
+    let stem = input.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let zh_path = input.with_file_name(format!("{}_zh.pdf", stem));
+    if tokio::fs::metadata(&zh_path).await.is_ok() {
+        Ok(Some(zh_path.to_string_lossy().to_string()))
+    } else {
+        Ok(None)
+    }
 }

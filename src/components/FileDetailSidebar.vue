@@ -6,7 +6,7 @@ import { getPsdThumbnail, invalidatePsdCache } from '../composables/usePsdThumbn
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import { toggleCheckbox } from '../composables/useNotes'
-import { useSettings } from '../composables/useSettings'
+import { usePdfTranslate } from '../composables/usePdfTranslate'
 import NoteEditor from './NoteEditor.vue'
 import ImageViewer from './ImageViewer.vue'
 
@@ -133,91 +133,21 @@ const emit = defineEmits<{
 
 const { openInExplorer } = useDirectoryFiles()
 const { t } = useI18n()
-const { loadSettings } = useSettings()
 
-// ─── PDF 翻译 ────────────────────────────────────────
+// ─── PDF 翻译（全局状态 composable，侧边栏关闭不中断翻译） ───
 
-type PdfTranslateState = 'idle' | 'extracting' | 'translating' | 'building' | 'done' | 'error'
-const pdfTranslateState = ref<PdfTranslateState>('idle')
-const pdfTranslateProgress = ref({ current: 0, total: 0 })
-const pdfTranslateError = ref('')
-const pdfOutputPath = ref('')
-const showingTranslated = ref(false)
-
-const activePdfSrc = computed(() => {
-  if (showingTranslated.value && pdfOutputPath.value) {
-    return convertFileSrc(pdfOutputPath.value)
-  }
-  return props.file ? convertFileSrc(props.file.path) : ''
-})
-
-// 切换文件时重置翻译状态
-watch(() => props.file, () => {
-  pdfTranslateState.value = 'idle'
-  pdfTranslateError.value = ''
-  pdfOutputPath.value = ''
-  pdfTranslateProgress.value = { current: 0, total: 0 }
-  showingTranslated.value = false
-})
-
-async function handleTranslatePdf() {
-  if (!props.file || pdfTranslateState.value !== 'idle') return
-
-  const settings = await loadSettings()
-  if (!settings?.translation?.apiKey) {
-    pdfTranslateState.value = 'error'
-    pdfTranslateError.value = t('fileDetail.translatePdfNoKey')
-    return
-  }
-
-  const { apiKey, model } = settings.translation
-
-  try {
-    // 提取文字
-    pdfTranslateState.value = 'extracting'
-    const pages = await invoke<string[]>('extract_pdf_pages_text', { path: props.file.path })
-
-    pdfTranslateProgress.value = { current: 0, total: pages.length }
-
-    // 逐页翻译
-    pdfTranslateState.value = 'translating'
-    const translations: string[] = []
-
-    for (let i = 0; i < pages.length; i++) {
-      pdfTranslateProgress.value = { current: i + 1, total: pages.length }
-      const translated = await invoke<string>('translate_text_once', {
-        apiKey,
-        model,
-        text: pages[i],
-      })
-      translations.push(translated)
-    }
-
-    // 生成 PDF
-    pdfTranslateState.value = 'building'
-    const outputPath = await invoke<string>('build_translated_pdf', {
-      path: props.file.path,
-      translations,
-    })
-
-    pdfOutputPath.value = outputPath
-    showingTranslated.value = true
-    pdfTranslateState.value = 'done'
-  } catch (e: any) {
-    pdfTranslateState.value = 'error'
-    const msg = String(e)
-    if (msg.includes('扫描版')) {
-      pdfTranslateError.value = t('fileDetail.translatePdfScanned')
-    } else {
-      pdfTranslateError.value = `${t('fileDetail.translatePdfError')}: ${msg}`
-    }
-    console.error('PDF 翻译失败:', e)
-  }
-}
-
-function togglePdfView() {
-  showingTranslated.value = !showingTranslated.value
-}
+const pdfFilePath = computed(() => props.file?.path ?? '')
+const {
+  state: pdfTranslateState,
+  progress: pdfTranslateProgress,
+  error: pdfTranslateError,
+  showingTranslated,
+  retryInfo: pdfRetryInfo,
+  activePdfSrc,
+  start: handleTranslatePdf,
+  toggleView: togglePdfView,
+  reset: resetPdfTranslate,
+} = usePdfTranslate(pdfFilePath)
 
 // 笔记编辑
 const noteText = ref('')
@@ -640,7 +570,10 @@ function startResize(e: MouseEvent) {
             <template v-else-if="pdfTranslateState === 'extracting' || pdfTranslateState === 'translating' || pdfTranslateState === 'building'">
               <div class="pdf-translate-progress">
                 <span class="pdf-translate-spinner"/>
-                <span v-if="pdfTranslateState === 'extracting'">{{ $t('fileDetail.loading') }}</span>
+                <span v-if="pdfRetryInfo">
+                  {{ $t('fileDetail.translatePdfRetrying', { page: pdfRetryInfo.page + 1, attempt: pdfRetryInfo.attempt, max: pdfRetryInfo.maxRetries }) }}
+                </span>
+                <span v-else-if="pdfTranslateState === 'extracting'">{{ $t('fileDetail.loading') }}</span>
                 <span v-else-if="pdfTranslateState === 'translating'">
                   {{ $t('fileDetail.translatePdfProgress', pdfTranslateProgress) }}
                 </span>
@@ -654,7 +587,7 @@ function startResize(e: MouseEvent) {
                 <button class="pdf-translate-btn" @click="togglePdfView">
                   {{ showingTranslated ? $t('fileDetail.translatePdfViewOriginal') : $t('fileDetail.translatePdfViewTranslated') }}
                 </button>
-                <button class="pdf-translate-reset-btn" title="重新翻译" @click="pdfTranslateState = 'idle'; showingTranslated = false">↺</button>
+                <button class="pdf-translate-reset-btn" :title="$t('fileDetail.translatePdfRetranslate')" @click="resetPdfTranslate">↺</button>
               </div>
             </template>
 
@@ -662,7 +595,7 @@ function startResize(e: MouseEvent) {
             <template v-else-if="pdfTranslateState === 'error'">
               <div class="pdf-translate-error">
                 <span class="pdf-translate-error-msg">{{ pdfTranslateError }}</span>
-                <button class="pdf-translate-reset-btn" title="重试" @click="pdfTranslateState = 'idle'">↺</button>
+                <button class="pdf-translate-reset-btn" :title="$t('fileDetail.translatePdfRetry')" @click="resetPdfTranslate">↺</button>
               </div>
             </template>
           </div>

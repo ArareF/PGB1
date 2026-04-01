@@ -625,6 +625,7 @@ export default {
     zoomIn: 'Zoom In',
     zoomOut: 'Zoom Out',
     zoomReset: 'Reset Zoom',
+    fitView: 'Fit View (Home)',
     pinCount: '{count} pins',
     closeTab: 'Close tab',
     noTabs: 'Click the pinboard button on a page to open a canvas',

@@ -657,6 +657,7 @@ export default {
     zoomIn: '放大',
     zoomOut: '缩小',
     zoomReset: '重置缩放',
+    fitView: '归位 (Home)',
     pinCount: '{count} 张贴图',
     closeTab: '关闭标签',
     noTabs: '从页面点击贴图板按钮打开画布',

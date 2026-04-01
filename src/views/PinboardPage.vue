@@ -298,6 +298,49 @@ function zoomOut() {
 
 const zoomLabel = computed(() => Math.round(viewport.value.zoom * 100) + '%')
 
+// ─── 归位（Home 键） ─────────────────────────────────
+function fitView() {
+  const canvasEl = canvasRef.value?.$el as HTMLElement | null
+  if (!canvasEl) return
+
+  const { width: cw, height: ch } = canvasEl.getBoundingClientRect()
+
+  if (pins.value.length === 0) {
+    // 无贴图 → 重置到原点
+    viewport.value = { panX: 0, panY: 0, zoom: 1 }
+    return
+  }
+
+  // 计算所有贴图的包围盒（世界坐标）
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const pin of pins.value) {
+    minX = Math.min(minX, pin.x)
+    minY = Math.min(minY, pin.y)
+    maxX = Math.max(maxX, pin.x + pin.width)
+    maxY = Math.max(maxY, pin.y + pin.height)
+  }
+
+  const bboxW = maxX - minX
+  const bboxH = maxY - minY
+  const PADDING = 60
+
+  // 缩放适配：让所有贴图刚好放进画布（留 padding），不超过 100%
+  const zoom = Math.min(
+    (cw - PADDING * 2) / Math.max(bboxW, 1),
+    (ch - PADDING * 2) / Math.max(bboxH, 1),
+    1.0, // MAX_ZOOM（与 PinboardCanvas 保持一致）
+  )
+  const clampedZoom = Math.max(0.1, zoom) // MIN_ZOOM
+
+  // 居中偏移
+  const centerX = (minX + maxX) / 2
+  const centerY = (minY + maxY) / 2
+  const panX = cw / 2 - centerX * clampedZoom
+  const panY = ch / 2 - centerY * clampedZoom
+
+  viewport.value = { panX, panY, zoom: clampedZoom }
+}
+
 // ─── 键盘快捷键 ───────────────────────────────────────
 function onKeyDown(e: KeyboardEvent) {
   canvasRef.value?.onKeyDown(e)
@@ -311,6 +354,9 @@ function onKeyDown(e: KeyboardEvent) {
   } else if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key === 'z') {
     e.preventDefault()
     undo()
+  } else if (e.key === 'Home') {
+    e.preventDefault()
+    fitView()
   } else if (e.key === 'Delete' && selectedPinId.value) {
     e.preventDefault()
     onDeletePin(selectedPinId.value)
@@ -546,7 +592,21 @@ onBeforeUnmount(() => {
 
       <div class="pb-spacer" />
 
-      <!-- 缩放 -->
+      <!-- 归位 + 缩放 -->
+      <button
+        class="pb-tool-btn"
+        :title="t('pinboard.fitView')"
+        @click="fitView"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <line x1="12" y1="2" x2="12" y2="6" />
+          <line x1="12" y1="18" x2="12" y2="22" />
+          <line x1="2" y1="12" x2="6" y2="12" />
+          <line x1="18" y1="12" x2="22" y2="12" />
+        </svg>
+      </button>
+
       <button
         class="pb-tool-btn"
         :title="t('pinboard.zoomOut')"

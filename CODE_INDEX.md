@@ -11,7 +11,7 @@
 |------|--------|--------|------|
 | src/components/ | 27 | ~10380 | UI 组件（笔记四件套 + FolderBrowserDialog + 贴图板组件 PinboardCanvas/PinItem + PinboardDialog[废弃]） |
 | src/composables/ | 12 | ~1750 | 逻辑组件（usePinboard，useStatusBar ~430 行，usePdfTranslate） |
-| src/views/ | 13 | ~9640 | 页面（新增 PinboardPage 独立窗口） |
+| src/views/ | 13 | ~9840 | 页面（新增 PinboardPage 独立窗口） |
 | src/styles/ | 3 | ~1400 | CSS 设计系统（贴图板工具栏公共类 .pb-tool-btn/.pb-separator/.pb-color-dot） |
 | src/i18n + src/locales/ | 3 | ~1280 | 国际化：i18n 实例 + zh-CN/en locale 文件（note 命名空间含 toolbar 子对象） |
 | src/其他 | 8 | ~250 | 入口、路由、配置（含 onboarding.ts）、布局 |
@@ -115,7 +115,7 @@
 | `SettingsPage.vue` | ~1010 | **高** | **全局设置页面**。5 Tab 导航（工作流、翻译、日报打卡、通用设置、关于）。内置本地编辑副本 `editSettings`。**出勤引导**：`route.query.guide === 'attendance'` 时自动弹出 `settingsAttendance` 专属批注（新手引导跳转触发）。**开机自启修复**：`save_settings` 中 `autolaunch.disable()` 前先 `is_enabled()` 检查，避免条目不存在时 OS error 2。 |
 | `ReminderPage.vue` | ~260 | 中 | **日报打卡提醒弹窗**，支持 clock-in/clock-out/daily-report/overtime 四种类型 |
 | `OvertimePage.vue` | ~140 | 低 | **加班时间设置弹窗**（快捷按钮 +30分/+1小时/+2小时 + 自定义输入） |
-| `PinboardPage.vue` | ~833 | **中** | **贴图板独立窗口**（900×700 WebviewWindow，无装饰+透明+Acrylic 毛玻璃）。**标签系统**：浏览器式多标签，各页面点击贴图板按钮时 invoke `open_pinboard_window` → 已存在窗口 emit `pinboard-open-tab` 事件添加/切换标签，不存在则创建新窗口（URL query params 编码初始标签）。关闭最后一个标签自动关闭窗口。**工具栏**：粘贴按钮 + 标注工具（选择/画笔/箭头/矩形/椭圆/文字/橡皮擦）+ **笔刷大小滑块**（画笔 1~20/橡皮擦 5~50/文字 10~48，工具独立记忆）+ 颜色选择（5 色）+ 撤销/重做（Ctrl+Z / Ctrl+Alt+Z / Ctrl+Shift+Z）+ 缩放。**窗口拖拽**：标签栏 `data-tauri-drag-region` spacer。**撤销/重做**：双栈设计——选中 pin 时操作 pin 级标注栈，未选中时操作画布级标注栈。切换标签时自动保存当前画布 |
+| `PinboardPage.vue` | ~906 | **中** | **贴图板独立窗口**（900×700 WebviewWindow，无装饰+透明+Acrylic 毛玻璃）。**标签系统**：浏览器式多标签，各页面点击贴图板按钮时 invoke `open_pinboard_window` → 已存在窗口 emit `pinboard-open-tab` 事件添加/切换标签，不存在则创建新窗口（URL query params 编码初始标签）。关闭最后一个标签自动关闭窗口。**工具栏**：粘贴按钮 + 标注工具（选择/画笔/箭头/矩形/椭圆/文字/橡皮擦）+ **笔刷大小滑块**（画笔 1~20/橡皮擦 5~50/文字 10~48，工具独立记忆）+ 颜色选择（5 色）+ 撤销/重做（Ctrl+Z / Ctrl+Alt+Z / Ctrl+Shift+Z）+ **归位**（Home 键/按钮，有贴图时计算包围盒自适应缩放居中，无贴图时重置原点）+ 缩放。**窗口拖拽**：标签栏 `data-tauri-drag-region` spacer。**撤销/重做**：双栈设计——选中 pin 时操作 pin 级标注栈，未选中时操作画布级标注栈。切换标签时自动保存当前画布 |
 | `TranslatorPage.vue` | ~300 | 低 | **翻译悬浮窗**（独立 400×250 WebviewWindow，always_on_top）。顶部胶囊拖拽条 + 毛玻璃输入框 + 语言对选择器[中英/中日/英日] + 翻译/撤回。Ctrl+Enter 触发。**流式翻译**：invoke `translate_text_stream` → listen `translate-chunk`/`translate-done`/`translate-error`，首个 chunk 替换原文、后续 chunk 追加，失败自动恢复原文。**等待动画**：`isWaiting` 控制 textarea 呼吸透明度（`breathe` keyframes 0.35↔1，1.6s），首个 chunk 到达即停止。onUnmounted 清理监听器（参考 ConvertPage 同模式） |
 
 ---

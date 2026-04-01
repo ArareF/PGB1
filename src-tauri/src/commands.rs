@@ -4593,9 +4593,16 @@ pub async fn translate_text_stream(
         other => other,
     };
 
+    // 中日对需要额外的语言判别提示（共享汉字导致自动检测频繁误判）
+    let cjk_hint = if (lang_a == "zh-CN" && lang_b == "ja") || (lang_a == "ja" && lang_b == "zh-CN") {
+        "\nIMPORTANT: If the text contains any hiragana (あ-ん) or katakana (ア-ン), it is Japanese — translate to Chinese. If it contains no kana and uses simplified Chinese characters or Chinese grammar patterns, it is Chinese — translate to Japanese. The output MUST be in a different language than the input."
+    } else {
+        ""
+    };
+
     let prompt = format!(
-        "You are a translator between {} and {}.\nDetect the input language and translate to the other one.\nTone: concise, friendly, natural — like casual coworker chat. No fluff.\nOnly output the translation, nothing else.\n\n\"{}\"",
-        lang_a_display, lang_b_display, text
+        "You are a translator between {} and {}.\nDetect the input language and translate to the other one.{}\nTone: concise, friendly, natural — like casual coworker chat. No fluff.\nOnly output the translation, nothing else.\n\n\"{}\"",
+        lang_a_display, lang_b_display, cjk_hint, text
     );
 
     let url = format!(

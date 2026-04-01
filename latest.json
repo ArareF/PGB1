@@ -1,11 +1,11 @@
 {
-  "version": "2.8.2",
-  "notes": "v2.8.2 — PSD 缩略图性能优化 + 全屏预览 + 多项修复",
-  "pub_date": "2026-03-20T00:00:00Z",
+  "version": "2.8.4",
+  "notes": "贴图板归位功能 + 中日翻译判别优化",
+  "pub_date": "2026-04-01T12:00:00Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.2/PG._2.8.2_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkVybWQ4SnJ5aW94b2l4OWNFZGxPeVhvZEl3Yk1EUUhCYXJJaFZ0Ymg2R2pYZ2hEZUdtbkxkN1c5U2s5bDQ5cVhZQlM4Sjg2bFpvK2g1MjAza2c4RHdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczOTM0ODU0CWZpbGU6UEfntKDmnZDnrqHnkIbns7vnu59fMi44LjJfeDY0LXNldHVwLmV4ZQo1MHZ5Z2RQbjBpM3BRSkFvbE56Mk1GOCs5MmVNTUFkc01KYmJ4SGwxK1Ryc0xCRVNxWDJPRlFnWnI0VVFITXNkazB0TURGbnk3SmpnbitYdUgvcEdBQT09Cg=="
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNk9jdUZkd2NPSHlDTFVPalk2K3dqSFBVU1BDS1E0WWdLRWZ6SGNGVXg0RVAyMGlpRXZmdXFmNVJoSExMRHg0bzhQcm13YTBtY21wSzF2c1MwbGpITlFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1MDI0NzcwCWZpbGU6UEfntKDmnZDnrqHnkIbns7vnu59fMi44LjRfeDY0LXNldHVwLmV4ZQpXOW5Wdi9HS1I2RUhTakVidm0ybTFCNXZWVE5uZjgzVy9qTWZuQmc4bFlmcW9zeHJya2tCM3QzR0NxdFhwMmFEUU5paFhiRjFSdkVGT0x5UFYxeHRDdz09Cg==",
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.4/PG._2.8.4_x64-setup.exe"
     }
   }
 }

@@ -8,102 +8,10 @@ import { getPsdThumbnail, invalidatePsdCache } from '../composables/usePsdThumbn
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import { toggleCheckbox } from '../composables/useNotes'
-import { usePdfTranslate } from '../composables/usePdfTranslate'
 import NoteEditor from './NoteEditor.vue'
 import ImageViewer from './ImageViewer.vue'
-
-// ─── 视频播放控制 ─────────────────────────────────────
-
-const videoRef = ref<HTMLVideoElement | null>(null)
-const isPlaying = ref(false)
-const currentTime = ref(0)
-const duration = ref(0)
-const isSeeking = ref(false)
-
-function onVideoTimeUpdate() {
-  if (!isSeeking.value && videoRef.value) {
-    currentTime.value = videoRef.value.currentTime
-  }
-}
-
-function onVideoLoaded() {
-  if (videoRef.value) {
-    duration.value = videoRef.value.duration || 0
-    currentTime.value = 0
-    isPlaying.value = false
-  }
-}
-
-function onVideoEnded() {
-  isPlaying.value = false
-}
-
-function togglePlay() {
-  const v = videoRef.value
-  if (!v) return
-  if (v.paused) {
-    v.play()
-    isPlaying.value = true
-  } else {
-    v.pause()
-    isPlaying.value = false
-  }
-}
-
-function seekTo(seconds: number) {
-  const v = videoRef.value
-  if (!v || !duration.value) return
-  v.currentTime = Math.max(0, Math.min(duration.value, seconds))
-  currentTime.value = v.currentTime
-}
-
-function onProgressMouseDown(e: MouseEvent) {
-  isSeeking.value = true
-  const bar = e.currentTarget as HTMLElement
-  doSeekFromBar(e.clientX, bar)
-
-  function onMove(ev: MouseEvent) { doSeekFromBar(ev.clientX, bar) }
-  function onUp() {
-    isSeeking.value = false
-    window.removeEventListener('mousemove', onMove)
-    window.removeEventListener('mouseup', onUp)
-  }
-  window.addEventListener('mousemove', onMove)
-  window.addEventListener('mouseup', onUp)
-}
-
-function doSeekFromBar(clientX: number, bar: HTMLElement) {
-  if (!duration.value) return
-  const rect = bar.getBoundingClientRect()
-  const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-  seekTo(ratio * duration.value)
-}
-
-function onVideoKeydown(e: KeyboardEvent) {
-  const v = videoRef.value
-  if (!v) return
-  if (e.key === ' ' || e.code === 'Space') {
-    e.preventDefault()
-    togglePlay()
-  } else if (e.key === 'ArrowLeft') {
-    e.preventDefault()
-    seekTo(v.currentTime - (e.ctrlKey ? (1 / 30) : 1))
-  } else if (e.key === 'ArrowRight') {
-    e.preventDefault()
-    seekTo(v.currentTime + (e.ctrlKey ? (1 / 30) : 1))
-  }
-}
-
-function formatTime(s: number): string {
-  if (!isFinite(s)) return '0:00'
-  const m = Math.floor(s / 60)
-  const sec = Math.floor(s % 60)
-  return `${m}:${sec.toString().padStart(2, '0')}`
-}
-
-const progressPercent = computed(() =>
-  duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0
-)
+import VideoPlayer from './VideoPlayer.vue'
+import PdfPreviewSection from './PdfPreviewSection.vue'
 
 const props = withDefaults(defineProps<{
   file: FileEntry | null
@@ -135,21 +43,6 @@ const emit = defineEmits<{
 
 const { openInExplorer } = useDirectoryFiles()
 const { t } = useI18n()
-
-// ─── PDF 翻译（全局状态 composable，侧边栏关闭不中断翻译） ───
-
-const pdfFilePath = computed(() => props.file?.path ?? '')
-const {
-  state: pdfTranslateState,
-  progress: pdfTranslateProgress,
-  error: pdfTranslateError,
-  showingTranslated,
-  retryInfo: pdfRetryInfo,
-  activePdfSrc,
-  start: handleTranslatePdf,
-  toggleView: togglePdfView,
-  reset: resetPdfTranslate,
-} = usePdfTranslate(pdfFilePath)
 
 // 笔记编辑
 const noteText = ref('')
@@ -187,11 +80,6 @@ const psdThumbLoading = ref(false)
 const SIDEBAR_ENTER_MS = 300
 
 watch(() => props.file, async (file, prevFile) => {
-  // 切换文件时重置视频状态
-  isPlaying.value = false
-  currentTime.value = 0
-  duration.value = 0
-
   txtContent.value = null
   psdThumbnail.value = null
 
@@ -417,56 +305,12 @@ function startResize(e: MouseEvent) {
           </div>
 
           <!-- 视频预览 -->
-          <div
+          <VideoPlayer
             v-else-if="fileType === 'video'"
-            class="preview-video-wrap"
-            tabindex="0"
-            @keydown="onVideoKeydown"
-          >
-            <video
-              ref="videoRef"
-              :key="file.path"
-              :src="convertFileSrc(file.path)"
-              class="preview-video"
-              preload="metadata"
-              @timeupdate="onVideoTimeUpdate"
-              @loadedmetadata="onVideoLoaded"
-              @ended="onVideoEnded"
-              @click="togglePlay"
-            />
-            <button v-if="!teleportDisabled" class="preview-fullscreen-btn" :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')" @click.stop="toggleFullscreen">
-              <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
-                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-              </svg>
-              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
-                <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
-              </svg>
-            </button>
-            <!-- 自定义控制条 -->
-            <div class="video-controls">
-              <button class="video-play-btn" @click.stop="togglePlay">
-                <!-- 播放图标 -->
-                <svg v-if="!isPlaying" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5,3 19,12 5,21" />
-                </svg>
-                <!-- 暂停图标 -->
-                <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="4" width="4" height="16" />
-                  <rect x="14" y="4" width="4" height="16" />
-                </svg>
-              </button>
-              <div
-                class="video-progress-bar"
-                @mousedown="onProgressMouseDown"
-              >
-                <div class="video-progress-fill" :style="{ width: progressPercent + '%' }" />
-                <div class="video-progress-thumb" :style="{ left: progressPercent + '%' }" />
-              </div>
-              <span class="video-time">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
-            </div>
-          </div>
+            :src="file!.path"
+            :is-fullscreen="isFullscreen"
+            @toggle-fullscreen="isFullscreen = !isFullscreen"
+          />
 
           <!-- TXT 文本预览 -->
           <div v-else-if="fileType === 'text'" class="preview-text-wrap">
@@ -505,25 +349,13 @@ function startResize(e: MouseEvent) {
             </button>
           </div>
 
-          <!-- PDF 预览 -->
-          <div v-else-if="fileType === 'pdf'" class="preview-pdf-wrap">
-            <iframe
-              :key="activePdfSrc"
-              :src="activePdfSrc"
-              class="preview-pdf-frame"
-              frameborder="0"
-            />
-            <button v-if="!teleportDisabled" class="preview-fullscreen-btn" :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')" @click="toggleFullscreen">
-              <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
-                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-              </svg>
-              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
-                <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
-              </svg>
-            </button>
-          </div>
+          <!-- PDF 预览 + 翻译 -->
+          <PdfPreviewSection
+            v-else-if="fileType === 'pdf'"
+            :file-path="file!.path"
+            :is-fullscreen="isFullscreen"
+            @toggle-fullscreen="isFullscreen = !isFullscreen"
+          />
 
           <!-- 其他：文件类型图标 + 打开按钮 -->
           <div v-else class="preview-other">
@@ -535,54 +367,6 @@ function startResize(e: MouseEvent) {
               <span class="file-ext">{{ file.extension.toUpperCase() || $t('fileDetail.file') }}</span>
             </div>
             <button class="open-file-btn" @click="openFile">{{ $t('fileDetail.openFile') }}</button>
-          </div>
-
-          <!-- PDF 翻译区块 -->
-          <div v-if="fileType === 'pdf'" class="pdf-translate-section">
-            <!-- idle：显示翻译按钮 -->
-            <template v-if="pdfTranslateState === 'idle'">
-              <button class="pdf-translate-btn" @click="handleTranslatePdf">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-                  <line x1="2" y1="12" x2="22" y2="12"/>
-                </svg>
-                {{ $t('fileDetail.translatePdf') }}
-              </button>
-            </template>
-
-            <!-- 进行中 -->
-            <template v-else-if="pdfTranslateState === 'extracting' || pdfTranslateState === 'translating' || pdfTranslateState === 'building'">
-              <div class="pdf-translate-progress">
-                <span class="pdf-translate-spinner"/>
-                <span v-if="pdfRetryInfo">
-                  {{ $t('fileDetail.translatePdfRetrying', { page: pdfRetryInfo.page + 1, attempt: pdfRetryInfo.attempt, max: pdfRetryInfo.maxRetries }) }}
-                </span>
-                <span v-else-if="pdfTranslateState === 'extracting'">{{ $t('fileDetail.loading') }}</span>
-                <span v-else-if="pdfTranslateState === 'translating'">
-                  {{ $t('fileDetail.translatePdfProgress', pdfTranslateProgress) }}
-                </span>
-                <span v-else>{{ $t('fileDetail.translatePdfBuilding') }}</span>
-              </div>
-            </template>
-
-            <!-- 完成 -->
-            <template v-else-if="pdfTranslateState === 'done'">
-              <div class="pdf-translate-done">
-                <button class="pdf-translate-btn" @click="togglePdfView">
-                  {{ showingTranslated ? $t('fileDetail.translatePdfViewOriginal') : $t('fileDetail.translatePdfViewTranslated') }}
-                </button>
-                <button class="pdf-translate-reset-btn" :title="$t('fileDetail.translatePdfRetranslate')" @click="resetPdfTranslate">↺</button>
-              </div>
-            </template>
-
-            <!-- 出错 -->
-            <template v-else-if="pdfTranslateState === 'error'">
-              <div class="pdf-translate-error">
-                <span class="pdf-translate-error-msg">{{ pdfTranslateError }}</span>
-                <button class="pdf-translate-reset-btn" :title="$t('fileDetail.translatePdfRetry')" @click="resetPdfTranslate">↺</button>
-              </div>
-            </template>
           </div>
 
           <!-- 基本信息（文本类不显示） -->
@@ -781,105 +565,6 @@ function startResize(e: MouseEvent) {
   flex-shrink: 0;
 }
 
-/* ─── 视频预览 ─── */
-.preview-video-wrap {
-  position: relative;
-  width: 100%;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--color-neutral-900);
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  outline: none;
-}
-
-.preview-video-wrap:focus-within {
-  box-shadow: 0 0 0 2px var(--color-primary-500);
-}
-
-.preview-video {
-  width: 100%;
-  display: block;
-  object-fit: contain;
-  cursor: pointer;
-}
-
-/* 自定义控制条 */
-.video-controls {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-3);
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(var(--glass-light-blur));
-  -webkit-backdrop-filter: blur(var(--glass-light-blur));
-}
-
-.video-play-btn {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 50%;
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background var(--duration-fast);
-}
-
-.video-play-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
-
-.video-progress-bar {
-  flex: 1;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
-  position: relative;
-  cursor: pointer;
-}
-
-.video-progress-bar:hover {
-  height: 6px;
-}
-
-.video-progress-fill {
-  height: 100%;
-  background: var(--color-primary-500);
-  border-radius: 2px;
-  pointer-events: none;
-}
-
-.video-progress-thumb {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 10px;
-  height: 10px;
-  background: #fff;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity var(--duration-fast);
-}
-
-.video-progress-bar:hover .video-progress-thumb {
-  opacity: 1;
-}
-
-.video-time {
-  flex-shrink: 0;
-  font-size: var(--text-xs);
-  color: rgba(255, 255, 255, 0.7);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 /* ─── TXT 预览 ─── */
 .preview-text-wrap {
   flex: 1;
@@ -916,137 +601,6 @@ function startResize(e: MouseEvent) {
   border-radius: var(--radius-lg);
   object-fit: contain;
   background: var(--glass-subtle-bg);
-}
-
-/* ─── PDF 预览 ─── */
-.preview-pdf-wrap {
-  width: 100%;
-  flex: 1;
-  min-height: 400px;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.preview-pdf-frame {
-  width: 100%;
-  height: 100%;
-  min-height: 400px;
-  border: none;
-  display: block;
-  border-radius: var(--radius-lg);
-}
-
-/* ─── PDF 翻译区块 ─── */
-.pdf-translate-section {
-  display: flex;
-  flex-direction: column;
-  padding: var(--spacing-2) var(--spacing-3);
-  border-top: var(--glass-border);
-  flex-shrink: 0;
-}
-
-.pdf-translate-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  width: 100%;
-  padding: var(--spacing-2) var(--spacing-3);
-  background: transparent;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out),
-              color var(--duration-fast) var(--ease-out),
-              border-color var(--duration-fast) var(--ease-out);
-}
-
-.pdf-translate-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--border-medium);
-}
-
-.pdf-translate-progress {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-.pdf-translate-spinner {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--border-medium);
-  border-top-color: var(--color-primary);
-  border-radius: 50%;
-  animation: pdf-spin 0.8s linear infinite;
-  flex-shrink: 0;
-}
-
-@keyframes pdf-spin {
-  to { transform: rotate(360deg); }
-}
-
-.pdf-translate-done {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) 0;
-  font-size: var(--font-size-sm);
-}
-
-.pdf-translate-done-label {
-  color: var(--color-success);
-  flex: 1;
-}
-
-.pdf-translate-open-btn {
-  padding: var(--spacing-1) var(--spacing-3);
-  background: var(--color-primary);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: opacity var(--duration-fast);
-  white-space: nowrap;
-}
-
-.pdf-translate-open-btn:hover { opacity: 0.85; }
-
-.pdf-translate-reset-btn {
-  padding: var(--spacing-1) var(--spacing-2);
-  background: transparent;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm);
-  color: var(--text-tertiary);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: color var(--duration-fast);
-  flex-shrink: 0;
-}
-
-.pdf-translate-reset-btn:hover { color: var(--text-primary); }
-
-.pdf-translate-error {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) 0;
-  font-size: var(--font-size-sm);
-}
-
-.pdf-translate-error-msg {
-  color: var(--color-danger);
-  flex: 1;
-  line-height: 1.4;
-  word-break: break-word;
 }
 
 /* ─── 其他文件 ─── */

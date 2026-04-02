@@ -355,7 +355,10 @@ function onGlobalKeyDown(e: KeyboardEvent) {
 }
 
 onMounted(() => window.addEventListener('keydown', onGlobalKeyDown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeyDown))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onGlobalKeyDown)
+  resizeCleanup?.()
+})
 
 // ─── 拖拽调整宽度 ────────────────────────────────────
 
@@ -367,6 +370,8 @@ const currentWidth = ref(isFinite(savedWidth) ? savedWidth : (props.widthPercent
 watch(() => props.widthPercent, (v) => {
   if (v != null) currentWidth.value = v
 })
+
+let resizeCleanup: (() => void) | null = null
 
 function startResize(e: MouseEvent) {
   e.preventDefault()
@@ -385,9 +390,11 @@ function startResize(e: MouseEvent) {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, String(currentWidth.value))
     window.removeEventListener('mousemove', onMouseMove)
     window.removeEventListener('mouseup', onMouseUp)
+    resizeCleanup = null
   }
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', onMouseUp)
+  resizeCleanup = onMouseUp
 }
 </script>
 

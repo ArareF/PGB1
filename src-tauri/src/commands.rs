@@ -6397,45 +6397,6 @@ pub fn delete_file(path: String) -> Result<(), String> {
 
 /// 通过 Win32 SendInput 发送真实 Ctrl+End 按键
 /// Google Docs canvas 编辑器只响应真实系统按键，合成 DOM KeyboardEvent 无效
-#[cfg(target_os = "windows")]
-/// 将光标移到 hwnd 窗口中央，发送大量鼠标滚轮向下事件滚到底部
-/// MOUSEEVENTF_WHEEL 事件送往光标下方的窗口，不需要键盘焦点，
-/// 比 Ctrl+End 键盘方案更可靠（绕过 WebView2 焦点链难题）
-#[cfg(target_os = "windows")]
-#[allow(dead_code)]
-unsafe fn scroll_to_bottom_via_wheel(hwnd: windows::Win32::Foundation::HWND) {
-    use windows::Win32::Foundation::RECT;
-    use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, SetCursorPos};
-    use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEINPUT, MOUSEEVENTF_WHEEL,
-    };
-
-    let mut rect = RECT::default();
-    if GetWindowRect(hwnd, &mut rect).is_err() {
-        return;
-    }
-    // 移到窗口中央（文档内容区），SetCursorPos 用屏幕像素坐标，多显示器也正确
-    let cx = (rect.left + rect.right) / 2;
-    let cy = (rect.top + rect.bottom) / 2;
-    let _ = SetCursorPos(cx, cy);
-
-    // WHEEL_DELTA = 120 per notch；负值 = 向下滚动
-    // 发送 500 次 × -120 = 总计 -60000，足以滚过数百页文档
-    let wheel_event = INPUT {
-        r#type: INPUT_MOUSE,
-        Anonymous: INPUT_0 {
-            mi: MOUSEINPUT {
-                dx: 0, dy: 0,
-                mouseData: (-120i32) as u32, // u32 存负数，Windows 按 i32 解释为向下
-                dwFlags: MOUSEEVENTF_WHEEL,
-                time: 0, dwExtraInfo: 0,
-            },
-        },
-    };
-    let batch = vec![wheel_event; 500];
-    SendInput(&batch, std::mem::size_of::<INPUT>() as i32);
-}
-
 fn send_ctrl_end() {
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
 

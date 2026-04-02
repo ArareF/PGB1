@@ -130,6 +130,7 @@ const currentFontSize = computed(() => textSize.value)
 const canvasRef = ref<InstanceType<typeof PinboardCanvas> | null>(null)
 
 // ─── 撤销/重做（贴图级） ──────────────────────────────
+const MAX_UNDO = 50
 const undoStacks = ref(new Map<string, PinAnnotation[][]>())
 const redoStacks = ref(new Map<string, PinAnnotation[][]>())
 
@@ -138,6 +139,7 @@ function pushUndo(pinId: string) {
   if (!pin) return
   const stack = undoStacks.value.get(pinId) ?? []
   stack.push(JSON.parse(JSON.stringify(pin.annotations)))
+  if (stack.length > MAX_UNDO) stack.shift()
   undoStacks.value.set(pinId, stack)
   redoStacks.value.set(pinId, [])
 }
@@ -166,6 +168,7 @@ const canvasRedoStack = ref<PinAnnotation[][]>([])
 
 function onAddCanvasAnnotation(ann: PinAnnotation) {
   canvasUndoStack.value.push(JSON.parse(JSON.stringify(canvasAnnotations.value)))
+  if (canvasUndoStack.value.length > MAX_UNDO) canvasUndoStack.value.shift()
   canvasRedoStack.value = []
   canvasAnnotations.value.push(ann)
   savePinboard()
@@ -173,6 +176,7 @@ function onAddCanvasAnnotation(ann: PinAnnotation) {
 
 function onRemoveCanvasAnnotation(index: number) {
   canvasUndoStack.value.push(JSON.parse(JSON.stringify(canvasAnnotations.value)))
+  if (canvasUndoStack.value.length > MAX_UNDO) canvasUndoStack.value.shift()
   canvasRedoStack.value = []
   canvasAnnotations.value.splice(index, 1)
   savePinboard()

@@ -252,10 +252,6 @@ function onGlobalDrawUp() {
   window.removeEventListener('mouseup', onGlobalDrawUp)
 }
 
-function onOverlayMouseMove(_e: MouseEvent) {
-  // 橡皮擦现在是笔触模式，由 onGlobalDrawMove 处理
-}
-
 function onOverlayClick(e: MouseEvent) {
   if (props.activeTool !== 'text') return
   e.stopPropagation()
@@ -409,20 +405,30 @@ function drawWorldAnnotation(ctx: CanvasRenderingContext2D, ann: PinAnnotation, 
   }
 }
 
-// ─── 画布标注：重绘触发 ─────────────────────────────────
-watch(() => [props.viewport.panX, props.viewport.panY, props.viewport.zoom], renderCanvasAnnotations)
-watch(() => props.canvasAnnotations, renderCanvasAnnotations, { deep: true })
+// ─── 画布标注：重绘触发（RAF 节流） ─────────────────────
+let rafId = 0
+function scheduleRender() {
+  if (rafId) return
+  rafId = requestAnimationFrame(() => {
+    rafId = 0
+    renderCanvasAnnotations()
+  })
+}
+
+watch(() => [props.viewport.panX, props.viewport.panY, props.viewport.zoom], scheduleRender)
+watch(() => props.canvasAnnotations, scheduleRender, { deep: true })
 
 let resizeObserver: ResizeObserver | null = null
 onMounted(() => {
   if (canvasRef.value) {
-    resizeObserver = new ResizeObserver(renderCanvasAnnotations)
+    resizeObserver = new ResizeObserver(scheduleRender)
     resizeObserver.observe(canvasRef.value)
   }
   nextTick(renderCanvasAnnotations)
 })
 
 onBeforeUnmount(() => {
+  if (rafId) cancelAnimationFrame(rafId)
   resizeObserver?.disconnect()
   window.removeEventListener('mousemove', onGlobalDrawMove)
   window.removeEventListener('mouseup', onGlobalDrawUp)
@@ -476,7 +482,6 @@ defineExpose({
       class="pb-annotation-overlay"
       :class="{ 'drawing-active': canvasDrawingActive }"
       @mousedown="onOverlayMouseDown"
-      @mousemove="onOverlayMouseMove"
       @click="onOverlayClick"
     />
 

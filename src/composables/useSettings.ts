@@ -70,7 +70,7 @@ export function useSettings() {
     error.value = null
     try {
       await invoke('save_settings', { settings: newSettings })
-      settings.value = JSON.parse(JSON.stringify(newSettings)) // 深拷贝以解绑引用
+      settings.value = structuredClone(newSettings) // 深拷贝以解绑引用
     } catch (e) {
       error.value = String(e)
       console.error('保存设置失败:', e)

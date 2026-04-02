@@ -40,29 +40,43 @@ const cachedPsdUrl = computed(() =>
 // PSD 懒加载观察器，仅在缓存未命中时使用
 let psdObserver: IntersectionObserver | null = null
 
+// 视频缩略图懒加载：进入视口后才 seek 首帧
+let videoObserver: IntersectionObserver | null = null
+
+function generateVideoThumbnail() {
+  const video = document.createElement('video')
+  video.crossOrigin = 'anonymous'
+  video.preload = 'metadata'
+  video.src = convertFileSrc(props.file.path)
+  video.currentTime = 0.1
+
+  video.addEventListener('seeked', () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth || 200
+    canvas.height = video.videoHeight || 150
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      videoThumbnail.value = canvas.toDataURL('image/jpeg', 0.7)
+    }
+    video.src = ''
+  }, { once: true })
+
+  video.addEventListener('error', () => {
+    video.src = ''
+  }, { once: true })
+}
+
 onMounted(() => {
-  if (isVideo.value) {
-    const video = document.createElement('video')
-    video.crossOrigin = 'anonymous'
-    video.preload = 'metadata'
-    video.src = convertFileSrc(props.file.path)
-    video.currentTime = 0.1
-
-    video.addEventListener('seeked', () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = video.videoWidth || 200
-      canvas.height = video.videoHeight || 150
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-        videoThumbnail.value = canvas.toDataURL('image/jpeg', 0.7)
+  if (isVideo.value && cardRef.value) {
+    videoObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        videoObserver?.disconnect()
+        videoObserver = null
+        generateVideoThumbnail()
       }
-      video.src = ''
-    }, { once: true })
-
-    video.addEventListener('error', () => {
-      video.src = ''
-    }, { once: true })
+    }, { rootMargin: '100px' })
+    videoObserver.observe(cardRef.value)
   }
 
   // PSD 缓存未命中：进入视口后才发起 IPC 请求（首次生成缩略图）
@@ -84,6 +98,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  videoObserver?.disconnect()
+  videoObserver = null
   psdObserver?.disconnect()
   psdObserver = null
 })

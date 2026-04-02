@@ -201,7 +201,7 @@ async function handleExecute() {
 
   <!-- 控制面板：Teleport 到 #content-row，作为独立毛玻璃板块 -->
   <Teleport to="#content-row">
-    <aside class="scale-control-panel">
+    <aside class="control-panel scale-control-panel">
       <div class="panel-body">
         <p class="panel-title">{{ $t('scale.scaleRatio') }}</p>
 
@@ -305,33 +305,17 @@ async function handleExecute() {
 
 <!-- Teleport 出去的面板用非 scoped style，否则 scoped hash 不会附加到 Teleport 目标 -->
 <style>
-/* 手动复刻 glass-medium 视觉，不用 backdrop-filter：
-   Teleport 到 #content-row 后与 main-content(glass-medium) 成兄弟，
-   双 backdrop-filter 在 WebView2 + Acrylic 下 gap 区域产生白色闪烁 */
-.scale-control-panel {
-  width: 220px;
-  flex-shrink: 0;
-  border-radius: var(--floating-main-radius);
-  display: flex;
+/* Scale 独有样式（公共面板样式已提取到 design-system.css .control-panel）*/
+
+/* Scale panel-footer 覆盖：纵向排列 + 更大间距 */
+.scale-control-panel .panel-footer {
   flex-direction: column;
-  justify-content: space-between;
-  overflow: hidden;
-  background: var(--glass-medium-bg);
-  border: var(--glass-medium-border);
-  box-shadow: var(--glass-medium-shadow);
+  gap: var(--spacing-3);
 }
 
-.scale-control-panel .panel-body {
-  padding: var(--spacing-5);
+.scale-control-panel .footer-actions {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
-}
-
-.scale-control-panel .panel-title {
-  font-size: var(--text-base);
-  font-weight: var(--font-bold);
-  color: var(--text-primary);
+  gap: var(--spacing-2);
 }
 
 .scale-control-panel .scale-options {
@@ -369,113 +353,6 @@ async function handleExecute() {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-2);
-}
-
-.scale-control-panel .custom-input-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.scale-control-panel .custom-input {
-  width: 100%;
-  height: 36px;
-  padding: 0 28px 0 var(--spacing-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-medium);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-family: inherit;
-}
-
-.scale-control-panel .custom-input:focus {
-  outline: none;
-  border-color: var(--color-primary-500);
-}
-
-.scale-control-panel .input-suffix {
-  position: absolute;
-  right: var(--spacing-2);
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
-  pointer-events: none;
-}
-
-.scale-control-panel .apply-btn {
-  width: 100%;
-  height: 36px;
-  border-radius: var(--radius-md);
-  border: none;
-  background: var(--color-primary-100);
-  color: var(--color-primary-600);
-  font-weight: var(--font-bold);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--duration-fast);
-  font-family: inherit;
-}
-
-.scale-control-panel .apply-btn:hover:not(:disabled) {
-  background: var(--color-primary-200);
-}
-
-.scale-control-panel .apply-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.scale-control-panel .panel-footer {
-  padding: var(--spacing-4) var(--spacing-5);
-  border-top: 1px solid var(--border-light);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-3);
-}
-
-.scale-control-panel .footer-actions {
-  display: flex;
-  gap: var(--spacing-2);
-}
-
-.scale-control-panel .cancel-btn {
-  flex: 1;
-  height: 36px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-medium);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--duration-fast);
-  font-family: inherit;
-}
-
-.scale-control-panel .cancel-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-.scale-control-panel .execute-btn {
-  flex: 2;
-  height: 36px;
-  border-radius: var(--radius-md);
-  border: none;
-  background: var(--color-primary-500);
-  color: white;
-  font-weight: var(--font-bold);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--duration-fast);
-  font-family: inherit;
-}
-
-.scale-control-panel .execute-btn:hover:not(:disabled) {
-  background: var(--color-primary-600);
-}
-
-.scale-control-panel .execute-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .scale-control-panel .error-msg {

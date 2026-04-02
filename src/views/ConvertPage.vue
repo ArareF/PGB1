@@ -329,7 +329,7 @@ onMounted(async () => {
 
   <!-- 控制面板：Teleport 到 #content-row，作为独立毛玻璃板块 -->
   <Teleport to="#content-row">
-    <aside class="convert-control-panel">
+    <aside class="control-panel convert-control-panel">
       <!-- 选择模式 -->
       <div v-if="!isConverting" class="panel-body">
         <p class="panel-title">{{ $t('convert.title') }}</p>
@@ -545,35 +545,27 @@ onMounted(async () => {
 
 <!-- Teleport 出去的面板用非 scoped style -->
 <style>
-/* 手动复刻 glass-medium 视觉，不用 backdrop-filter：
-   Teleport 到 #content-row 后与 main-content(glass-medium) 成兄弟，
-   双 backdrop-filter 在 WebView2 + Acrylic 下 gap 区域产生白色闪烁 */
-.convert-control-panel {
-  width: 220px;
-  flex-shrink: 0;
-  border-radius: var(--floating-main-radius);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  overflow: hidden;
-  background: var(--glass-medium-bg);
-  border: var(--glass-medium-border);
-  box-shadow: var(--glass-medium-shadow);
-}
+/* Convert 独有样式（公共面板样式已提取到 design-system.css .control-panel）*/
 
+/* Convert panel-body 覆盖：可滚动 */
 .convert-control-panel .panel-body {
-  padding: var(--spacing-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
   flex: 1;
   overflow-y: auto;
 }
 
-.convert-control-panel .panel-title {
-  font-size: var(--text-base);
-  font-weight: var(--font-bold);
-  color: var(--text-primary);
+/* Convert panel-footer 覆盖：不收缩 */
+.convert-control-panel .panel-footer {
+  flex-shrink: 0;
+}
+
+/* Convert custom-input-wrapper 覆盖：撑满宽度 */
+.convert-control-panel .custom-input-wrapper {
+  width: 100%;
+}
+
+/* Convert custom-input 覆盖：右侧 padding 更大（suffix 文字更长） */
+.convert-control-panel .custom-input {
+  padding: 0 32px 0 var(--spacing-3);
 }
 
 .convert-control-panel .stats {
@@ -634,61 +626,6 @@ onMounted(async () => {
   align-items: center;
 }
 
-.convert-control-panel .custom-input-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-.convert-control-panel .custom-input {
-  width: 100%;
-  height: 36px;
-  padding: 0 32px 0 var(--spacing-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-medium);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-family: inherit;
-}
-
-.convert-control-panel .custom-input:focus {
-  outline: none;
-  border-color: var(--color-primary-500);
-}
-
-.convert-control-panel .input-suffix {
-  position: absolute;
-  right: var(--spacing-2);
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
-  pointer-events: none;
-}
-
-.convert-control-panel .apply-btn {
-  width: 100%;
-  height: 36px;
-  border-radius: var(--radius-md);
-  border: none;
-  background: var(--color-primary-100);
-  color: var(--color-primary-600);
-  font-weight: var(--font-bold);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--duration-fast);
-  font-family: inherit;
-}
-
-.convert-control-panel .apply-btn:hover:not(:disabled) {
-  background: var(--color-primary-200);
-}
-
-.convert-control-panel .apply-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 .convert-control-panel .seq-stat {
   display: flex;
   justify-content: space-between;
@@ -747,54 +684,6 @@ onMounted(async () => {
   font-size: var(--text-xs);
   color: var(--color-danger-dark, #b91c1c);
   word-break: break-all;
-}
-
-.convert-control-panel .panel-footer {
-  padding: var(--spacing-4) var(--spacing-5);
-  border-top: 1px solid var(--border-light);
-  display: flex;
-  gap: var(--spacing-2);
-  flex-shrink: 0;
-}
-
-.convert-control-panel .cancel-btn {
-  flex: 1;
-  height: 36px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-medium);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--duration-fast);
-  font-family: inherit;
-}
-
-.convert-control-panel .cancel-btn:hover {
-  background: var(--bg-hover);
-}
-
-.convert-control-panel .execute-btn {
-  flex: 2;
-  height: 36px;
-  border-radius: var(--radius-md);
-  border: none;
-  background: var(--color-primary-500);
-  color: white;
-  font-weight: var(--font-bold);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--duration-fast);
-  font-family: inherit;
-}
-
-.convert-control-panel .execute-btn:hover:not(:disabled) {
-  background: var(--color-primary-600);
-}
-
-.convert-control-panel .execute-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .convert-control-panel .execute-btn.done {

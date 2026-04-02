@@ -456,31 +456,7 @@ onUnmounted(() => {
 
 /* 固定小标题栏 */
 /* .sub-title-bar, .sub-title → design-system.css 公共类 */
-
-.view-buttons {
-  display: flex;
-  gap: var(--spacing-2);
-  margin-left: auto;
-}
-
-.view-btn {
-  display: inline-flex;
-  align-items: center;
-  height: var(--button-height-sm);
-  padding: 0 var(--spacing-3);
-  font-size: var(--text-sm);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-medium);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.view-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
+/* .view-buttons, .view-btn → design-system.css 公共类 */
 
 /* 可滚动区 */
 .scroll-content {

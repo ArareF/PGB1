@@ -13,14 +13,8 @@ import type { MaterialInfo } from '../composables/useMaterials'
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { useNotes, toggleCheckbox } from '../composables/useNotes'
 import { useRubberBandSelect } from '../composables/useRubberBandSelect'
-
-interface PreviewVideoEntry {
-  name: string
-  path: string
-  extension: string
-  size_bytes: number
-  upload_status: 'uploaded' | 'outdated' | 'none'
-}
+import type { GlobalTaskConfig } from '../types/task'
+import type { PreviewVideoEntry, MaterialVersion } from '../types/material'
 import MaterialCard from '../components/MaterialCard.vue'
 import SequencePreview from '../components/SequencePreview.vue'
 import ImageViewer from '../components/ImageViewer.vue'
@@ -32,29 +26,6 @@ import NoteDialog from '../components/NoteDialog.vue'
 import NoteRenderer from '../components/NoteRenderer.vue'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
-
-interface GlobalTaskChild {
-  name: string
-}
-
-interface GlobalTask {
-  name: string
-  children: GlobalTaskChild[]
-}
-
-interface GlobalTaskConfig {
-  tasks: GlobalTask[]
-}
-
-interface MaterialVersion {
-  stage: string
-  stage_label: string
-  scale: string
-  file_path: string
-  folder_path: string
-  extension: string
-  size_bytes: number
-}
 
 const route = useRoute()
 const router = useRouter()
@@ -1650,37 +1621,7 @@ onUnmounted(() => {
 
 /* 小标题栏 */
 /* .sub-title-bar, .sub-title → design-system.css 公共类 */
-
-.view-buttons {
-  display: flex;
-  gap: var(--spacing-2);
-  margin-left: auto;
-}
-
-.view-btn {
-  display: inline-flex;
-  align-items: center;
-  height: var(--button-height-sm);
-  padding: 0 var(--spacing-3);
-  font-size: var(--text-sm);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-medium);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.view-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.view-btn.active {
-  background: var(--color-primary);
-  color: var(--color-neutral-0);
-  border-color: var(--color-primary);
-}
+/* .view-buttons, .view-btn → design-system.css 公共类 */
 
 /* 状态文字 */
 .loading-text,

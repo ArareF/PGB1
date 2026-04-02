@@ -411,29 +411,3 @@ onMounted(() => {
   cursor: not-allowed;
 }
 </style>
-
-<style>
-/* 弹窗进出动画 */
-.dialog-enter-active {
-  transition: opacity var(--duration-dialog) var(--ease-out);
-}
-.dialog-leave-active {
-  transition: opacity var(--duration-dialog) var(--ease-in);
-}
-.dialog-enter-from,
-.dialog-leave-to {
-  opacity: 0;
-}
-.dialog-enter-active .dialog-content {
-  transition: transform var(--duration-dialog) var(--ease-out);
-}
-.dialog-leave-active .dialog-content {
-  transition: transform var(--duration-dialog) var(--ease-in);
-}
-.dialog-enter-from .dialog-content {
-  transform: translateY(16px) scale(0.97);
-}
-.dialog-leave-to .dialog-content {
-  transform: translateY(8px) scale(0.97);
-}
-</style>

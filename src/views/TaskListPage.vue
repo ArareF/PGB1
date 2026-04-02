@@ -8,33 +8,9 @@ import { useSettings } from '../composables/useSettings'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
+import type { GlobalTask, GlobalTaskConfig, ApplyTaskResult, ArchivedVersion } from '../types/task'
+
 const { t } = useI18n()
-
-interface GlobalTaskChild {
-  name: string
-}
-
-interface GlobalTask {
-  name: string
-  children: GlobalTaskChild[]
-}
-
-interface GlobalTaskConfig {
-  tasks: GlobalTask[]
-}
-
-interface ApplyTaskResult {
-  created: string[]
-  archived: string[]
-  errors: string[]
-}
-
-interface ArchivedVersion {
-  task_name: string
-  timestamp: string
-  display_time: string
-  path: string
-}
 
 type TabType = 'enable' | 'edit' | 'archive'
 

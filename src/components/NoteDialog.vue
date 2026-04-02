@@ -90,77 +90,9 @@ function isEditMode(): boolean {
 </template>
 
 <style scoped>
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal, 1000);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--overlay-backdrop);
-  backdrop-filter: blur(var(--glass-light-blur));
-}
-
 .dialog-content {
   min-width: 380px;
   max-width: 520px;
   width: 100%;
-  border-radius: var(--floating-navbar-radius);
-  padding: var(--spacing-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-5);
-}
-
-.dialog-title {
-  font-size: var(--text-2xl);
-  font-weight: var(--font-weight-heading);
-  color: var(--text-primary);
-}
-
-.dialog-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-3);
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-3);
-}
-
-.dialog-btn {
-  display: inline-flex;
-  align-items: center;
-  height: var(--button-md-height);
-  padding: 0 var(--spacing-5);
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-heading);
-  border-radius: var(--radius-md);
-  border: none;
-  cursor: pointer;
-  font-family: inherit;
-  transition: all var(--duration-fast);
-}
-
-.dialog-btn-primary {
-  background: color-mix(in srgb, var(--color-primary-500) 75%, transparent);
-  backdrop-filter: blur(var(--glass-subtle-blur));
-  -webkit-backdrop-filter: blur(var(--glass-subtle-blur));
-  color: var(--color-neutral-0);
-}
-.dialog-btn-primary:hover {
-  background: color-mix(in srgb, var(--color-primary-500) 90%, transparent);
-}
-
-.dialog-btn-secondary {
-  background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-medium);
-}
-.dialog-btn-secondary:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
 }
 </style>

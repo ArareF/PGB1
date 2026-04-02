@@ -1,0 +1,120 @@
+/* =============================================================================
+   弹窗公共样式 — 所有 Dialog 组件共用
+   ============================================================================= */
+
+/* ─── 遮罩层 ─────────────────────────────────────────── */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal, 1000);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-backdrop);
+  backdrop-filter: blur(var(--glass-light-blur));
+}
+
+/* ─── 内容容器（各弹窗覆盖尺寸） ───────────────────── */
+.dialog-content {
+  border-radius: var(--floating-navbar-radius);
+  padding: var(--spacing-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-5);
+}
+
+/* ─── 标题 ───────────────────────────────────────────── */
+.dialog-title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-heading);
+  color: var(--text-primary);
+}
+
+/* ─── 内容区 ─────────────────────────────────────────── */
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+/* ─── 按钮区 ─────────────────────────────────────────── */
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-3);
+}
+
+/* ─── 按钮基础 ───────────────────────────────────────── */
+.dialog-btn {
+  display: inline-flex;
+  align-items: center;
+  height: var(--button-md-height);
+  padding: 0 var(--spacing-5);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-heading);
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.dialog-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── 按钮变体 ───────────────────────────────────────── */
+.dialog-btn-primary {
+  background: color-mix(in srgb, var(--color-primary-500) 75%, transparent);
+  backdrop-filter: blur(var(--glass-subtle-blur));
+  -webkit-backdrop-filter: blur(var(--glass-subtle-blur));
+  color: var(--color-neutral-0);
+}
+.dialog-btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary-500) 90%, transparent);
+}
+
+.dialog-btn-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-medium);
+}
+.dialog-btn-secondary:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.dialog-btn-danger {
+  background: color-mix(in srgb, var(--color-danger) 75%, transparent);
+  backdrop-filter: blur(var(--glass-subtle-blur));
+  -webkit-backdrop-filter: blur(var(--glass-subtle-blur));
+  color: var(--color-neutral-0);
+}
+.dialog-btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 90%, transparent);
+}
+
+/* ─── 进出场动画（Vue <Transition name="dialog">） ──── */
+.dialog-enter-active {
+  transition: opacity var(--duration-dialog) var(--ease-out);
+}
+.dialog-leave-active {
+  transition: opacity var(--duration-dialog) var(--ease-in);
+}
+.dialog-enter-from,
+.dialog-leave-to {
+  opacity: 0;
+}
+
+.dialog-enter-active .dialog-content {
+  transition: transform var(--duration-dialog) var(--ease-out);
+}
+.dialog-leave-active .dialog-content {
+  transition: transform var(--duration-dialog) var(--ease-in);
+}
+.dialog-enter-from .dialog-content {
+  transform: translateY(16px) scale(0.97);
+}
+.dialog-leave-to .dialog-content {
+  transform: translateY(8px) scale(0.97);
+}

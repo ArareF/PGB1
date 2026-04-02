@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { FileEntry } from '../composables/useDirectoryFiles'
+import { IMAGE_EXTS_BROWSE as IMAGE_EXTS, VIDEO_EXTS, PSD_EXTS, PDF_EXTS } from '../config/fileTypes'
 import { getPsdThumbnail, invalidatePsdCache } from '../composables/usePsdThumbnail'
 import NoteTooltip from './NoteTooltip.vue'
 
@@ -18,11 +19,6 @@ const cardRef = ref<HTMLElement | null>(null)
 defineEmits<{
   click: [file: FileEntry]
 }>()
-
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico'])
-const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv'])
-const PSD_EXTS   = new Set(['psd', 'psb'])
-const PDF_EXTS   = new Set(['pdf'])
 
 const isImage = computed(() => !props.file.is_dir && IMAGE_EXTS.has(props.file.extension))
 const isVideo = computed(() => !props.file.is_dir && VIDEO_EXTS.has(props.file.extension))

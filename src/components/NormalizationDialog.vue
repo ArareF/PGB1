@@ -453,31 +453,3 @@ watch(() => props.show, (visible) => {
   cursor: pointer;
 }
 </style>
-
-<style>
-/* 弹窗进出动画 */
-/* 根元素 .dialog-overlay 必须有 transition，Vue 以此计算等待时长 */
-.dialog-enter-active {
-  transition: opacity var(--duration-dialog) var(--ease-out);
-}
-.dialog-leave-active {
-  transition: opacity var(--duration-dialog) var(--ease-in);
-}
-.dialog-enter-from,
-.dialog-leave-to {
-  opacity: 0;
-}
-/* 内容区额外的 transform 动画 */
-.dialog-enter-active .dialog-content {
-  transition: transform var(--duration-dialog) var(--ease-out);
-}
-.dialog-leave-active .dialog-content {
-  transition: transform var(--duration-dialog) var(--ease-in);
-}
-.dialog-enter-from .dialog-content {
-  transform: translateY(16px) scale(0.97);
-}
-.dialog-leave-to .dialog-content {
-  transform: translateY(8px) scale(0.97);
-}
-</style>

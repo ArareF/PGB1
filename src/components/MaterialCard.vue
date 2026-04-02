@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
+import { formatSize } from '../utils/format'
 import { useSettings } from '../composables/useSettings'
 import type { MaterialInfo } from '../composables/useMaterials'
 import SequencePreview from './SequencePreview.vue'
@@ -25,14 +26,6 @@ const cardRef = ref<HTMLElement | null>(null)
 defineEmits<{
   click: [material: MaterialInfo]
 }>()
-
-/** 文件大小格式化 */
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-}
 
 /** 进度状态映射 */
 function progressLabel(progress: string): string {

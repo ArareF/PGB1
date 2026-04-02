@@ -2,6 +2,8 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { formatSize } from '../utils/format'
+import { IMAGE_EXTS, VIDEO_EXTS, TEXT_EXTS, PSD_EXTS, PDF_EXTS } from '../config/fileTypes'
 import { getPsdThumbnail, invalidatePsdCache } from '../composables/usePsdThumbnail'
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
@@ -163,21 +165,13 @@ function getFolderPath(filePath: string): string {
   return idx > 0 ? filePath.substring(0, idx) : filePath
 }
 
-// ─── 文件类型判断 ────────────────────────────────────
-
-const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'tif']
-const VIDEO_EXTS = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv']
-const TEXT_EXTS  = ['txt']
-const PSD_EXTS   = ['psd', 'psb']
-const PDF_EXTS   = ['pdf']
-
 const fileType = computed(() => {
   const ext = props.file?.extension.toLowerCase() ?? ''
-  if (IMAGE_EXTS.includes(ext)) return 'image'
-  if (VIDEO_EXTS.includes(ext)) return 'video'
-  if (TEXT_EXTS.includes(ext))  return 'text'
-  if (PSD_EXTS.includes(ext))   return 'psd'
-  if (PDF_EXTS.includes(ext))   return 'pdf'
+  if (IMAGE_EXTS.has(ext)) return 'image'
+  if (VIDEO_EXTS.has(ext)) return 'video'
+  if (TEXT_EXTS.has(ext))  return 'text'
+  if (PSD_EXTS.has(ext))   return 'psd'
+  if (PDF_EXTS.has(ext))   return 'pdf'
   return 'other'
 })
 
@@ -232,15 +226,6 @@ watch(() => props.file, async (file, prevFile) => {
   }
 })
 
-
-// ─── 文件大小格式化 ──────────────────────────────────
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
-}
 
 // ─── 打开文件 ────────────────────────────────────────
 

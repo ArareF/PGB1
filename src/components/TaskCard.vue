@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { formatSize } from '../utils/format'
 import NoteTooltip from './NoteTooltip.vue'
 import type { TaskInfo } from '../composables/useTasks'
 
@@ -79,13 +80,6 @@ const statusInfo = computed(() => {
   return { label: t('taskCard.notStarted'), cls: 'status-pending' }
 })
 
-/** 文件大小格式化 */
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-}
 </script>
 
 <template>

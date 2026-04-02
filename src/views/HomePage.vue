@@ -410,34 +410,6 @@ function onProjectCreated(projectName: string) {
   gap: var(--gap-card);
 }
 
-.sort-tabs {
-  display: flex;
-  gap: var(--spacing-1);
-  margin-left: auto;
-}
-
-.sort-tab {
-  height: 28px;
-  padding: 0 var(--spacing-3);
-  font-size: var(--text-xs);
-  font-family: inherit;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out);
-}
-
-.sort-tab:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-.sort-tab.is-active {
-  color: var(--color-primary-300);
-  background: color-mix(in srgb, var(--color-primary-500) 12%, transparent);
-  border-color: var(--color-primary-700);
-}
+/* .sort-tabs, .sort-tab → design-system.css 公共类 */
 
 </style>

@@ -22,6 +22,7 @@ import ImageViewer from '../components/ImageViewer.vue'
 import FileDetailSidebar from '../components/FileDetailSidebar.vue'
 import UploadConfirmDialog from '../components/UploadConfirmDialog.vue'
 import NormalizationDialog from '../components/NormalizationDialog.vue'
+import SubtaskDialog from '../components/SubtaskDialog.vue'
 import NoteEditor from '../components/NoteEditor.vue'
 import NoteDialog from '../components/NoteDialog.vue'
 import NoteRenderer from '../components/NoteRenderer.vue'
@@ -459,9 +460,6 @@ const subtaskAutoPrompt = ref(false)  // 是否由自动检测触发（文件全
 const subtaskRevertPrompt = ref(false)  // 反向检测触发（子任务全勾但文件未全传 → 提醒取消勾选）
 const subtaskSnapshot = ref<Set<string>>(new Set())  // 弹窗打开时的勾选快照
 
-/** 自动触发弹窗是否处于活跃状态（禁止点击外部关闭） */
-const isAutoTriggered = computed(() => subtaskAutoPrompt.value || subtaskRevertPrompt.value)
-
 /** 对比当前勾选状态与弹窗打开时的快照，有变动才允许确认 */
 const hasSubtaskChanges = computed(() => {
   const snap = subtaskSnapshot.value
@@ -478,27 +476,6 @@ function closeSubtaskDialog() {
   showSubtaskDialog.value = false
   subtaskAutoPrompt.value = false
   subtaskRevertPrompt.value = false
-}
-
-/** 跳过按钮：长按期间持续抖动，满 1.5s 关闭 */
-const dialogShaking = ref(false)
-let skipPressTimer: ReturnType<typeof setTimeout> | null = null
-
-function onSkipMouseDown() {
-  dialogShaking.value = true
-  skipPressTimer = setTimeout(() => {
-    skipPressTimer = null
-    dialogShaking.value = false
-    closeSubtaskDialog()
-  }, 1500)
-}
-
-function stopSkipPress() {
-  if (skipPressTimer) {
-    clearTimeout(skipPressTimer)
-    skipPressTimer = null
-  }
-  dialogShaking.value = false
 }
 
 let currentProjectPath = ''
@@ -1409,45 +1386,17 @@ onUnmounted(() => {
   />
 
   <!-- 子任务完成弹窗 -->
-  <Teleport to="body">
-    <div v-if="showSubtaskDialog" class="subtask-overlay">
-      <div class="subtask-dialog glass-strong" :class="{ 'dialog-shake': dialogShaking }">
-        <p class="subtask-title">{{ $t('task.subtaskProgress') }}</p>
-        <p v-if="subtaskAutoPrompt" class="subtask-hint">{{ $t('task.allUploadedHint') }}</p>
-        <p v-else-if="subtaskRevertPrompt" class="subtask-hint">{{ $t('task.partialUploadHint') }}</p>
-        <div class="subtask-list">
-          <label
-            v-for="key in enabledSubtasks"
-            :key="key"
-            class="subtask-row"
-            @click.prevent="toggleSubtaskCompletion(key)"
-          >
-            <span
-              class="subtask-checkbox"
-              :class="{ checked: completedSubtasks.has(key) }"
-            />
-            <span class="subtask-name">{{ key.split('/')[1] }}</span>
-          </label>
-        </div>
-        <div class="subtask-actions">
-          <span
-            v-if="isAutoTriggered"
-            class="subtask-skip-btn"
-            @mousedown.prevent="onSkipMouseDown"
-            @mouseup="stopSkipPress"
-            @mouseleave="stopSkipPress"
-          >{{ $t('common.skip') }}</span>
-          <button
-            class="subtask-close-btn"
-            :disabled="isAutoTriggered && !hasSubtaskChanges"
-            @click="closeSubtaskDialog"
-          >
-            {{ isAutoTriggered ? $t('common.confirm') : $t('common.close') }}
-          </button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+  <SubtaskDialog
+    :show="showSubtaskDialog"
+    :enabled-subtasks="enabledSubtasks"
+    :completed-subtasks="completedSubtasks"
+    :auto-prompt="subtaskAutoPrompt"
+    :revert-prompt="subtaskRevertPrompt"
+    :has-changes="hasSubtaskChanges"
+    @close="closeSubtaskDialog"
+    @toggle="toggleSubtaskCompletion"
+    @skip="closeSubtaskDialog"
+  />
 
   <!-- 框选矩形覆盖层 -->
   <Teleport to="body">
@@ -1531,156 +1480,6 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--card-material-width), 1fr));
   gap: var(--gap-card);
-}
-
-/* ─── 子任务弹窗 ─── */
-.subtask-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal, 1000);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--overlay-backdrop);
-  backdrop-filter: blur(var(--glass-light-blur));
-}
-
-.subtask-dialog {
-  min-width: 320px;
-  max-width: 320px;
-  border-radius: var(--floating-navbar-radius);
-  padding: var(--spacing-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-5);
-}
-
-.subtask-title {
-  font-size: var(--text-2xl);
-  font-weight: var(--font-weight-heading);
-  color: var(--text-primary);
-}
-
-.subtask-hint {
-  font-size: var(--text-base);
-  color: var(--text-secondary);
-}
-
-.subtask-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-2);
-}
-
-.subtask-row {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-3);
-  padding: var(--spacing-2) var(--spacing-3);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.subtask-row:hover {
-  background: var(--bg-hover);
-}
-
-.subtask-checkbox {
-  width: 18px;
-  height: 18px;
-  min-width: 18px;
-  border-radius: var(--radius-sm);
-  border: 2px solid var(--border-medium);
-  flex-shrink: 0;
-  position: relative;
-  transition: all var(--transition-fast);
-}
-
-.subtask-checkbox.checked {
-  background: color-mix(in srgb, var(--color-primary-500) 75%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary-500) 75%, transparent);
-  backdrop-filter: blur(var(--glass-light-blur));
-  -webkit-backdrop-filter: blur(var(--glass-light-blur));
-}
-
-.subtask-checkbox.checked::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 5px;
-  width: 4px;
-  height: 8px;
-  border: solid var(--color-neutral-0);
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
-
-.subtask-name {
-  font-size: var(--text-base);
-  color: var(--text-primary);
-}
-
-.subtask-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.subtask-skip-btn {
-  font-size: var(--text-xs);
-  color: var(--text-quaternary, var(--text-tertiary));
-  opacity: 0.5;
-  cursor: pointer;
-  user-select: none;
-  transition: opacity var(--transition-fast);
-}
-
-.subtask-skip-btn:hover {
-  opacity: 0.7;
-}
-
-.subtask-skip-btn:active {
-  opacity: 1;
-}
-
-@keyframes dialog-shake {
-  0%, 100% { transform: translate(0, 0); }
-  15% { transform: translate(-4px, 0); }
-  30% { transform: translate(4px, 0); }
-  45% { transform: translate(-3px, 0); }
-  60% { transform: translate(3px, 0); }
-  75% { transform: translate(-2px, 0); }
-  90% { transform: translate(2px, 0); }
-}
-
-.dialog-shake {
-  animation: dialog-shake 0.3s ease infinite;
-}
-
-.subtask-close-btn {
-  display: inline-flex;
-  align-items: center;
-  height: var(--button-height);
-  padding: 0 var(--spacing-5);
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-heading);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-medium);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.subtask-close-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.subtask-close-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
 }
 
 </style>

@@ -4,6 +4,16 @@ use crate::models::{
 use std::fs;
 use std::path::Path;
 
+/// 精确匹配文件 stem 是否属于指定 base_name
+/// 兼容 TexturePacker multipack 输出的 `name-0.webp`
+pub(crate) fn matches_base_name(file_name: &str, base_name: &str) -> bool {
+    let stem = Path::new(file_name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    stem == base_name || stem.starts_with(&format!("{base_name}-"))
+}
+
 /// Prototype 下固定的 7 个子分类目录
 pub(crate) const PROTOTYPE_SUBCATEGORIES: [&str; 7] = [
     "big_win",

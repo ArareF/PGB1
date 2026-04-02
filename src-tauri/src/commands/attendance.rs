@@ -99,7 +99,9 @@ fn load_attendance_record_internal(path: &Path) -> AttendanceRecord {
 /// 内部保存打卡记录（不依赖 app_handle）
 fn save_attendance_record_internal(path: &Path, record: &AttendanceRecord) {
     if let Ok(json) = serde_json::to_string_pretty(record) {
-        let _ = fs::write(path, json);
+        if let Err(e) = fs::write(path, &json) {
+            eprintln!("打卡记录写入失败: {e}");
+        }
     }
 }
 
@@ -204,16 +206,16 @@ async fn webview_login_flow(
     );
     let _ = webview_window.eval(&fill_username_js);
 
-    // 4. 填写密码
+    // 4. 填写密码（使用 serde_json 序列化，安全处理所有特殊字符）
+    let pw_json = serde_json::to_string(&password).unwrap_or_default();
     let fill_password_js = format!(
         r#"(function() {{
             var el = document.querySelector('input[type="password"]');
-            if (el) {{ el.value = '{}'; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
+            if (el) {{ el.value = {pw_json}; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
             return 'not_found';
-        }})()"#,
-        password.replace('\'', "\\'").replace('"', "\\\"")
+        }})()"#
     );
-    let _ = webview_window.eval(&fill_password_js);
+    webview_window.eval(&fill_password_js).map_err(|e| format!("WebView 密码填写失败: {e}"))?;
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
@@ -237,7 +239,7 @@ async fn webview_login_flow(
         }
         return 'not_found';
     })()"#;
-    let _ = webview_window.eval(login_js);
+    webview_window.eval(login_js).map_err(|e| format!("WebView 登录点击失败: {e}"))?;
 
     // 6. 轮询等待登录跳转（URL 离开 login 页即成功，最多 10 秒）
     let mut login_ok = false;
@@ -487,7 +489,7 @@ async fn execute_clock_action_inner(
         }})()"#,
         button_text
     );
-    let _ = webview_window.eval(&clock_js);
+    webview_window.eval(&clock_js).map_err(|e| format!("WebView 打卡点击失败: {e}"))?;
 
     emit_progress(&app_handle, "verifying", "正在验证打卡结果...");
 
@@ -1095,45 +1097,9 @@ pub fn reschedule_attendance(
 
 /// 通过 Win32 SendInput 发送真实 Ctrl+End 按键
 /// Google Docs canvas 编辑器只响应真实系统按键，合成 DOM KeyboardEvent 无效
+/// 通过 Win32 SendInput 发送真实 Ctrl+End 按键
+/// Google Docs canvas 编辑器只响应真实系统按键，合成 DOM KeyboardEvent 无效
 #[cfg(target_os = "windows")]
-/// 将光标移到 hwnd 窗口中央，发送大量鼠标滚轮向下事件滚到底部
-/// MOUSEEVENTF_WHEEL 事件送往光标下方的窗口，不需要键盘焦点，
-/// 比 Ctrl+End 键盘方案更可靠（绕过 WebView2 焦点链难题）
-#[cfg(target_os = "windows")]
-#[allow(dead_code)]
-unsafe fn scroll_to_bottom_via_wheel(hwnd: windows::Win32::Foundation::HWND) {
-    use windows::Win32::Foundation::RECT;
-    use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, SetCursorPos};
-    use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEINPUT, MOUSEEVENTF_WHEEL,
-    };
-
-    let mut rect = RECT::default();
-    if GetWindowRect(hwnd, &mut rect).is_err() {
-        return;
-    }
-    // 移到窗口中央（文档内容区），SetCursorPos 用屏幕像素坐标，多显示器也正确
-    let cx = (rect.left + rect.right) / 2;
-    let cy = (rect.top + rect.bottom) / 2;
-    let _ = SetCursorPos(cx, cy);
-
-    // WHEEL_DELTA = 120 per notch；负值 = 向下滚动
-    // 发送 500 次 × -120 = 总计 -60000，足以滚过数百页文档
-    let wheel_event = INPUT {
-        r#type: INPUT_MOUSE,
-        Anonymous: INPUT_0 {
-            mi: MOUSEINPUT {
-                dx: 0, dy: 0,
-                mouseData: (-120i32) as u32, // u32 存负数，Windows 按 i32 解释为向下
-                dwFlags: MOUSEEVENTF_WHEEL,
-                time: 0, dwExtraInfo: 0,
-            },
-        },
-    };
-    let batch = vec![wheel_event; 500];
-    SendInput(&batch, std::mem::size_of::<INPUT>() as i32);
-}
-
 fn send_ctrl_end() {
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
 

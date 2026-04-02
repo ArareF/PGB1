@@ -1,4 +1,5 @@
 use crate::models::ProjectConfig;
+use super::helpers::matches_base_name;
 use std::fs;
 use std::path::Path;
 
@@ -69,7 +70,7 @@ pub fn rename_material(task_path: String, base_name: String, new_base_name: Stri
         for entry in entries.flatten() {
             let path = entry.path();
             let file_name = match path.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
-            if !file_name.starts_with(base_name.as_str()) { continue; }
+            if !matches_base_name(&file_name, base_name.as_str()) { continue; }
             let suffix = &file_name[base_name.len()..];
             let new_name = format!("{}{}", new_base_name, suffix);
             let new_path = dir.join(&new_name);
@@ -78,7 +79,7 @@ pub fn rename_material(task_path: String, base_name: String, new_base_name: Stri
                     for frame_entry in frames.flatten() {
                         let fpath = frame_entry.path();
                         let fname = match fpath.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
-                        if fname.starts_with(base_name.as_str()) {
+                        if matches_base_name(&fname, base_name.as_str()) {
                             let fsuffix = &fname[base_name.len()..];
                             let new_fname = format!("{}{}", new_base_name, fsuffix);
                             let _ = fs::rename(&fpath, fpath.parent().expect("read_dir frame must have parent").join(&new_fname));
@@ -113,7 +114,7 @@ pub fn delete_material(task_path: String, base_name: String, material_type: Stri
         for entry in entries.flatten() {
             let path = entry.path();
             let file_name = match path.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
-            if !file_name.starts_with(base_name.as_str()) { continue; }
+            if !matches_base_name(&file_name, base_name.as_str()) { continue; }
             if is_sequence && path.is_dir() {
                 fs::remove_dir_all(&path).map_err(|e| format!("删除目录 {} 失败: {}", file_name, e))?;
             } else if !path.is_dir() {
@@ -173,7 +174,7 @@ pub fn rename_sequence_fps(task_path: String, base_name: String, old_fps: u32, n
         if !path.is_dir() { continue; }
         let dir_name = match path.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
         if !dir_name.starts_with("[an-") || !dir_name.ends_with(old_suffix.as_str()) { continue; }
-        let has_match = fs::read_dir(&path).map(|rd| rd.flatten().any(|e| e.file_name().to_str().map(|n| n.starts_with(base_name.as_str())).unwrap_or(false))).unwrap_or(false);
+        let has_match = fs::read_dir(&path).map(|rd| rd.flatten().any(|e| e.file_name().to_str().map(|n| matches_base_name(n, base_name.as_str())).unwrap_or(false))).unwrap_or(false);
         if !has_match { continue; }
         let prefix = &dir_name[..dir_name.len() - old_suffix.len()];
         let new_dir_name = format!("{}-{}]", prefix, new_fps);

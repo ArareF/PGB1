@@ -4,8 +4,8 @@ use crate::models::{
 };
 use super::helpers::{
     calc_dir_size, count_preview_progress, count_upload_progress,
-    find_app_icon, load_or_create_config, read_notes_file, regex_strip_version,
-    scan_task_names,
+    find_app_icon, load_or_create_config, matches_base_name, read_notes_file,
+    regex_strip_version, scan_task_names,
 };
 use std::fs;
 use std::path::Path;
@@ -349,7 +349,7 @@ impl DirSnapshot {
     /// 在根目录（"."键）中查找以 base_name 开头的文件
     fn has_file_in_root(&self, base_name: &str) -> bool {
         self.subdirs.get(".")
-            .map(|files| files.iter().any(|(n, _, _)| n.starts_with(base_name)))
+            .map(|files| files.iter().any(|(n, _, _)| matches_base_name(n, base_name)))
             .unwrap_or(false)
     }
 
@@ -357,7 +357,7 @@ impl DirSnapshot {
     fn has_file_in_subdirs(&self, base_name: &str, prefix: &str) -> bool {
         for (dir_name, files) in &self.subdirs {
             if prefix.is_empty() || dir_name.starts_with(&format!("[{}-", prefix)) {
-                if files.iter().any(|(n, _, _)| n.starts_with(base_name)) {
+                if files.iter().any(|(n, _, _)| matches_base_name(n, base_name)) {
                     return true;
                 }
             }
@@ -373,7 +373,7 @@ impl DirSnapshot {
             }
             for (name, _, is_file) in files {
                 if !is_file { continue; }
-                if name.starts_with(base_name) {
+                if matches_base_name(name, base_name) {
                     let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
                     if ext == "webp" {
                         return true;
@@ -391,7 +391,7 @@ impl DirSnapshot {
             if !dir_name.starts_with("[an-") || !dir_name.ends_with(']') {
                 continue;
             }
-            if files.iter().any(|(n, _, _)| n.starts_with(base_name)) {
+            if files.iter().any(|(n, _, _)| matches_base_name(n, base_name)) {
                 let inner = dir_name.trim_start_matches('[').trim_end_matches(']');
                 let parts: Vec<&str> = inner.split('-').collect();
                 if parts.len() >= 2 {
@@ -413,7 +413,7 @@ impl DirSnapshot {
             if !dir_name.starts_with('[') || !dir_name.ends_with(']') {
                 continue;
             }
-            if files.iter().any(|(n, _, _)| n.starts_with(base_name)) {
+            if files.iter().any(|(n, _, _)| matches_base_name(n, base_name)) {
                 let scale_str = dir_name.trim_start_matches('[').trim_end_matches(']');
                 if let Ok(scale) = scale_str.parse::<u32>() {
                     scales.push(scale);
@@ -431,7 +431,7 @@ impl DirSnapshot {
             if !dir_name.starts_with("[an-") || !dir_name.ends_with(']') {
                 continue;
             }
-            if files.iter().any(|(n, _, _)| n.starts_with(base_name)) {
+            if files.iter().any(|(n, _, _)| matches_base_name(n, base_name)) {
                 let inner = dir_name.trim_start_matches('[').trim_end_matches(']');
                 if let Some(fps_str) = inner.rsplitn(2, '-').next() {
                     if let Ok(fps) = fps_str.parse::<u32>() {
@@ -452,7 +452,7 @@ impl DirSnapshot {
                 continue;
             }
             for (name, size, is_file) in files {
-                if *is_file && name.starts_with(base_name) {
+                if *is_file && matches_base_name(name, base_name) {
                     total += size;
                     found = true;
                 }
@@ -470,7 +470,7 @@ impl DirSnapshot {
                 continue;
             }
             for (name, size, is_file) in files {
-                if *is_file && name.starts_with(base_name) {
+                if *is_file && matches_base_name(name, base_name) {
                     total += size;
                     found = true;
                 }
@@ -925,7 +925,7 @@ fn collect_fps_for_sequence(base_name: &str, done_dir: &Path) -> Option<u32> {
                 let has_match = files.flatten().any(|f| {
                     f.file_name()
                         .to_str()
-                        .map(|n| n.starts_with(base_name))
+                        .map(|n| matches_base_name(n, base_name))
                         .unwrap_or(false)
                 });
                 if has_match {
@@ -1062,7 +1062,7 @@ fn find_file_in_dir(dir: &Path, base_name: &str) -> bool {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("");
-            if name.starts_with(base_name) {
+            if matches_base_name(name, base_name) {
                 return true;
             }
         }
@@ -1114,7 +1114,7 @@ fn find_webp_in_subdirs(dir: &Path, base_name: &str, prefix: &str, sub_name: Opt
                     }
                     let fname = fpath.file_name().and_then(|n| n.to_str()).unwrap_or("");
                     let fext = fpath.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                    if fext == "webp" && fname.starts_with(base_name) {
+                    if fext == "webp" && matches_base_name(&fname, base_name) {
                         return true;
                     }
                 }
@@ -1266,7 +1266,7 @@ fn collect_versions_flat(
                 .and_then(|n| n.to_str())
                 .unwrap_or("");
             // 匹配文件名或目录名以 base_name 开头
-            if name.starts_with(base_name) {
+            if matches_base_name(name, base_name) {
                 let ext = path
                     .extension()
                     .and_then(|e| e.to_str())

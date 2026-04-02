@@ -4,7 +4,7 @@ use crate::models::{
     ScaleRequest, StartConversionRequest,
 };
 use crate::conversion::{ConversionState, ConversionSession, handle_file_event, bring_window_to_front};
-use super::helpers::{split_prototype_name, copy_dir_recursive, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
+use super::helpers::{split_prototype_name, copy_dir_recursive, matches_base_name, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -676,7 +676,7 @@ fn collect_matching_files_in_subdirs(dir: &Path, base_name: &str, prefix: &str) 
                     let fp = f.path();
                     if !fp.is_file() { continue; }
                     let name = fp.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    if !name.starts_with(base_name) { continue; }
+                    if !matches_base_name(name, base_name) { continue; }
                     let ext = fp.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
                     if ext == "tps" { continue; }
                     results.push(fp.to_string_lossy().to_string());
@@ -705,7 +705,7 @@ fn collect_matching_files_in_proto_subdirs(
                     let fp = f.path();
                     if !fp.is_file() { continue; }
                     let name = fp.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    if !name.starts_with(base_name) { continue; }
+                    if !matches_base_name(name, base_name) { continue; }
                     let ext = fp.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
                     if ext == "tps" { continue; }
                     results.push(fp.to_string_lossy().to_string());

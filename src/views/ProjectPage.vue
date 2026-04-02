@@ -7,7 +7,7 @@ import { useNavigation } from '../composables/useNavigation'
 import { useProjects } from '../composables/useProjects'
 import { useTasks } from '../composables/useTasks'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
-import { useNotes, toggleCheckbox } from '../composables/useNotes'
+import { useNotes, usePageNote } from '../composables/useNotes'
 import type { TaskInfo } from '../composables/useTasks'
 import TaskCard from '../components/TaskCard.vue'
 import NoteDialog from '../components/NoteDialog.vue'
@@ -34,8 +34,8 @@ const projectPathRef = ref('')
 const noteTarget = ref<TaskInfo | null>(null)
 const showNoteDialog = ref(false)
 const { loadNotes: loadPageNotes, getNote: getPageNote, saveNote: savePageNote, hasNote: hasPageNote } = useNotes(projectPathRef)
-const showPageNote = ref(false)
-const pageNoteText = ref('')
+const { showPageNote, pageNoteText, openPageNote, closePageNote, onPageNoteSave, onPageNoteUpdate, onPageNoteCheckbox } =
+  usePageNote(getPageNote, savePageNote, computed(() => 'card:' + projectId.toLowerCase()))
 
 async function openPinboard() {
   if (!projectPathRef.value) return
@@ -44,12 +44,6 @@ async function openPinboard() {
     canvasKey: 'project',
     title: projectId,
   })
-}
-
-function onPageNoteCheckbox(key: string, lineIndex: number) {
-  const raw = getPageNote(key) ?? ''
-  const updated = toggleCheckbox(raw, lineIndex)
-  savePageNote(key, updated)
 }
 
 // 排序模式（localStorage 持久化）
@@ -118,17 +112,6 @@ function closeNoteDialog() {
 }
 
 const pageNoteKey = 'card:' + projectId.toLowerCase()
-
-async function onPageNoteSave(text: string) {
-  await savePageNote(pageNoteKey, text)
-  showPageNote.value = false
-}
-
-/** 页面笔记 checkbox 切换：静默保存，不关闭弹窗 */
-async function onPageNoteUpdate(text: string) {
-  pageNoteText.value = text
-  await savePageNote(pageNoteKey, text)
-}
 
 /** tooltip checkbox 切换：直接持久化 */
 async function onTooltipNoteSave(task: TaskInfo, text: string) {
@@ -212,7 +195,6 @@ onMounted(async () => {
     refreshNav()   // 更新 active 状态
     await loadTasks(project.path)
     await loadPageNotes()
-    pageNoteText.value = getPageNote(pageNoteKey) ?? ''
   }
 })
 
@@ -317,7 +299,7 @@ onUnmounted(() => {
         class="note-btn"
         :class="{ 'has-note': hasPageNote(pageNoteKey) }"
         :title="$t('note.pageNote')"
-        @click="pageNoteText = getPageNote(pageNoteKey) ?? ''; showPageNote = true"
+        @click="openPageNote()"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       </button>
@@ -399,7 +381,7 @@ onUnmounted(() => {
       :note="pageNoteText"
       @save="onPageNoteSave"
       @update="onPageNoteUpdate"
-      @cancel="showPageNote = false"
+      @cancel="closePageNote"
     />
 
     <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.project" @close="showGuide = false" />

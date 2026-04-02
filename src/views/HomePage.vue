@@ -7,7 +7,7 @@ import { useNavigation } from '../composables/useNavigation'
 import { useProjects } from '../composables/useProjects'
 import { useSettings } from '../composables/useSettings'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
-import { useNotes, toggleCheckbox } from '../composables/useNotes'
+import { useNotes, usePageNote } from '../composables/useNotes'
 import type { ProjectInfo } from '../composables/useProjects'
 import ProjectCard from '../components/ProjectCard.vue'
 import CreateProjectDialog from '../components/CreateProjectDialog.vue'
@@ -32,7 +32,8 @@ const projectRootDir = ref('')
 const noteTarget = ref<ProjectInfo | null>(null)
 const showNoteDialog = ref(false)
 const { loadNotes: loadPageNotes, getNote: getPageNote, saveNote: savePageNote, hasNote: hasPageNote } = useNotes(projectRootDir)
-const showPageNote = ref(false)
+const { showPageNote, pageNoteText, openPageNote, closePageNote, onPageNoteSave, onPageNoteUpdate, onPageNoteCheckbox } =
+  usePageNote(getPageNote, savePageNote, 'page')
 async function openPinboard() {
   if (!projectRootDir.value) return
   await invoke('open_pinboard_window', {
@@ -41,14 +42,6 @@ async function openPinboard() {
     title: t('home.myProjects'),
   })
 }
-const pageNoteText = ref('')
-
-function onPageNoteCheckbox(key: string, lineIndex: number) {
-  const raw = getPageNote(key) ?? ''
-  const updated = toggleCheckbox(raw, lineIndex)
-  savePageNote(key, updated)
-}
-
 // 排序模式（localStorage 持久化）
 const SORT_MODE_KEY = 'pgb1-home-sort'
 const sortMode = ref<'default' | 'deadline' | 'priority'>(
@@ -183,17 +176,6 @@ function closeNoteDialog() {
   noteTarget.value = null
 }
 
-async function onPageNoteSave(text: string) {
-  await savePageNote('page', text)
-  showPageNote.value = false
-}
-
-/** 页面笔记 checkbox 切换：静默保存，不关闭弹窗 */
-async function onPageNoteUpdate(text: string) {
-  pageNoteText.value = text
-  await savePageNote('page', text)
-}
-
 /** tooltip checkbox 切换：直接持久化 */
 async function onTooltipNoteSave(project: ProjectInfo, text: string) {
   project.note = text || null
@@ -229,7 +211,6 @@ onMounted(async () => {
   if (s?.general.projectRootDir) {
     projectRootDir.value = s.general.projectRootDir
     await loadPageNotes()
-    pageNoteText.value = getPageNote('page') ?? ''
   }
 })
 onUnmounted(() => {
@@ -268,7 +249,7 @@ function onProjectCreated(projectName: string) {
         class="note-btn"
         :class="{ 'has-note': hasPageNote('page') }"
         :title="$t('note.pageNote')"
-        @click="pageNoteText = getPageNote('page') ?? ''; showPageNote = true"
+        @click="openPageNote()"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       </button>
@@ -341,7 +322,7 @@ function onProjectCreated(projectName: string) {
       :note="pageNoteText"
       @save="onPageNoteSave"
       @update="onPageNoteUpdate"
-      @cancel="showPageNote = false"
+      @cancel="closePageNote"
     />
 
   </div>

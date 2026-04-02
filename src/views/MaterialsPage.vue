@@ -7,13 +7,14 @@ import { startDrag } from '@crabnebula/tauri-plugin-drag'
 import { useNavigation } from '../composables/useNavigation'
 import { useProjects } from '../composables/useProjects'
 import { useDirectoryFiles, type FileEntry } from '../composables/useDirectoryFiles'
-import { useNotes, toggleCheckbox } from '../composables/useNotes'
+import { useNotes, usePageNote } from '../composables/useNotes'
+import { useMultiSelect } from '../composables/useMultiSelect'
+import { createDragHandler } from '../composables/useDragIntent'
 import NormalCard from '../components/NormalCard.vue'
 import NoteDialog from '../components/NoteDialog.vue'
 import NoteRenderer from '../components/NoteRenderer.vue'
 import FileDetailSidebar from '../components/FileDetailSidebar.vue'
 import FolderBrowserDialog from '../components/FolderBrowserDialog.vue'
-import { useRubberBandSelect } from '../composables/useRubberBandSelect'
 import { useI18n } from 'vue-i18n'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
@@ -51,8 +52,8 @@ const projectPathRef = ref('')
 
 // 笔记（主标题级，key 'page:materials'）
 const { loadNotes: loadPageNotes, hasNote: hasPageNote, getNote: getPageNote, saveNote: savePageNote } = useNotes(projectPathRef)
-const showPageNote = ref(false)
-const pageNoteText = ref('')
+const { showPageNote, pageNoteText, openPageNote, closePageNote, onPageNoteSave, onPageNoteUpdate, onPageNoteCheckbox } =
+  usePageNote(getPageNote, savePageNote, 'page:materials')
 
 async function openPinboard() {
   if (!projectPathRef.value) return
@@ -61,12 +62,6 @@ async function openPinboard() {
     canvasKey: 'materials',
     title: t('materialsPage.title'),
   })
-}
-
-function onPageNoteCheckbox(key: string, lineIndex: number) {
-  const raw = getPageNote(key) ?? ''
-  const updated = toggleCheckbox(raw, lineIndex)
-  savePageNote(key, updated)
 }
 
 // 各分组笔记缓存：dirPath → notes map
@@ -81,8 +76,6 @@ const selectedFile = ref<FileEntry | null>(null)
 const sidebarWidth = ref(30)
 
 const scrollRef = ref<HTMLElement | null>(null)
-const isMultiSelect = ref(false)
-const selectedPaths = ref<Set<string>>(new Set())
 
 // 从所有分组中收集所有文件（用于全选，排除目录）
 const allFiles = computed(() => {
@@ -98,45 +91,15 @@ const allFiles = computed(() => {
   return result
 })
 
-const isAllSelected = computed(() =>
-  allFiles.value.length > 0 && allFiles.value.every(f => selectedPaths.value.has(f.path))
-)
-
-function toggleMultiSelect() {
-  if (isMultiSelect.value) {
-    isMultiSelect.value = false
-    selectedPaths.value = new Set()
-  } else {
-    isMultiSelect.value = true
-    selectedFile.value = null
-  }
-}
-
-function toggleSelectAll() {
-  if (isAllSelected.value) {
-    selectedPaths.value = new Set()
-  } else {
-    selectedPaths.value = new Set(allFiles.value.map(f => f.path))
-  }
-}
-
-function toggleFileSelection(file: FileEntry) {
-  const newSet = new Set(selectedPaths.value)
-  if (newSet.has(file.path)) {
-    newSet.delete(file.path)
-  } else {
-    newSet.add(file.path)
-  }
-  selectedPaths.value = newSet
-}
-
-const { isSelecting, selectionRect, justFinished, onContainerMouseDown, onContainerScroll } =
-  useRubberBandSelect({
-    containerRef: scrollRef,
-    cardSelector: '.normal-card[data-path]',
-    isEnabled: isMultiSelect,
-    onSelect: (paths) => { selectedPaths.value = paths },
-  })
+const {
+  isMultiSelect, selectedPaths, isAllSelected,
+  toggleMultiSelect, toggleSelection, toggleSelectAll,
+  isSelecting, selectionRect, justFinished, onContainerMouseDown, onContainerScroll,
+} = useMultiSelect({
+  allPaths: computed(() => allFiles.value.map(f => f.path)),
+  onEnter: () => { selectedFile.value = null },
+  rubberBand: { containerRef: scrollRef, cardSelector: '.normal-card[data-path]' },
+})
 
 function onCardClick(file: FileEntry) {
   if (file.is_dir) {
@@ -145,7 +108,7 @@ function onCardClick(file: FileEntry) {
     return
   }
   if (isMultiSelect.value) {
-    toggleFileSelection(file)
+    toggleSelection(file.path)
     return
   }
   if (selectedFile.value?.path === file.path) {
@@ -200,17 +163,6 @@ async function onSidebarNoteSave(text: string) {
     const notes = await invoke<Record<string, string>>('get_notes', { dirPath: dir })
     groupNotesMap.value = { ...groupNotesMap.value, [dir]: notes }
   } catch { /* 忽略 */ }
-}
-
-async function onPageNoteSave(text: string) {
-  await savePageNote('page:materials', text)
-  showPageNote.value = false
-}
-
-/** 页面笔记 checkbox 切换：静默保存，不关闭弹窗 */
-async function onPageNoteUpdate(text: string) {
-  pageNoteText.value = text
-  await savePageNote('page:materials', text)
 }
 
 async function onSidebarRename(newName: string) {
@@ -322,28 +274,13 @@ const isDragOver = ref(false)
 const dropTargetLabel = ref('')
 let unlistenDragDrop: (() => void) | null = null
 
-const DRAG_THRESHOLD = 5
-
 /** 卡片拖出 */
 function onCardMouseDown(e: MouseEvent, file: FileEntry) {
-  if (e.button !== 0 || file.is_dir) return
-
-  const startX = e.clientX
-  const startY = e.clientY
-  let dragStarted = false
-
-  function onMouseMove(ev: MouseEvent) {
-    if (dragStarted) return
-    const dx = ev.clientX - startX
-    const dy = ev.clientY - startY
-    if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-      dragStarted = true
-      cleanup()
+  createDragHandler(
+    () => {
       if (isMultiSelect.value) {
         if (!selectedPaths.value.has(file.path)) {
-          const newSet = new Set(selectedPaths.value)
-          newSet.add(file.path)
-          selectedPaths.value = newSet
+          toggleSelection(file.path)
         }
         const paths = [...selectedPaths.value]
         if (paths.length > 0) {
@@ -352,18 +289,9 @@ function onCardMouseDown(e: MouseEvent, file: FileEntry) {
       } else {
         startDrag({ item: [file.path], icon: '' }).catch(err => console.error('拖拽失败:', err))
       }
-    }
-  }
-
-  function onMouseUp() { cleanup() }
-
-  function cleanup() {
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-  }
-
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
+    },
+    (ev) => ev.button !== 0 || file.is_dir,
+  )(e)
 }
 
 /** 根据 Y 坐标找到对应分组 */
@@ -408,7 +336,6 @@ onMounted(async () => {
     projectPathRef.value = project.path
     await refreshAll()
     await loadPageNotes()
-    pageNoteText.value = getPageNote('page:materials') ?? ''
   }
 
   // 监听外部文件拖入
@@ -451,7 +378,7 @@ onUnmounted(() => {
         class="note-btn"
         :class="{ 'has-note': hasPageNote('page:materials') }"
         :title="$t('note.pageNote')"
-        @click="pageNoteText = getPageNote('page:materials') ?? ''; showPageNote = true"
+        @click="openPageNote()"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -610,7 +537,7 @@ onUnmounted(() => {
     :note="pageNoteText"
     @save="onPageNoteSave"
     @update="onPageNoteUpdate"
-    @cancel="showPageNote = false"
+    @cancel="closePageNote"
   />
 
   <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.materials" @close="showGuide = false" />

@@ -1,4 +1,4 @@
-import { ref, type Ref, unref } from 'vue'
+import { ref, computed, type Ref, unref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 
 /** 悬停预览截取字符数 */
@@ -114,5 +114,55 @@ export function useNotes(dirPath: Ref<string> | string) {
     hoverPreview,
     previewProgress,
     saveNote,
+  }
+}
+
+/**
+ * 页面笔记 UI 状态封装 — 包装 useNotes 的 getNote/saveNote
+ * 消除 5 个页面中重复的 showPageNote/pageNoteText/onPageNote* 三件套
+ */
+export function usePageNote(
+  getNote: (key: string) => string | null,
+  saveNote: (key: string, text: string) => Promise<void>,
+  noteKey: string | Ref<string>,
+) {
+  const showPageNote = ref(false)
+  const pageNoteText = ref('')
+
+  const resolvedKey = computed(() => typeof noteKey === 'string' ? noteKey : noteKey.value)
+
+  function openPageNote() {
+    pageNoteText.value = getNote(resolvedKey.value) ?? ''
+    showPageNote.value = true
+  }
+
+  function closePageNote() {
+    showPageNote.value = false
+  }
+
+  async function onPageNoteSave(text: string) {
+    await saveNote(resolvedKey.value, text)
+    showPageNote.value = false
+  }
+
+  async function onPageNoteUpdate(text: string) {
+    pageNoteText.value = text
+    await saveNote(resolvedKey.value, text)
+  }
+
+  function onPageNoteCheckbox(_key: string, lineIndex: number) {
+    const raw = getNote(resolvedKey.value) ?? ''
+    const updated = toggleCheckbox(raw, lineIndex)
+    saveNote(resolvedKey.value, updated)
+  }
+
+  return {
+    showPageNote,
+    pageNoteText,
+    openPageNote,
+    closePageNote,
+    onPageNoteSave,
+    onPageNoteUpdate,
+    onPageNoteCheckbox,
   }
 }

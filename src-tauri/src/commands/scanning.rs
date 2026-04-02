@@ -292,6 +292,194 @@ pub fn scan_directory(app_handle: tauri::AppHandle, dir_path: String) -> Result<
     Ok(entries)
 }
 
+/// 预读目录结构缓存：避免每个素材重复扫描 01_scale/、02_done/、nextcloud/
+/// key = 子目录名（如 "[an-70-30]"、"[img-70]"、"[70]"），"." 表示根目录本身
+/// value = 该子目录下所有文件/目录的名称列表 + 大小
+struct DirSnapshot {
+    /// subdir_name -> Vec<(entry_name, size_bytes, is_file)>
+    subdirs: std::collections::HashMap<String, Vec<(String, u64, bool)>>,
+}
+
+impl DirSnapshot {
+    /// 一次性读取 dir 下所有子目录及其内容
+    fn from_dir(dir: &Path) -> Self {
+        let mut subdirs = std::collections::HashMap::new();
+        if !dir.exists() {
+            return Self { subdirs };
+        }
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let dir_name = entry.file_name().to_string_lossy().to_string();
+                let children = Self::read_children(&path);
+                subdirs.insert(dir_name, children);
+            }
+        }
+        Self { subdirs }
+    }
+
+    /// 读取一个平面目录（如 nextcloud/TaskName/）的文件列表
+    fn from_flat_dir(dir: &Path) -> Self {
+        let mut subdirs = std::collections::HashMap::new();
+        if !dir.exists() {
+            return Self { subdirs };
+        }
+        let children = Self::read_children(dir);
+        subdirs.insert(".".to_string(), children);
+        Self { subdirs }
+    }
+
+    fn read_children(dir: &Path) -> Vec<(String, u64, bool)> {
+        fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                let is_file = e.path().is_file();
+                let size = if is_file { e.metadata().map(|m| m.len()).unwrap_or(0) } else { 0 };
+                (name, size, is_file)
+            })
+            .collect()
+    }
+
+    /// 在根目录（"."键）中查找以 base_name 开头的文件
+    fn has_file_in_root(&self, base_name: &str) -> bool {
+        self.subdirs.get(".")
+            .map(|files| files.iter().any(|(n, _, _)| n.starts_with(base_name)))
+            .unwrap_or(false)
+    }
+
+    /// 在子目录中查找以 base_name 开头的文件（匹配前缀过滤子目录名）
+    fn has_file_in_subdirs(&self, base_name: &str, prefix: &str) -> bool {
+        for (dir_name, files) in &self.subdirs {
+            if prefix.is_empty() || dir_name.starts_with(&format!("[{}-", prefix)) {
+                if files.iter().any(|(n, _, _)| n.starts_with(base_name)) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// 在子目录中查找以 base_name 开头的 .webp 文件
+    fn has_webp_in_subdirs(&self, base_name: &str, prefix: &str) -> bool {
+        for (dir_name, files) in &self.subdirs {
+            if !dir_name.starts_with(&format!("[{}-", prefix)) {
+                continue;
+            }
+            for (name, _, is_file) in files {
+                if !is_file { continue; }
+                if name.starts_with(base_name) {
+                    let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+                    if ext == "webp" {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// 收集包含 base_name 文件的 [an-XX-YY] 子目录的 scale 值
+    fn collect_seq_scales(&self, base_name: &str) -> Vec<u32> {
+        let mut scales = Vec::new();
+        for (dir_name, files) in &self.subdirs {
+            if !dir_name.starts_with("[an-") || !dir_name.ends_with(']') {
+                continue;
+            }
+            if files.iter().any(|(n, _, _)| n.starts_with(base_name)) {
+                let inner = dir_name.trim_start_matches('[').trim_end_matches(']');
+                let parts: Vec<&str> = inner.split('-').collect();
+                if parts.len() >= 2 {
+                    if let Ok(scale) = parts[1].parse::<u32>() {
+                        scales.push(scale);
+                    }
+                }
+            }
+        }
+        scales.sort();
+        scales.dedup();
+        scales
+    }
+
+    /// 收集包含 base_name 文件的 [XX] 子目录的 scale 值
+    fn collect_img_scales(&self, base_name: &str) -> Vec<u32> {
+        let mut scales = Vec::new();
+        for (dir_name, files) in &self.subdirs {
+            if !dir_name.starts_with('[') || !dir_name.ends_with(']') {
+                continue;
+            }
+            if files.iter().any(|(n, _, _)| n.starts_with(base_name)) {
+                let scale_str = dir_name.trim_start_matches('[').trim_end_matches(']');
+                if let Ok(scale) = scale_str.parse::<u32>() {
+                    scales.push(scale);
+                }
+            }
+        }
+        scales.sort();
+        scales.dedup();
+        scales
+    }
+
+    /// 从 [an-*] 子目录中提取 fps（找到第一个匹配 base_name 的子目录）
+    fn extract_fps(&self, base_name: &str) -> Option<u32> {
+        for (dir_name, files) in &self.subdirs {
+            if !dir_name.starts_with("[an-") || !dir_name.ends_with(']') {
+                continue;
+            }
+            if files.iter().any(|(n, _, _)| n.starts_with(base_name)) {
+                let inner = dir_name.trim_start_matches('[').trim_end_matches(']');
+                if let Some(fps_str) = inner.rsplitn(2, '-').next() {
+                    if let Ok(fps) = fps_str.parse::<u32>() {
+                        return Some(fps);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// 计算 [an-*] 子目录中匹配 base_name 的文件总大小
+    fn sum_seq_size(&self, base_name: &str) -> Option<u64> {
+        let mut total: u64 = 0;
+        let mut found = false;
+        for (dir_name, files) in &self.subdirs {
+            if !dir_name.starts_with("[an-") {
+                continue;
+            }
+            for (name, size, is_file) in files {
+                if *is_file && name.starts_with(base_name) {
+                    total += size;
+                    found = true;
+                }
+            }
+        }
+        if found { Some(total) } else { None }
+    }
+
+    /// 计算 [img-*] 子目录中匹配 base_name 的文件总大小
+    fn sum_img_size(&self, base_name: &str) -> Option<u64> {
+        let mut total: u64 = 0;
+        let mut found = false;
+        for (dir_name, files) in &self.subdirs {
+            if !dir_name.starts_with("[img-") {
+                continue;
+            }
+            for (name, size, is_file) in files {
+                if *is_file && name.starts_with(base_name) {
+                    total += size;
+                    found = true;
+                }
+            }
+        }
+        if found { Some(total) } else { None }
+    }
+}
+
 /// 扫描任务的素材列表（从 00_original 读取，关联各目录判定进度）
 #[tauri::command]
 pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
@@ -315,12 +503,17 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
     let done_dir = task_dir.join("02_done");
 
     // 获取 nextcloud 路径：从 task_path 向上推导
-    // task_path = .../Export/{TaskName}
-    // nextcloud = .../nextcloud/{TaskName}
     let nextcloud_dir = task_dir
-        .parent() // Export/
-        .and_then(|p| p.parent()) // VFX/
+        .parent()
+        .and_then(|p| p.parent())
         .map(|vfx| vfx.join("nextcloud").join(task_dir.file_name().unwrap_or_default()));
+
+    // ── 预读目录结构（一次性读取，后续查询走内存） ──
+    let scale_cache = DirSnapshot::from_dir(&scale_dir);
+    let done_cache = DirSnapshot::from_dir(&done_dir);
+    let nc_cache = nextcloud_dir.as_ref()
+        .map(|nc| DirSnapshot::from_flat_dir(nc))
+        .unwrap_or_else(|| DirSnapshot { subdirs: std::collections::HashMap::new() });
 
     let mut materials = Vec::new();
 
@@ -385,12 +578,12 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
         let first_frame = find_first_frame(path);
         let base_name = file_name.clone();
 
-        let progress = determine_progress_sequence(&base_name, &done_dir, &nextcloud_dir);
-        let scales = collect_scales_for_sequence(&base_name, &done_dir);
-        let fps = collect_fps_for_sequence(&base_name, &done_dir);
+        let progress = determine_progress_sequence_cached(&base_name, &done_cache, &nc_cache);
+        let scales = done_cache.collect_seq_scales(&base_name);
+        let fps = done_cache.extract_fps(&base_name);
 
         // 优先取 02_done 中精灵图三件套大小，回退到 00_original 目录大小
-        let size_bytes = done_size_sequence(&done_dir, &base_name)
+        let size_bytes = done_cache.sum_seq_size(&base_name)
             .unwrap_or_else(|| calc_dir_size(path));
 
         materials.push(MaterialInfo {
@@ -420,10 +613,10 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
             files.sort();
             let frame_count = files.len() as u32;
             let first_frame = files.first().map(|p| p.to_string_lossy().to_string());
-            let progress = determine_progress_sequence(&base_name, &done_dir, &nextcloud_dir);
-            let scales = collect_scales_for_sequence(&base_name, &done_dir);
-            let fps = collect_fps_for_sequence(&base_name, &done_dir);
-            let size_bytes = done_size_sequence(&done_dir, &base_name)
+            let progress = determine_progress_sequence_cached(&base_name, &done_cache, &nc_cache);
+            let scales = done_cache.collect_seq_scales(&base_name);
+            let fps = done_cache.extract_fps(&base_name);
+            let size_bytes = done_cache.sum_seq_size(&base_name)
                 .unwrap_or_else(|| {
                     files
                         .iter()
@@ -477,20 +670,20 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
         };
 
         let progress = if material_type == MaterialType::Image {
-            determine_progress_image(&base_name, &scale_dir, &done_dir, &nextcloud_dir)
+            determine_progress_image_cached(&base_name, &scale_cache, &done_cache, &nc_cache)
         } else {
             MaterialProgress::Original
         };
 
         let scales = if material_type == MaterialType::Image {
-            collect_scales_for_image(&base_name, &scale_dir)
+            scale_cache.collect_img_scales(&base_name)
         } else {
             Vec::new()
         };
 
         // 优先取 02_done 中的文件大小，回退到 00_original
         let size_bytes = if material_type == MaterialType::Image {
-            done_size_image(&done_dir, &base_name)
+            done_cache.sum_img_size(&base_name)
                 .unwrap_or_else(|| path.metadata().map(|m| m.len()).unwrap_or(0))
         } else {
             path.metadata().map(|m| m.len()).unwrap_or(0)
@@ -578,7 +771,7 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
                     &done_dir,
                     &nextcloud_dir,
                 );
-                let scales = collect_scales_for_proto_sequence(&base_name, &sub_name, &done_dir);
+                let scales = collect_scales_for_sequence(&base_name, &done_dir, Some(&sub_name));
                 let fps = collect_fps_for_sequence(&base_name, &done_dir);
 
                 materials.push(MaterialInfo {
@@ -627,7 +820,7 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
                 };
 
                 let scales = if material_type == MaterialType::Image {
-                    collect_scales_for_proto_image(&base_name, &sub_name, &scale_dir)
+                    collect_scales_for_image(&base_name, &scale_dir, Some(&sub_name))
                 } else {
                     Vec::new()
                 };
@@ -666,10 +859,10 @@ fn determine_progress_prototype_img(
             return MaterialProgress::Uploaded;
         }
     }
-    if done_dir.exists() && find_file_in_proto_subdirs(done_dir, base_name, sub_name, "img") {
+    if done_dir.exists() && find_file_in_subdirs(done_dir, base_name, "img", Some(sub_name)) {
         return MaterialProgress::Done;
     }
-    if scale_dir.exists() && find_file_in_proto_subdirs(scale_dir, base_name, sub_name, "") {
+    if scale_dir.exists() && find_file_in_subdirs(scale_dir, base_name, "", Some(sub_name)) {
         return MaterialProgress::Scaled;
     }
     MaterialProgress::Original
@@ -689,9 +882,9 @@ fn determine_progress_prototype_seq(
         })
         .unwrap_or(false);
     let in_done_webp = done_dir.exists()
-        && find_webp_in_proto_subdirs(done_dir, base_name, sub_name, "an");
+        && find_webp_in_subdirs(done_dir, base_name, "an", Some(sub_name));
     let in_done_any = done_dir.exists()
-        && find_file_in_proto_subdirs(done_dir, base_name, sub_name, "an");
+        && find_file_in_subdirs(done_dir, base_name, "an", Some(sub_name));
 
     if in_nextcloud {
         if !in_done_webp {
@@ -708,69 +901,6 @@ fn determine_progress_prototype_seq(
     MaterialProgress::Original
 }
 
-/// 在 [prefix-XX]/{sub_name}/ 下查找文件
-fn find_file_in_proto_subdirs(
-    dir: &Path,
-    base_name: &str,
-    sub_name: &str,
-    prefix: &str,
-) -> bool {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            if prefix.is_empty() || dir_name.starts_with(&format!("[{}-", prefix)) {
-                let sub_dir = path.join(sub_name);
-                if sub_dir.exists() && find_file_in_dir(&sub_dir, base_name) {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
-/// 在 [an-XX-YY]/{sub_name}/ 下查找 .webp 文件（Prototype 序列帧完成判定）
-fn find_webp_in_proto_subdirs(dir: &Path, base_name: &str, sub_name: &str, prefix: &str) -> bool {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            if !dir_name.starts_with(&format!("[{}-", prefix)) {
-                continue;
-            }
-            let sub_dir = path.join(sub_name);
-            if sub_dir.exists() {
-                if let Ok(files) = fs::read_dir(&sub_dir) {
-                    for f in files.flatten() {
-                        let fpath = f.path();
-                        if !fpath.is_file() {
-                            continue;
-                        }
-                        let fname = fpath.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                        let fext = fpath.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                        if fext == "webp" && fname.starts_with(base_name) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    false
-}
 
 fn collect_fps_for_sequence(base_name: &str, done_dir: &Path) -> Option<u32> {
     if !done_dir.exists() {
@@ -813,7 +943,8 @@ fn collect_fps_for_sequence(base_name: &str, done_dir: &Path) -> Option<u32> {
     None
 }
 
-fn collect_scales_for_proto_sequence(base_name: &str, sub_name: &str, done_dir: &Path) -> Vec<u32> {
+
+fn collect_scales_for_sequence(base_name: &str, done_dir: &Path, sub_name: Option<&str>) -> Vec<u32> {
     let mut scales = Vec::new();
     if !done_dir.exists() {
         return scales;
@@ -824,15 +955,13 @@ fn collect_scales_for_proto_sequence(base_name: &str, sub_name: &str, done_dir: 
             if !path.is_dir() {
                 continue;
             }
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let dir_name = entry.file_name().to_string_lossy().to_string();
             if !dir_name.starts_with("[an-") || !dir_name.ends_with(']') {
                 continue;
             }
-            let sub_dir = path.join(sub_name);
-            if sub_dir.exists() && find_file_in_dir(&sub_dir, base_name) {
+            let sub_dir = sub_name.map(|s| path.join(s));
+            let search_dir = sub_dir.as_deref().unwrap_or(&path);
+            if search_dir.exists() && find_file_in_dir(search_dir, base_name) {
                 let inner = dir_name.trim_start_matches('[').trim_end_matches(']');
                 let parts: Vec<&str> = inner.split('-').collect();
                 if parts.len() >= 2 {
@@ -848,41 +977,7 @@ fn collect_scales_for_proto_sequence(base_name: &str, sub_name: &str, done_dir: 
     scales
 }
 
-fn collect_scales_for_sequence(base_name: &str, done_dir: &Path) -> Vec<u32> {
-    let mut scales = Vec::new();
-    if !done_dir.exists() {
-        return scales;
-    }
-    if let Ok(entries) = fs::read_dir(done_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            if !dir_name.starts_with("[an-") || !dir_name.ends_with(']') {
-                continue;
-            }
-            if find_file_in_dir(&path, base_name) {
-                let inner = dir_name.trim_start_matches('[').trim_end_matches(']');
-                let parts: Vec<&str> = inner.split('-').collect();
-                if parts.len() >= 2 {
-                    if let Ok(scale) = parts[1].parse::<u32>() {
-                        scales.push(scale);
-                    }
-                }
-            }
-        }
-    }
-    scales.sort();
-    scales.dedup();
-    scales
-}
-
-fn collect_scales_for_image(base_name: &str, scale_dir: &Path) -> Vec<u32> {
+fn collect_scales_for_image(base_name: &str, scale_dir: &Path, sub_name: Option<&str>) -> Vec<u32> {
     let mut scales = Vec::new();
     if !scale_dir.exists() {
         return scales;
@@ -893,15 +988,14 @@ fn collect_scales_for_image(base_name: &str, scale_dir: &Path) -> Vec<u32> {
             if !path.is_dir() {
                 continue;
             }
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let dir_name = entry.file_name().to_string_lossy().to_string();
             // [XX] 格式
             if !dir_name.starts_with('[') || !dir_name.ends_with(']') {
                 continue;
             }
-            if find_file_in_dir(&path, base_name) {
+            let sub_dir = sub_name.map(|s| path.join(s));
+            let search_dir = sub_dir.as_deref().unwrap_or(&path);
+            if search_dir.exists() && find_file_in_dir(search_dir, base_name) {
                 let scale_str = dir_name.trim_start_matches('[').trim_end_matches(']');
                 if let Ok(scale) = scale_str.parse::<u32>() {
                     scales.push(scale);
@@ -914,75 +1008,36 @@ fn collect_scales_for_image(base_name: &str, scale_dir: &Path) -> Vec<u32> {
     scales
 }
 
-fn collect_scales_for_proto_image(base_name: &str, sub_name: &str, scale_dir: &Path) -> Vec<u32> {
-    let mut scales = Vec::new();
-    if !scale_dir.exists() {
-        return scales;
-    }
-    if let Ok(entries) = fs::read_dir(scale_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            if !dir_name.starts_with('[') || !dir_name.ends_with(']') {
-                continue;
-            }
-            let sub_dir = path.join(sub_name);
-            if sub_dir.exists() && find_file_in_dir(&sub_dir, base_name) {
-                let scale_str = dir_name.trim_start_matches('[').trim_end_matches(']');
-                if let Ok(scale) = scale_str.parse::<u32>() {
-                    scales.push(scale);
-                }
-            }
-        }
-    }
-    scales.sort();
-    scales.dedup();
-    scales
-}
 
-fn determine_progress_image(
+
+/// 缓存版：判定静帧进度（scan_materials 专用，避免重复 read_dir）
+fn determine_progress_image_cached(
     base_name: &str,
-    scale_dir: &Path,
-    done_dir: &Path,
-    nextcloud_dir: &Option<std::path::PathBuf>,
+    scale_cache: &DirSnapshot,
+    done_cache: &DirSnapshot,
+    nc_cache: &DirSnapshot,
 ) -> MaterialProgress {
-    // 检查 nextcloud
-    if let Some(nc) = nextcloud_dir {
-        if nc.exists() && find_file_in_dir(nc, base_name) {
-            return MaterialProgress::Uploaded;
-        }
+    if nc_cache.has_file_in_root(base_name) {
+        return MaterialProgress::Uploaded;
     }
-
-    // 检查 02_done/[img-*]/
-    if done_dir.exists() && find_file_in_subdirs(done_dir, base_name, "img") {
+    if done_cache.has_file_in_subdirs(base_name, "img") {
         return MaterialProgress::Done;
     }
-
-    // 检查 01_scale/[XX]/
-    if scale_dir.exists() && find_file_in_subdirs(scale_dir, base_name, "") {
+    if scale_cache.has_file_in_subdirs(base_name, "") {
         return MaterialProgress::Scaled;
     }
-
     MaterialProgress::Original
 }
 
-fn determine_progress_sequence(
+/// 缓存版：判定序列帧进度（scan_materials 专用，避免重复 read_dir）
+fn determine_progress_sequence_cached(
     base_name: &str,
-    done_dir: &Path,
-    nextcloud_dir: &Option<std::path::PathBuf>,
+    done_cache: &DirSnapshot,
+    nc_cache: &DirSnapshot,
 ) -> MaterialProgress {
-    let in_nextcloud = nextcloud_dir
-        .as_ref()
-        .map(|nc| nc.exists() && find_file_in_dir(nc, base_name))
-        .unwrap_or(false);
-    let in_done_webp = done_dir.exists() && find_webp_in_subdirs(done_dir, base_name, "an");
-    let in_done_any = done_dir.exists() && find_file_in_subdirs(done_dir, base_name, "an");
+    let in_nextcloud = nc_cache.has_file_in_root(base_name);
+    let in_done_webp = done_cache.has_webp_in_subdirs(base_name, "an");
+    let in_done_any = done_cache.has_file_in_subdirs(base_name, "an");
 
     if in_nextcloud {
         if !in_done_webp {
@@ -1015,19 +1070,18 @@ fn find_file_in_dir(dir: &Path, base_name: &str) -> bool {
     false
 }
 
-fn find_file_in_subdirs(dir: &Path, base_name: &str, prefix: &str) -> bool {
+fn find_file_in_subdirs(dir: &Path, base_name: &str, prefix: &str, sub_name: Option<&str>) -> bool {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_dir() {
                 continue;
             }
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let dir_name = entry.file_name().to_string_lossy().to_string();
             if prefix.is_empty() || dir_name.starts_with(&format!("[{}-", prefix)) {
-                if find_file_in_dir(&path, base_name) {
+                let sub_dir = sub_name.map(|s| path.join(s));
+                let search_dir = sub_dir.as_deref().unwrap_or(&path);
+                if search_dir.exists() && find_file_in_dir(search_dir, base_name) {
                     return true;
                 }
             }
@@ -1036,21 +1090,23 @@ fn find_file_in_subdirs(dir: &Path, base_name: &str, prefix: &str) -> bool {
     false
 }
 
-fn find_webp_in_subdirs(dir: &Path, base_name: &str, prefix: &str) -> bool {
+fn find_webp_in_subdirs(dir: &Path, base_name: &str, prefix: &str, sub_name: Option<&str>) -> bool {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_dir() {
                 continue;
             }
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let dir_name = entry.file_name().to_string_lossy().to_string();
             if !dir_name.starts_with(&format!("[{}-", prefix)) {
                 continue;
             }
-            if let Ok(files) = fs::read_dir(&path) {
+            let sub_dir = sub_name.map(|s| path.join(s));
+            let search_dir = sub_dir.as_deref().unwrap_or(&path);
+            if !search_dir.exists() {
+                continue;
+            }
+            if let Ok(files) = fs::read_dir(search_dir) {
                 for f in files.flatten() {
                     let fpath = f.path();
                     if !fpath.is_file() {
@@ -1090,82 +1146,6 @@ fn find_first_frame(dir: &Path) -> Option<String> {
     files.first().map(|p| p.to_string_lossy().to_string())
 }
 
-fn done_size_sequence(done_dir: &Path, base_name: &str) -> Option<u64> {
-    if !done_dir.exists() {
-        return None;
-    }
-    let mut total: u64 = 0;
-    let mut found = false;
-    if let Ok(entries) = fs::read_dir(done_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            if !dir_name.starts_with("[an-") {
-                continue;
-            }
-            total += sum_files_in_dir(&path, base_name);
-            if total > 0 {
-                found = true;
-            }
-        }
-    }
-    if found { Some(total) } else { None }
-}
-
-fn done_size_image(done_dir: &Path, base_name: &str) -> Option<u64> {
-    if !done_dir.exists() {
-        return None;
-    }
-    let mut total: u64 = 0;
-    let mut found = false;
-    if let Ok(entries) = fs::read_dir(done_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            if !dir_name.starts_with("[img-") {
-                continue;
-            }
-            total += sum_files_in_dir(&path, base_name);
-            if total > 0 {
-                found = true;
-            }
-        }
-    }
-    if found { Some(total) } else { None }
-}
-
-fn sum_files_in_dir(dir: &Path, base_name: &str) -> u64 {
-    let mut total: u64 = 0;
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            if !name.starts_with(base_name) {
-                continue;
-            }
-            total += path.metadata().map(|m| m.len()).unwrap_or(0);
-        }
-    }
-    total
-}
 
 /// 列出序列帧目录中的所有帧文件路径（按文件名排序）
 /// 当提供 base_name 时，只返回匹配 {base_name}_NN.ext 模式的文件

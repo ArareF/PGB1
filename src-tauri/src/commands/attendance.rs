@@ -146,16 +146,122 @@ fn read_webview_hash_state(webview: &tauri::WebviewWindow) -> String {
         .unwrap_or_default()
 }
 
-/// 打卡自动化内部实现
-async fn execute_clock_action_inner(
-    app_handle: tauri::AppHandle,
-    action: String,
-) -> Result<String, String> {
+/// 共享的 WebView 登录流程：创建窗口 → 打开打卡网站 → 填写凭据 → 登录
+/// 返回 (WebviewWindow, 配置URL, 应用配置目录)
+async fn webview_login_flow(
+    app_handle: &tauri::AppHandle,
+    config: &AttendanceConfig,
+    password: &str,
+    label: &str,
+    visible: bool,
+    emit_fn: fn(&tauri::AppHandle, &str, &str),
+) -> Result<(tauri::WebviewWindow, String), String> {
     use tauri::Manager;
 
-    emit_progress(&app_handle, "loading-config", "正在加载配置...");
+    emit_fn(app_handle, "opening-page", "正在打开打卡网站...");
 
-    // 1. 加载配置和密码
+    // 1. 创建 WebView 窗口（关闭已有同名窗口）
+    if let Some(existing) = app_handle.get_webview_window(label) {
+        let _ = existing.close();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
+    let url = config.attendance.url.clone();
+    let mut builder = tauri::WebviewWindowBuilder::new(
+        app_handle,
+        label,
+        tauri::WebviewUrl::External(url.parse().map_err(|e| format!("URL 无效: {}", e))?),
+    )
+    .title(if visible { "打卡测试" } else { "PGB1 打卡" })
+    .inner_size(1024.0, 768.0)
+    .visible(visible);
+    if visible {
+        builder = builder.center();
+    }
+    let webview_window = builder
+        .build()
+        .map_err(|e| format!("创建打卡 WebView 失败: {}", e))?;
+
+    // 2. 等待页面加载
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+    // 如果已在打刻页（可能 URL 直指打刻页或已登录），跳过登录
+    let current_url = get_webview_url(&webview_window);
+    if current_url.contains("record/register") {
+        return Ok((webview_window, url));
+    }
+
+    emit_fn(app_handle, "logging-in", "正在登录...");
+
+    // 3. 填写账号
+    let fill_username_js = format!(
+        r#"(function() {{
+            var el = document.querySelector('input[type="email"], input[name="username"], input[name="email"], input[type="text"]');
+            if (el) {{ el.value = '{}'; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
+            return 'not_found';
+        }})()"#,
+        config.username.replace('\'', "\\'").replace('"', "\\\"")
+    );
+    let _ = webview_window.eval(&fill_username_js);
+
+    // 4. 填写密码
+    let fill_password_js = format!(
+        r#"(function() {{
+            var el = document.querySelector('input[type="password"]');
+            if (el) {{ el.value = '{}'; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
+            return 'not_found';
+        }})()"#,
+        password.replace('\'', "\\'").replace('"', "\\\"")
+    );
+    let _ = webview_window.eval(&fill_password_js);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // 5. 点击登录按钮（模拟完整鼠标事件链）
+    let login_js = r#"(function() {
+        function simulateClick(el) {
+            var rect = el.getBoundingClientRect();
+            var cx = rect.left + rect.width / 2;
+            var cy = rect.top + rect.height / 2;
+            var opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy};
+            el.dispatchEvent(new MouseEvent('mousedown', opts));
+            el.dispatchEvent(new MouseEvent('mouseup', opts));
+            el.dispatchEvent(new MouseEvent('click', opts));
+        }
+        var buttons = document.querySelectorAll('button, input[type="submit"]');
+        for (var i = 0; i < buttons.length; i++) {
+            var text = buttons[i].textContent || buttons[i].value || '';
+            if (text.indexOf('ログイン') >= 0 || text.indexOf('Login') >= 0 || text.indexOf('login') >= 0) {
+                if (!buttons[i].disabled) { simulateClick(buttons[i]); return 'clicked'; }
+            }
+        }
+        return 'not_found';
+    })()"#;
+    let _ = webview_window.eval(login_js);
+
+    // 6. 轮询等待登录跳转（URL 离开 login 页即成功，最多 10 秒）
+    let mut login_ok = false;
+    for _ in 0..20 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let u = get_webview_url(&webview_window);
+        if !u.is_empty() && !u.contains("login") {
+            login_ok = true;
+            break;
+        }
+    }
+    if !login_ok {
+        return Err("登录失败：账号或密码错误，请前往「程序设置 → 日报打卡」检查账号和密码".to_string());
+    }
+
+    Ok((webview_window, url))
+}
+
+/// 加载打卡配置和密码（execute/test 共用前置校验）
+fn load_clock_config_and_password(
+    app_handle: &tauri::AppHandle,
+) -> Result<(AttendanceConfig, String, std::path::PathBuf), String> {
+    use tauri::Manager;
+
     let config_dir = app_handle
         .path()
         .app_config_dir()
@@ -169,6 +275,36 @@ async fn execute_clock_action_inner(
     } else {
         return Err("请先配置日报打卡设置".to_string());
     };
+
+    if config.attendance.url.is_empty() {
+        return Err("打卡网站 URL 未配置".to_string());
+    }
+    if config.username.is_empty() {
+        return Err("账号未配置".to_string());
+    }
+
+    let password = {
+        let entry = keyring::Entry::new("pgb1-attendance", &config.username)
+            .map_err(|e| format!("读取凭据失败: {}", e))?;
+        match entry.get_password() {
+            Ok(pwd) => pwd,
+            Err(keyring::Error::NoEntry) => return Err("密码未配置".to_string()),
+            Err(e) => return Err(format!("读取密码失败: {}", e)),
+        }
+    };
+
+    Ok((config, password, config_dir))
+}
+
+/// 打卡自动化内部实现
+async fn execute_clock_action_inner(
+    app_handle: tauri::AppHandle,
+    action: String,
+) -> Result<String, String> {
+    emit_progress(&app_handle, "loading-config", "正在加载配置...");
+
+    // 1. 加载配置和密码
+    let (config, password, config_dir) = load_clock_config_and_password(&app_handle)?;
 
     // ── 模式分发 ──────────────────────────────────────────────
     if config.mode == "off" {
@@ -192,109 +328,11 @@ async fn execute_clock_action_inner(
         emit_progress(&app_handle, "success", &format!("已记录 {}", actual_time));
         return Ok(format!("已记录 {}", actual_time));
     }
-    // ── 以下为 mode == "auto" 的 WebView 自动化逻辑 ─────────────
-    if config.attendance.url.is_empty() {
-        return Err("打卡网站 URL 未配置".to_string());
-    }
-    if config.username.is_empty() {
-        return Err("账号未配置".to_string());
-    }
 
-    let password = {
-        let entry = keyring::Entry::new("pgb1-attendance", &config.username)
-            .map_err(|e| format!("读取凭据失败: {}", e))?;
-        match entry.get_password() {
-            Ok(pwd) => pwd,
-            Err(keyring::Error::NoEntry) => return Err("密码未配置".to_string()),
-            Err(e) => return Err(format!("读取密码失败: {}", e)),
-        }
-    };
-
-    emit_progress(&app_handle, "opening-page", "正在打开打卡网站...");
-
-    // 2. 创建隐藏 WebView 窗口
-    let webview_label = "webview-clock";
-    if let Some(existing) = app_handle.get_webview_window(webview_label) {
-        let _ = existing.close();
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    }
-
-    let url = config.attendance.url.clone();
-    let webview_window = tauri::WebviewWindowBuilder::new(
-        &app_handle,
-        webview_label,
-        tauri::WebviewUrl::External(url.parse().map_err(|e| format!("URL 无效: {}", e))?),
-    )
-    .title("PGB1 打卡")
-    .inner_size(1024.0, 768.0)
-    .visible(false)
-    .build()
-    .map_err(|e| format!("创建打卡 WebView 失败: {}", e))?;
-
-    // 3. 等待页面加载
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-    emit_progress(&app_handle, "logging-in", "正在登录...");
-
-    // 4. 填写账号
-    let fill_username_js = format!(
-        r#"(function() {{
-            var el = document.querySelector('input[type="email"], input[name="username"], input[name="email"], input[type="text"]');
-            if (el) {{ el.value = '{}'; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
-            return 'not_found';
-        }})()"#,
-        config.username.replace('\'', "\\'").replace('"', "\\\"")
-    );
-    let _ = webview_window.eval(&fill_username_js);
-
-    // 5. 填写密码
-    let fill_password_js = format!(
-        r#"(function() {{
-            var el = document.querySelector('input[type="password"]');
-            if (el) {{ el.value = '{}'; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
-            return 'not_found';
-        }})()"#,
-        password.replace('\'', "\\'").replace('"', "\\\"")
-    );
-    let _ = webview_window.eval(&fill_password_js);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    // 6. 点击登录按钮（模拟完整鼠标事件链）
-    let login_js = r#"(function() {
-        function simulateClick(el) {
-            var rect = el.getBoundingClientRect();
-            var cx = rect.left + rect.width / 2;
-            var cy = rect.top + rect.height / 2;
-            var opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy};
-            el.dispatchEvent(new MouseEvent('mousedown', opts));
-            el.dispatchEvent(new MouseEvent('mouseup', opts));
-            el.dispatchEvent(new MouseEvent('click', opts));
-        }
-        var buttons = document.querySelectorAll('button, input[type="submit"]');
-        for (var i = 0; i < buttons.length; i++) {
-            var text = buttons[i].textContent || buttons[i].value || '';
-            if (text.indexOf('ログイン') >= 0 || text.indexOf('Login') >= 0 || text.indexOf('login') >= 0) {
-                if (!buttons[i].disabled) { simulateClick(buttons[i]); return 'clicked'; }
-            }
-        }
-        return 'not_found';
-    })()"#;
-    let _ = webview_window.eval(login_js);
-
-    // 7. 轮询等待登录跳转（URL 离开 login 页即成功，最多 10 秒）
-    let mut login_ok = false;
-    for _ in 0..20 {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let u = get_webview_url(&webview_window);
-        if !u.is_empty() && !u.contains("login") {
-            login_ok = true;
-            break;
-        }
-    }
-    if !login_ok {
-        return Err("登录失败：账号或密码错误，请前往「程序设置 → 日报打卡」检查账号和密码".to_string());
-    }
+    // ── WebView 自动化登录 ─────────────
+    let (webview_window, url) = webview_login_flow(
+        &app_handle, &config, &password, "webview-clock", false, emit_progress,
+    ).await?;
 
     emit_progress(&app_handle, "navigating", "正在进入打刻页面...");
 
@@ -533,156 +571,17 @@ fn emit_test_progress(app: &tauri::AppHandle, step: &str, message: &str) {
 }
 
 async fn test_clock_action_inner(app_handle: tauri::AppHandle) -> Result<(), String> {
-    use tauri::Manager;
-
     emit_test_progress(&app_handle, "loading-config", "正在加载配置...");
 
     // 1. 加载配置和密码
-    let config_dir = app_handle
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("获取配置目录失败: {}", e))?;
-    let config_path = config_dir.join("attendance_config.json");
+    let (config, password, _config_dir) = load_clock_config_and_password(&app_handle)?;
 
-    let config: AttendanceConfig = if config_path.exists() {
-        let content =
-            fs::read_to_string(&config_path).map_err(|e| format!("读取配置失败: {}", e))?;
-        serde_json::from_str(&content).map_err(|e| format!("解析配置失败: {}", e))?
-    } else {
-        return Err("请先配置日报打卡设置".to_string());
-    };
-
-    if config.attendance.url.is_empty() {
-        return Err("打卡网站 URL 未配置".to_string());
-    }
-    if config.username.is_empty() {
-        return Err("账号未配置".to_string());
-    }
-
-    let password = {
-        let entry = keyring::Entry::new("pgb1-attendance", &config.username)
-            .map_err(|e| format!("读取凭据失败: {}", e))?;
-        match entry.get_password() {
-            Ok(pwd) => pwd,
-            Err(keyring::Error::NoEntry) => return Err("密码未配置".to_string()),
-            Err(e) => return Err(format!("读取密码失败: {}", e)),
-        }
-    };
-
-    emit_test_progress(&app_handle, "opening-page", "正在打开打卡网站...");
-
-    // 2. 创建 **可见** WebView 窗口
-    let webview_label = "webview-clock-test";
-    if let Some(existing) = app_handle.get_webview_window(webview_label) {
-        let _ = existing.close();
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    }
-
-    let url = config.attendance.url.clone();
-    let webview_window = tauri::WebviewWindowBuilder::new(
-        &app_handle,
-        webview_label,
-        tauri::WebviewUrl::External(url.parse().map_err(|e| format!("URL 无效: {}", e))?),
-    )
-    .title("打卡测试")
-    .inner_size(1024.0, 768.0)
-    .visible(true)
-    .center()
-    .build()
-    .map_err(|e| format!("创建测试 WebView 失败: {}", e))?;
-
-    // 3. 等待页面加载
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    // 2. WebView 登录流程（可见窗口）
+    let (webview_window, url) = webview_login_flow(
+        &app_handle, &config, &password, "webview-clock-test", true, emit_test_progress,
+    ).await?;
 
     let current_url = get_webview_url(&webview_window);
-    emit_test_progress(
-        &app_handle,
-        "page-loaded",
-        &format!("页面已加载：{}", current_url),
-    );
-
-    // 如果已在打刻页（可能配置 URL 直指打刻页或登录后自动跳转），跳过登录
-    if current_url.contains("record/register") {
-        emit_test_progress(&app_handle, "success", "已直接到达打刻页面，测试通过！");
-        return Ok(());
-    }
-
-    emit_test_progress(&app_handle, "logging-in", "正在填写账号密码...");
-
-    // 4. 填写账号
-    let fill_username_js = format!(
-        r#"(function() {{
-            var el = document.querySelector('input[type="email"], input[name="username"], input[name="email"], input[type="text"]');
-            if (el) {{ el.value = '{}'; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
-            return 'not_found';
-        }})()"#,
-        config.username.replace('\'', "\\'").replace('"', "\\\"")
-    );
-    let _ = webview_window.eval(&fill_username_js);
-
-    // 5. 填写密码
-    let fill_password_js = format!(
-        r#"(function() {{
-            var el = document.querySelector('input[type="password"]');
-            if (el) {{ el.value = '{}'; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
-            return 'not_found';
-        }})()"#,
-        password.replace('\'', "\\'").replace('"', "\\\"")
-    );
-    let _ = webview_window.eval(&fill_password_js);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    emit_test_progress(&app_handle, "clicking-login", "正在点击登录...");
-
-    // 6. 点击登录按钮
-    let login_js = r#"(function() {
-        function simulateClick(el) {
-            var rect = el.getBoundingClientRect();
-            var cx = rect.left + rect.width / 2;
-            var cy = rect.top + rect.height / 2;
-            var opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy};
-            el.dispatchEvent(new MouseEvent('mousedown', opts));
-            el.dispatchEvent(new MouseEvent('mouseup', opts));
-            el.dispatchEvent(new MouseEvent('click', opts));
-        }
-        var buttons = document.querySelectorAll('button, input[type="submit"]');
-        for (var i = 0; i < buttons.length; i++) {
-            var text = buttons[i].textContent || buttons[i].value || '';
-            if (text.indexOf('ログイン') >= 0 || text.indexOf('Login') >= 0 || text.indexOf('login') >= 0) {
-                if (!buttons[i].disabled) { simulateClick(buttons[i]); return 'clicked'; }
-            }
-        }
-        return 'not_found';
-    })()"#;
-    let _ = webview_window.eval(login_js);
-
-    // 7. 轮询等待登录跳转（最多 10 秒）
-    let mut login_ok = false;
-    let mut current_url = String::new();
-    for _ in 0..20 {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        current_url = get_webview_url(&webview_window);
-        if !current_url.is_empty() && !current_url.contains("login") {
-            login_ok = true;
-            break;
-        }
-    }
-
-    emit_test_progress(
-        &app_handle,
-        "after-login",
-        &format!("登录后页面：{}", current_url),
-    );
-
-    if !login_ok {
-        emit_test_progress(
-            &app_handle,
-            "error",
-            &format!("登录失败，仍在登录页：{}", current_url),
-        );
-        return Err("登录失败".to_string());
-    }
 
     // 如果登录后已经在打刻页
     if current_url.contains("record/register") {

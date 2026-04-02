@@ -7,13 +7,14 @@ import { startDrag } from '@crabnebula/tauri-plugin-drag'
 import { useNavigation } from '../composables/useNavigation'
 import { useProjects } from '../composables/useProjects'
 import { useDirectoryFiles, type FileEntry } from '../composables/useDirectoryFiles'
-import { useNotes, toggleCheckbox } from '../composables/useNotes'
+import { useNotes, usePageNote } from '../composables/useNotes'
+import { useMultiSelect } from '../composables/useMultiSelect'
+import { createDragHandler } from '../composables/useDragIntent'
 import NormalCard from '../components/NormalCard.vue'
 import NoteDialog from '../components/NoteDialog.vue'
 import NoteRenderer from '../components/NoteRenderer.vue'
 import FileDetailSidebar from '../components/FileDetailSidebar.vue'
 import FolderBrowserDialog from '../components/FolderBrowserDialog.vue'
-import { useRubberBandSelect } from '../composables/useRubberBandSelect'
 import { useI18n } from 'vue-i18n'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
@@ -33,8 +34,8 @@ const showGuide = ref(false)
 
 // 笔记
 const { loadNotes, hasNote, saveNote, getNote } = useNotes(dirPathRef)
-const showPageNote = ref(false)
-const pageNoteText = ref('')
+const { showPageNote, pageNoteText, openPageNote, closePageNote, onPageNoteSave, onPageNoteUpdate, onPageNoteCheckbox } =
+  usePageNote(getNote, saveNote, 'page')
 
 async function openPinboard() {
   if (!dirPathRef.value) return
@@ -43,12 +44,6 @@ async function openPinboard() {
     canvasKey: 'game-intro',
     title: t('gameIntro.title'),
   })
-}
-
-function onPageNoteCheckbox(key: string, lineIndex: number) {
-  const raw = getNote(key) ?? ''
-  const updated = toggleCheckbox(raw, lineIndex)
-  saveNote(key, updated)
 }
 
 /** 侧边栏选中文件 */
@@ -63,50 +58,16 @@ const folderBrowserPath = ref('')
 const gameExePath = ref<string | null>(null)
 
 const scrollRef = ref<HTMLElement | null>(null)
-const isMultiSelect = ref(false)
-const selectedPaths = ref<Set<string>>(new Set())
 
-const isAllSelected = computed(() =>
-  files.value.filter(f => !f.is_dir).length > 0 &&
-  files.value.filter(f => !f.is_dir).every(f => selectedPaths.value.has(f.path))
-)
-
-function toggleMultiSelect() {
-  if (isMultiSelect.value) {
-    isMultiSelect.value = false
-    selectedPaths.value = new Set()
-  } else {
-    isMultiSelect.value = true
-    selectedFile.value = null
-  }
-}
-
-function toggleSelectAll() {
-  const fileOnly = files.value.filter(f => !f.is_dir)
-  if (isAllSelected.value) {
-    selectedPaths.value = new Set()
-  } else {
-    selectedPaths.value = new Set(fileOnly.map(f => f.path))
-  }
-}
-
-function toggleFileSelection(file: FileEntry) {
-  const newSet = new Set(selectedPaths.value)
-  if (newSet.has(file.path)) {
-    newSet.delete(file.path)
-  } else {
-    newSet.add(file.path)
-  }
-  selectedPaths.value = newSet
-}
-
-const { isSelecting, selectionRect, justFinished, onContainerMouseDown, onContainerScroll } =
-  useRubberBandSelect({
-    containerRef: scrollRef,
-    cardSelector: '.normal-card[data-path]',
-    isEnabled: isMultiSelect,
-    onSelect: (paths) => { selectedPaths.value = paths },
-  })
+const {
+  isMultiSelect, selectedPaths, isAllSelected,
+  toggleMultiSelect, toggleSelection, toggleSelectAll,
+  isSelecting, selectionRect, justFinished, onContainerMouseDown, onContainerScroll,
+} = useMultiSelect({
+  allPaths: computed(() => files.value.filter(f => !f.is_dir).map(f => f.path)),
+  onEnter: () => { selectedFile.value = null },
+  rubberBand: { containerRef: scrollRef, cardSelector: '.normal-card[data-path]' },
+})
 
 function onCardClick(file: FileEntry) {
   if (file.is_dir) {
@@ -115,7 +76,7 @@ function onCardClick(file: FileEntry) {
     return
   }
   if (isMultiSelect.value) {
-    toggleFileSelection(file)
+    toggleSelection(file.path)
     return
   }
   if (selectedFile.value?.path === file.path) {
@@ -130,17 +91,6 @@ function onMainClick(e: MouseEvent) {
   if (!(e.target as HTMLElement).closest('.normal-card')) {
     selectedFile.value = null
   }
-}
-
-async function onPageNoteSave(text: string) {
-  await saveNote('page', text)
-  showPageNote.value = false
-}
-
-/** 页面笔记 checkbox 切换：静默保存，不关闭弹窗 */
-async function onPageNoteUpdate(text: string) {
-  pageNoteText.value = text
-  await saveNote('page', text)
 }
 
 async function onSidebarNoteSave(text: string) {
@@ -178,28 +128,13 @@ async function onSidebarDelete() {
 const isDragOver = ref(false)
 let unlistenDragDrop: (() => void) | null = null
 
-const DRAG_THRESHOLD = 5
-
 /** 卡片拖出：mousedown + 移动阈值 */
 function onCardMouseDown(e: MouseEvent, file: FileEntry) {
-  if (e.button !== 0 || file.is_dir) return
-
-  const startX = e.clientX
-  const startY = e.clientY
-  let dragStarted = false
-
-  function onMouseMove(ev: MouseEvent) {
-    if (dragStarted) return
-    const dx = ev.clientX - startX
-    const dy = ev.clientY - startY
-    if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-      dragStarted = true
-      cleanup()
+  createDragHandler(
+    () => {
       if (isMultiSelect.value) {
         if (!selectedPaths.value.has(file.path)) {
-          const newSet = new Set(selectedPaths.value)
-          newSet.add(file.path)
-          selectedPaths.value = newSet
+          toggleSelection(file.path)
         }
         const paths = [...selectedPaths.value]
         if (paths.length > 0) {
@@ -208,16 +143,9 @@ function onCardMouseDown(e: MouseEvent, file: FileEntry) {
       } else {
         startDrag({ item: [file.path], icon: '' }).catch(err => console.error('拖拽失败:', err))
       }
-    }
-  }
-
-  function onMouseUp() { cleanup() }
-  function cleanup() {
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-  }
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
+    },
+    (ev) => ev.button !== 0 || file.is_dir,
+  )(e)
 }
 
 /** 拖入处理 */
@@ -280,7 +208,6 @@ onMounted(async () => {
     await scanGameExe()
     if (gameExePath.value) refreshNav()
     await loadNotes()
-    pageNoteText.value = getNote('page') ?? ''
   }
 
   // 监听外部文件拖入
@@ -327,7 +254,7 @@ onUnmounted(() => {
         class="note-btn"
         :class="{ 'has-note': hasNote('page') }"
         :title="$t('note.pageNote')"
-        @click="pageNoteText = getNote('page') ?? ''; showPageNote = true"
+        @click="openPageNote()"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       </button>
@@ -434,7 +361,7 @@ onUnmounted(() => {
     :note="pageNoteText"
     @save="onPageNoteSave"
     @update="onPageNoteUpdate"
-    @cancel="showPageNote = false"
+    @cancel="closePageNote"
   />
 
   <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.gameIntro" @close="showGuide = false" />

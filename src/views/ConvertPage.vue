@@ -8,7 +8,7 @@ import { useNavigation } from '../composables/useNavigation'
 import { useMaterials } from '../composables/useMaterials'
 import { useSettings } from '../composables/useSettings'
 import MaterialCard from '../components/MaterialCard.vue'
-import { useRubberBandSelect } from '../composables/useRubberBandSelect'
+import { useMultiSelect } from '../composables/useMultiSelect'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
@@ -46,29 +46,19 @@ const totalPending = computed(() => pendingImages.value.length + pendingSequence
 
 // ─── 选中状态 ────────────────────────────────────────
 
-const selectedPaths = ref<Set<string>>(new Set())
 const cardAreaRef = ref<HTMLElement | null>(null)
-const alwaysEnabled = ref(true)
 
-const { isSelecting, selectionRect, onContainerMouseDown, onContainerScroll } =
-  useRubberBandSelect({
-    containerRef: cardAreaRef,
-    cardSelector: '.material-card[data-path]',
-    isEnabled: alwaysEnabled,
-    onSelect: (paths) => {
-      selectedPaths.value = paths
-    },
-  })
-
-function toggleItem(path: string) {
-  const newSet = new Set(selectedPaths.value)
-  if (newSet.has(path)) {
-    newSet.delete(path)
-  } else {
-    newSet.add(path)
-  }
-  selectedPaths.value = newSet
-}
+const {
+  selectedPaths, toggleSelection: toggleItem,
+  isSelecting, selectionRect, onContainerMouseDown, onContainerScroll,
+} = useMultiSelect({
+  allPaths: computed(() => [
+    ...pendingImages.value.map(m => m.path),
+    ...pendingSequences.value.map(m => m.path),
+  ]),
+  alwaysEnabled: true,
+  rubberBand: { containerRef: cardAreaRef, cardSelector: '.material-card[data-path]' },
+})
 
 function toggleSelectAll() {
   // 全选/取消全选仅针对静帧（序列帧需手动标注FPS）

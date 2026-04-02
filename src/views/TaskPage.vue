@@ -11,8 +11,9 @@ import { useMaterials } from '../composables/useMaterials'
 import { useSettings } from '../composables/useSettings'
 import type { MaterialInfo } from '../composables/useMaterials'
 import type { FileEntry } from '../composables/useDirectoryFiles'
-import { useNotes, toggleCheckbox } from '../composables/useNotes'
-import { useRubberBandSelect } from '../composables/useRubberBandSelect'
+import { useNotes, toggleCheckbox, usePageNote } from '../composables/useNotes'
+import { useMultiSelect } from '../composables/useMultiSelect'
+import { createDragHandler } from '../composables/useDragIntent'
 
 interface PreviewVideoEntry {
   name: string
@@ -80,68 +81,29 @@ let nextcloudPreviewPath = ''
 /** 当前视图模式 */
 const viewMode = ref<'tree' | 'name'>('tree')
 
-/** 多选模式状态 */
-const isMultiSelect = ref(false)
-const selectedPaths = ref<Set<string>>(new Set())
-
-function toggleMultiSelect() {
-  if (isMultiSelect.value) {
-    // 退出多选
-    isMultiSelect.value = false
-    selectedPaths.value = new Set()
-  } else {
-    // 进入多选，关闭侧边栏
-    isMultiSelect.value = true
-    if (selectedMaterial.value) {
-      closeSidebar()
-    }
-  }
-}
-
-function toggleMaterialSelection(material: MaterialInfo) {
-  const paths = new Set(selectedPaths.value)
-  if (paths.has(material.path)) {
-    paths.delete(material.path)
-  } else {
-    paths.add(material.path)
-  }
-  selectedPaths.value = paths
-}
-
-const isAllSelected = computed(() => {
-  return materials.value.length > 0 && selectedPaths.value.size === materials.value.length
-})
-
-function toggleSelectAll() {
-  if (isAllSelected.value) {
-    selectedPaths.value = new Set()
-  } else {
-    selectedPaths.value = new Set(materials.value.map(m => m.path))
-  }
-}
-
-const selectedMaterials = computed(() => {
-  return materials.value.filter(m => selectedPaths.value.has(m.path))
-})
-
-// ─── 框选多选 ──────────────────────────────────────
 /** 滚动容器 ref */
 const scrollRef = ref<HTMLElement | null>(null)
 
-const { isSelecting, selectionRect, justFinished, onContainerMouseDown, onContainerScroll } =
-  useRubberBandSelect({
-    containerRef: scrollRef,
-    cardSelector: '.material-card[data-path]',
-    isEnabled: isMultiSelect,
-    onSelect: (paths) => {
-      selectedPaths.value = paths
-    },
-  })
+const {
+  isMultiSelect, selectedPaths, isAllSelected,
+  toggleMultiSelect: _toggleMultiSelect, toggleSelection, toggleSelectAll,
+  isSelecting, selectionRect, justFinished, onContainerMouseDown, onContainerScroll,
+} = useMultiSelect({
+  allPaths: computed(() => materials.value.map(m => m.path)),
+  onEnter: () => { if (selectedMaterial.value) closeSidebar() },
+  rubberBand: { containerRef: scrollRef, cardSelector: '.material-card[data-path]' },
+})
+
+function toggleMultiSelect() { _toggleMultiSelect() }
+
+const selectedMaterials = computed(() =>
+  materials.value.filter(m => selectedPaths.value.has(m.path))
+)
 
 /** 卡片点击处理：多选模式下切换选中，否则打开侧边栏 */
 function onCardClick(material: MaterialInfo) {
   if (isMultiSelect.value) {
-    toggleMaterialSelection(material)
+    toggleSelection(material.path)
   } else {
     selectMaterial(material)
   }
@@ -163,8 +125,8 @@ const showGuide = ref(false)
 
 // 笔记
 const sidebarNoteText = ref('')
-const showPageNote = ref(false)
-const pageNoteText = ref('')
+const { showPageNote, pageNoteText, openPageNote, closePageNote, onPageNoteSave, onPageNoteUpdate, onPageNoteCheckbox } =
+  usePageNote(getProjectNote, saveProjectNote, computed(() => 'card:' + taskId.toLowerCase()))
 
 async function openPinboard() {
   if (!projectPathRef.value) return
@@ -175,34 +137,15 @@ async function openPinboard() {
   })
 }
 
-function onPageNoteCheckbox(key: string, lineIndex: number) {
-  const raw = getProjectNote(key) ?? ''
-  const updated = toggleCheckbox(raw, lineIndex)
-  saveProjectNote(key, updated)
-}
-
-/** 拖拽意图检测：mousedown 记录起始位置，mousemove 超过阈值后启动拖拽 */
-const DRAG_THRESHOLD = 5 // 像素
+// ─── 拖拽意图检测 ──────────────────────────────────────
 
 function onCardMouseDown(e: MouseEvent, material: MaterialInfo) {
-  if (e.button !== 0) return
-
-  const startX = e.clientX
-  const startY = e.clientY
-  let dragStarted = false
-
-  function onMouseMove(ev: MouseEvent) {
-    if (dragStarted) return
-    const dx = ev.clientX - startX
-    const dy = ev.clientY - startY
-    if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-      dragStarted = true
-      cleanup()
-
+  createDragHandler(
+    () => {
       // 确定要拖拽的素材
       if (isMultiSelect.value) {
         if (!selectedPaths.value.has(material.path)) {
-          toggleMaterialSelection(material)
+          toggleSelection(material.path)
         }
         if (selectedPaths.value.size > 0) {
           performDrag(selectedMaterials.value)
@@ -210,20 +153,9 @@ function onCardMouseDown(e: MouseEvent, material: MaterialInfo) {
       } else {
         performDrag([material])
       }
-    }
-  }
-
-  function onMouseUp() {
-    cleanup()
-  }
-
-  function cleanup() {
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-  }
-
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
+    },
+    (ev) => ev.button !== 0,
+  )(e)
 }
 
 async function performDrag(materialsToDrag: MaterialInfo[]) {
@@ -266,36 +198,14 @@ async function performDrag(materialsToDrag: MaterialInfo[]) {
 
 /** 版本卡片拖拽：直接拖出文件，不弹窗 */
 function onVersionMouseDown(e: MouseEvent, version: MaterialVersion) {
-  if (e.button !== 0) return
-
-  const startX = e.clientX
-  const startY = e.clientY
-  let dragStarted = false
-
-  function onMouseMove(ev: MouseEvent) {
-    if (dragStarted) return
-    const dx = ev.clientX - startX
-    const dy = ev.clientY - startY
-    if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-      dragStarted = true
-      cleanup()
+  createDragHandler(
+    () => {
       startDrag({ item: [version.file_path], icon: '' }).catch(err => {
         console.error('版本拖拽失败:', err)
       })
-    }
-  }
-
-  function onMouseUp() {
-    cleanup()
-  }
-
-  function cleanup() {
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-  }
-
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
+    },
+    (ev) => ev.button !== 0,
+  )(e)
 }
 
 /** 确认上传：复制文件到 nextcloud */
@@ -824,30 +734,9 @@ async function onSidebarNoteSave() {
   await saveTaskNote('card:' + m.name.toLowerCase(), sidebarNoteText.value)
 }
 
-async function onPageNoteSave(text: string) {
-  await saveProjectNote(pageNoteKey, text)
-  showPageNote.value = false
-}
-
-/** 页面笔记 checkbox 切换：静默保存，不关闭弹窗 */
-async function onPageNoteUpdate(text: string) {
-  pageNoteText.value = text
-  await saveProjectNote(pageNoteKey, text)
-}
-
 function onPreviewVideoMouseDown(e: MouseEvent, group: PreviewVideoGroup) {
-  if (e.button !== 0) return
-  const startX = e.clientX
-  const startY = e.clientY
-  let dragStarted = false
-
-  function onMouseMove(ev: MouseEvent) {
-    if (dragStarted) return
-    const dx = ev.clientX - startX
-    const dy = ev.clientY - startY
-    if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-      dragStarted = true
-      cleanup()
+  createDragHandler(
+    () => {
       const latest = group.versions[group.versions.length - 1]
       startDrag({ item: [latest.path], icon: '' }, (payload) => {
         if (payload.result === 'Dropped') {
@@ -857,18 +746,9 @@ function onPreviewVideoMouseDown(e: MouseEvent, group: PreviewVideoGroup) {
       }).catch(err => {
         console.error('预览视频拖拽失败:', err)
       })
-    }
-  }
-
-  function onMouseUp() { cleanup() }
-
-  function cleanup() {
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-  }
-
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
+    },
+    (ev) => ev.button !== 0,
+  )(e)
 }
 
 async function confirmPreviewUpload() {
@@ -1119,7 +999,6 @@ onMounted(async () => {
     await loadMaterials(taskFolderPath)
     await loadNotes()
     await loadProjectNotes()
-    pageNoteText.value = getProjectNote(pageNoteKey) ?? ''
 
     // 加载 03_preview 视频并分组
     try {
@@ -1193,7 +1072,7 @@ onUnmounted(() => {
           class="note-btn"
           :class="{ 'has-note': hasProjectNote(pageNoteKey) }"
           :title="$t('note.pageNote')"
-          @click="pageNoteText = getProjectNote(pageNoteKey) ?? ''; showPageNote = true"
+          @click="openPageNote()"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         </button>
@@ -1619,7 +1498,7 @@ onUnmounted(() => {
     :note="pageNoteText"
     @save="onPageNoteSave"
     @update="onPageNoteUpdate"
-    @cancel="showPageNote = false"
+    @cancel="closePageNote"
   />
 
   <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.task" @close="showGuide = false" />

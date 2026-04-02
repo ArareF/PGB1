@@ -458,6 +458,8 @@ defineExpose({
         :active-tool="(activeTool as any)"
         :active-color="activeColor"
         :canvas-zoom="viewport.zoom"
+        :stroke-size="strokeSize"
+        :font-size="fontSize"
         :style="{ zIndex: pin.zIndex }"
         @select="$emit('select-pin', pin.id)"
         @update-position="(x, y) => $emit('update-pin', pin.id, { x, y })"

@@ -285,7 +285,7 @@ async function handlePaste() {
 function zoomIn() {
   viewport.value = {
     ...viewport.value,
-    zoom: Math.min(5, viewport.value.zoom * 1.2),
+    zoom: Math.min(1.0, viewport.value.zoom * 1.2),
   }
 }
 

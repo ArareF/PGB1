@@ -1,11 +1,11 @@
 {
-  "version": "2.8.4",
-  "notes": "贴图板归位功能 + 中日翻译判别优化",
-  "pub_date": "2026-04-01T12:00:00Z",
+  "version": "2.8.5",
+  "notes": "贴图板绘制工具修复：笔刷大小/文字大小对贴图生效、绘制拖出边界不中断、缩放上限统一、笔刷光标指示器",
+  "pub_date": "2026-04-02T12:00:00Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNk9jdUZkd2NPSHlDTFVPalk2K3dqSFBVU1BDS1E0WWdLRWZ6SGNGVXg0RVAyMGlpRXZmdXFmNVJoSExMRHg0bzhQcm13YTBtY21wSzF2c1MwbGpITlFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1MDI0NzcwCWZpbGU6UEfntKDmnZDnrqHnkIbns7vnu59fMi44LjRfeDY0LXNldHVwLmV4ZQpXOW5Wdi9HS1I2RUhTakVidm0ybTFCNXZWVE5uZjgzVy9qTWZuQmc4bFlmcW9zeHJya2tCM3QzR0NxdFhwMmFEUU5paFhiRjFSdkVGT0x5UFYxeHRDdz09Cg==",
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.4/PG._2.8.4_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkNLY2IzbUkxVTJFdUtkRU8wa1phQ0N5V0NYUGlqYkgwSysxWEpyZjgxcFB4dEpEdzdvRklzeVFhNGp4UEJoOEQxVDZwOVdvOGJEei9NeDJOVlBldkFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1MDk4OTgxCWZpbGU6UEfntKDmnZDnrqHnkIbns7vnu59fMi44LjVfeDY0LXNldHVwLmV4ZQppNFNrZ0gvYXB0eVRqNkVOYy9QVzk5cXo4cXlrdUcwR0diaVF0Q1B6eVJDWFFnV01GWDl3YjZLbWxwdk1IL0JTcTVwWitzS3U1aXhJcEZzQWo1SDhCZz09Cg==",
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.5/PG._2.8.5_x64-setup.exe"
     }
   }
 }

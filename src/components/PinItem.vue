@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import type { PinInfo, PinAnnotation } from '../composables/usePinboard'
 
 const props = defineProps<{
@@ -9,6 +9,8 @@ const props = defineProps<{
   activeTool: 'select' | 'pen' | 'arrow' | 'rect' | 'ellipse' | 'text' | 'eraser'
   activeColor: string
   canvasZoom: number
+  strokeSize: number
+  fontSize: number
 }>()
 
 const emit = defineEmits<{
@@ -168,21 +170,21 @@ function onCanvasMouseDown(e: MouseEvent) {
     currentStroke.value = {
       type: 'eraser',
       color: 'rgba(0,0,0,1)',
-      strokeWidth: 20,
+      strokeWidth: props.strokeSize,
       points: [pos],
     }
   } else if (props.activeTool === 'pen') {
     currentStroke.value = {
       type: 'pen',
       color: props.activeColor,
-      strokeWidth: 3,
+      strokeWidth: props.strokeSize,
       points: [pos],
     }
   } else if (props.activeTool === 'arrow') {
     currentStroke.value = {
       type: 'arrow',
       color: props.activeColor,
-      strokeWidth: 3,
+      strokeWidth: props.strokeSize,
       start: pos,
       end: pos,
     }
@@ -190,7 +192,7 @@ function onCanvasMouseDown(e: MouseEvent) {
     currentStroke.value = {
       type: 'rect',
       color: props.activeColor,
-      strokeWidth: 3,
+      strokeWidth: props.strokeSize,
       start: pos,
       end: pos,
     }
@@ -198,16 +200,18 @@ function onCanvasMouseDown(e: MouseEvent) {
     currentStroke.value = {
       type: 'ellipse',
       color: props.activeColor,
-      strokeWidth: 3,
+      strokeWidth: props.strokeSize,
       start: pos,
       end: pos,
     }
   }
 
   renderAnnotations()
+  window.addEventListener('mousemove', onGlobalDrawMove)
+  window.addEventListener('mouseup', onGlobalDrawUp)
 }
 
-function onCanvasMouseMove(e: MouseEvent) {
+function onGlobalDrawMove(e: MouseEvent) {
   if (!isDrawing || !currentStroke.value) return
   const pos = toNormalized(e)
 
@@ -220,7 +224,7 @@ function onCanvasMouseMove(e: MouseEvent) {
   renderAnnotations()
 }
 
-function onCanvasMouseUp() {
+function onGlobalDrawUp() {
   if (!isDrawing || !currentStroke.value) return
   isDrawing = false
 
@@ -239,6 +243,8 @@ function onCanvasMouseUp() {
 
   currentStroke.value = null
   renderAnnotations()
+  window.removeEventListener('mousemove', onGlobalDrawMove)
+  window.removeEventListener('mouseup', onGlobalDrawUp)
 }
 
 function onCanvasClick(e: MouseEvent) {
@@ -266,7 +272,7 @@ function onTextInputConfirm() {
       strokeWidth: 1,
       text: textInputValue.value.trim(),
       position: textInputNormPos,
-      fontSize: 16,
+      fontSize: props.fontSize,
     })
   }
   textInputVisible.value = false
@@ -406,6 +412,32 @@ onMounted(() => {
   nextTick(syncCanvasSize)
 })
 
+// ─── 笔刷/橡皮擦光标指示器 ──────────────────────────────
+const pinMouseX = ref(0)
+const pinMouseY = ref(0)
+const mouseInPin = ref(false)
+
+const showBrushCursor = computed(() =>
+  mouseInPin.value && (props.activeTool === 'pen' || props.activeTool === 'eraser')
+)
+
+const brushCursorStyle = computed(() => {
+  const size = Math.max(props.strokeSize * Math.min(props.pin.width, props.pin.height) / 500, 4)
+  return {
+    left: pinMouseX.value - size / 2 + 'px',
+    top: pinMouseY.value - size / 2 + 'px',
+    width: size + 'px',
+    height: size + 'px',
+  }
+})
+
+function onPinTrackMouse(e: MouseEvent) {
+  const el = (e.currentTarget as HTMLElement)
+  const rect = el.getBoundingClientRect()
+  pinMouseX.value = (e.clientX - rect.left) / props.canvasZoom
+  pinMouseY.value = (e.clientY - rect.top) / props.canvasZoom
+}
+
 // ─── Cursor 样式 ──────────────────────────────────────
 const TOOL_CURSORS: Record<string, string> = {
   select: 'move',
@@ -414,7 +446,7 @@ const TOOL_CURSORS: Record<string, string> = {
   rect: 'crosshair',
   ellipse: 'crosshair',
   text: 'text',
-  eraser: 'cell',
+  eraser: 'crosshair',
 }
 
 // ─── 清理 ──────────────────────────────────────────────
@@ -423,13 +455,15 @@ onBeforeUnmount(() => {
   window.removeEventListener('mouseup', onDragEnd)
   window.removeEventListener('mousemove', onResizeMove)
   window.removeEventListener('mouseup', onResizeEnd)
+  window.removeEventListener('mousemove', onGlobalDrawMove)
+  window.removeEventListener('mouseup', onGlobalDrawUp)
 })
 </script>
 
 <template>
   <div
     class="pin-item"
-    :class="{ 'pin-selected': isSelected }"
+    :class="{ 'pin-selected': isSelected, 'hide-cursor': showBrushCursor }"
     :style="{
       left: pin.x + 'px',
       top: pin.y + 'px',
@@ -438,6 +472,9 @@ onBeforeUnmount(() => {
       cursor: TOOL_CURSORS[activeTool] ?? 'default',
     }"
     @mousedown="onMouseDownMain"
+    @mousemove="onPinTrackMouse"
+    @mouseenter="mouseInPin = true"
+    @mouseleave="mouseInPin = false"
   >
     <img
       class="pin-image"
@@ -452,9 +489,14 @@ onBeforeUnmount(() => {
       ref="canvasRef"
       class="pin-canvas"
       @mousedown="onCanvasMouseDown"
-      @mousemove="onCanvasMouseMove"
-      @mouseup="onCanvasMouseUp"
       @click="onCanvasClick"
+    />
+
+    <!-- 笔刷/橡皮擦大小指示器 -->
+    <div
+      v-if="showBrushCursor"
+      class="pin-brush-cursor"
+      :style="brushCursorStyle"
     />
 
     <!-- 文字输入框 -->
@@ -463,7 +505,7 @@ onBeforeUnmount(() => {
       ref="textInputRef"
       v-model="textInputValue"
       class="pin-text-input"
-      :style="{ left: textInputX + 'px', top: textInputY + 'px' }"
+      :style="{ left: textInputX + 'px', top: textInputY + 'px', fontSize: props.fontSize + 'px' }"
       @keydown="onTextInputKeydown"
       @blur="onTextInputConfirm"
     />
@@ -563,6 +605,21 @@ onBeforeUnmount(() => {
 .handle-nw { top: -3px; left: -3px; cursor: nw-resize; }
 .handle-se { bottom: -3px; right: -3px; cursor: se-resize; }
 .handle-sw { bottom: -3px; left: -3px; cursor: sw-resize; }
+
+/* ─── 笔刷/橡皮擦光标指示器 ─── */
+.pin-item.hide-cursor,
+.pin-item.hide-cursor .pin-canvas {
+  cursor: none;
+}
+
+.pin-brush-cursor {
+  position: absolute;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 15;
+}
 
 /* ─── 文字输入框 ─── */
 .pin-text-input {

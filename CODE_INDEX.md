@@ -1,7 +1,7 @@
 # PGB1 代码索引
 
 > 全量源代码文件职责说明，按目录分组。新会话快速了解代码现状用。
-> 最后更新: 2026-03-10（贴图板独立窗口 + 标签系统 + 笔刷大小调整 + 文字大小调整）
+> 最后更新: 2026-04-02
 
 ---
 
@@ -9,14 +9,14 @@
 
 | 目录 | 文件数 | 总行数 | 备注 |
 |------|--------|--------|------|
-| src/components/ | 27 | ~10380 | UI 组件（笔记四件套 + FolderBrowserDialog + 贴图板组件 PinboardCanvas/PinItem + PinboardDialog[废弃]） |
-| src/composables/ | 12 | ~1750 | 逻辑组件（usePinboard，useStatusBar ~430 行，usePdfTranslate） |
-| src/views/ | 13 | ~9840 | 页面（新增 PinboardPage 独立窗口） |
+| src/components/ | 27 | ~10220 | UI 组件（笔记四件套 + FolderBrowserDialog + 贴图板组件 PinboardCanvas/PinItem） |
+| src/composables/ | 16 | ~1770 | 逻辑组件（usePinboard，useStatusBar ~430 行，usePdfTranslate） |
+| src/views/ | 13 | ~9840 | 页面（含 PinboardPage 独立窗口） |
 | src/styles/ | 3 | ~1400 | CSS 设计系统（贴图板工具栏公共类 .pb-tool-btn/.pb-separator/.pb-color-dot） |
-| src/i18n + src/locales/ | 3 | ~1280 | 国际化：i18n 实例 + zh-CN/en locale 文件（note 命名空间含 toolbar 子对象） |
+| src/i18n + src/locales/ | 3 | ~1280 | 国际化：i18n 实例 + zh-CN/en locale 文件 |
 | src/其他 | 8 | ~250 | 入口、路由、配置（含 onboarding.ts）、布局 |
-| src-tauri/src/ | 7 | ~8150 | Rust 后端（共 70 个命令） |
-| **合计** | **65** | **~31070** | |
+| src-tauri/src/ | 7 | ~9220 | Rust 后端（共 70 个命令） |
+| **合计** | **73** | **~31050** | |
 
 ---
 

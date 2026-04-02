@@ -9,7 +9,7 @@
 
 - **产品**：PGB1 — 2D游戏特效师文件整理工具
 - **技术栈**：Tauri 2.x（Rust + HTML/CSS/JS），目标 Windows
-- **状态**：✅ **已打包发布 v2.7.1**，准备 v2.8.0（贴图板独立窗口+标签系统）
+- **状态**：✅ **已发布 v2.8.5**（功能完整，持续迭代维护中）
 - **角色**：产品总监（决策）+ Tech Lead / Agent（实现）
 
 ---
@@ -21,7 +21,7 @@
 | `CLAUDE.md` | 角色定义、协作契约、沟通协议、绝对红线 | 每次会话必读（自动加载） |
 | `项目指南.md` | 核心原则（SSOT、模块化、防御性思维）、业务规则概要、沟通示例 | 每次会话必读 |
 | `开发规范.md` | 代码规范、目录结构、质量检查清单（框架版，编程阶段补充） | 编程阶段 |
-| `CODE_INDEX.md` | 全量源代码文件职责索引（64 个文件，~30190 行） | 编程阶段，了解代码现状 |
+| `CODE_INDEX.md` | 全量源代码文件职责索引（73 个文件，~31050 行） | 编程阶段，了解代码现状 |
 
 ---
 
@@ -181,17 +181,6 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 ---
 
-## 待明确事项（开发阶段解决）
-
-- [x] ~~名称排序视图的卡片~~ — 与树形视图用同一种素材卡片，无需额外字段
-- [x] ~~辅助文件展示方式~~ — 游戏介绍页和项目素材页都使用普通卡片（`卡片设计.md` - 普通卡片）
-- [x] ~~任务管理窗口类型~~ — 模态弹窗
-- [ ] 任务系统剩余细节（叶子任务状态标签、模板JSON结构、子任务确认弹窗样式） → 开发阶段解决
-- [x] ~~UI 高保真原型~~ — 跳过，直接进开发
-- [x] ~~悬浮窗~~ — 暂不实现
-
----
-
 ## 会话与历史
 
 | 文档 | 内容 |
@@ -202,8 +191,9 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | `sessions/session_2026-02-15.md` | 任务系统深化、卡片规范、文档模块化 |
 | `sessions/session_2026-02-16.md` | 转换功能、DesignSystem、自定义字体 |
 | `sessions/session_2026-02-17.md` | 日报打卡、翻译功能、快捷方式栏、悬浮窗精简 |
-| `sessions/session_2026-02-21.md` | 全局框选多选：useRubberBandSelect composable、五页面接入、GameIntro/Materials补齐多选按钮、TDZ Bug修复；UI hover Bug修复；任务完成判定加入预览视频上传状态（video_total/video_uploaded）：scan_tasks/scan_projects/TaskCard/TaskPage/子任务弹窗全链路更新；**副标题行固定滚动架构**：MainLayout page-wrapper height:100% + main-content overflow-y:hidden；HomePage 补齐 scroll-content 包装 |
-| `sessions/session_2026-02-22.md` | **v2.2.0** — 视频版本管理修复：子版本号 `_7.1` 支持（regex_strip_version/extract_version_number 元组化）；前端 groupPreviewVideos 数字排序修复 `_9>_10`；outdated 橙色"需更新"标签（design-system 语义变量）；NC 上传旧版本自动清理；子任务弹窗时机修复（confirmPreviewUpload/toggleSubtaskCompletion 补检测、mark_upload_prompted 内存同步、visibilitychange 窗口回焦刷新） |
+| `sessions/session_2026-02-21.md` | 框选多选、视频上传判定、副标题行滚动架构修复 |
+
+> 2026-02-22 之后的开发变更记录见 `git log`，不再维护会话文件。
 
 ---
 
@@ -216,41 +206,17 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 ---
 
-**最后更新**：2026-03-10
+## 版本里程碑
 
-本次会话（v2.8.0 — 贴图板独立窗口 + 标签系统 + 笔刷大小调整）：
-- **贴图板独立窗口**：从 PinboardDialog 弹窗重构为独立 Tauri WebviewWindow（900×700，Acrylic 毛玻璃），与主窗口共存
-- **标签系统**：浏览器式多标签切换，各页面点击贴图板按钮 → `open_pinboard_window` → 已存在窗口 emit 事件添加标签，不存在创建新窗口（URL query params 编码初始标签）。关闭最后一个标签自动关窗
-- **笔刷大小调整**：工具栏 range slider，画笔/箭头/矩形/椭圆共享 penSize（1~20），橡皮擦独立 eraserSize（5~50），文字独立 textSize（10~48）
-- **翻译窗口**：默认尺寸从 400×500 改为 400×250
-- **画布缩放上限**：MAX_ZOOM 从 5.0 改为 1.0（不超过 100%）
-- **橡皮擦**：3 pass 多次绘制消除抗锯齿残留
-- **快捷键**：重做改为 Ctrl+Alt+Z / Ctrl+Shift+Z（Ctrl+Z 仍为撤销）
-- **窗口拖拽**：标签栏 `data-tauri-drag-region` spacer
-- **Rust 命令**：新增 `open_pinboard_window`（70 个命令），路由新增 `/pinboard`
-- **PinboardDialog.vue**：已废弃（无引用），待删除
+| 版本 | 日期 | 主要变更 |
+|------|------|---------|
+| v2.8.x | 2026-03 | 贴图板独立窗口 + 标签系统 + 画笔工具 + PDF 翻译 |
+| v2.7.x | 2026-03 | PSB 缩略图 + PSD 磁盘缓存 + 文件夹浏览弹窗 |
+| v2.6.x | 2026-03 | 笔记系统 + 自动更新 + 签名配置 |
+| v2.4.2 | 2026-02 | i18n 国际化 + 新手引导 + 打卡模式 + TP 预设 |
+| v2.1.0 | 2026-02 | UI 优化（版本卡片统一、AE 选择下拉面板） |
+| v2.0.0 | 2026-02 | 初始版本（Tauri 2.x 重构，从 Electron 迁移） |
 
-之前会话（v2.2.0 — 视频版本管理与弹窗修复）：
-- **子版本号支持**：`regex_strip_version` / `extract_version_number` 支持 `_7.1` 格式，返回 `(u32, u32)` 元组比较
-- **前端分组修复**：`groupPreviewVideos` 正则 `/_\d+(\.\d+)?$/`，排序从 `localeCompare` 改数字比较（修复 `_9 > _10`）
-- **outdated 橙色标签**：design-system 新增 `--progress-outdated` / `--tag-progress-outdated-bg` 语义变量；文案 `待更新` → `需更新`
-- **NC 旧版本自动清理**：`copy_preview_to_nextcloud` 复制前删除同组旧版本文件
-- **弹窗时机修复**：`confirmPreviewUpload` / `toggleSubtaskCompletion` 补 `checkSubtaskAutoPrompt()`；`mark_upload_prompted` 后同步内存 `upload_prompted_tasks`（修复 stale read）；新增 `visibilitychange` 窗口回焦自动刷新
+---
 
-之前会话（v2.1.0 — UI 优化）：
-- **TitleBar 返回按钮**：箭头 SVG 从 20→40px；leave 动画 `position:absolute` 导致 `align-self:stretch` 失效向上跳动，加 `top:0; bottom:0` 修复
-- **ProjectCard 菜单**：`<Teleport to="body">` 脱离父级 `glass-subtle` 合成层，使 `glass-medium` 毛玻璃生效；`position: fixed` + 动态坐标；`z-index: var(--z-dropdown)`；菜单样式移至全局 `<style>` 块
-- **StatusBar 配置面板**：加 `<Transition name="config-panel">` 进出场动画（`translateY(-6px) scale(0.95)` + opacity）
-
-之前会话（打包发布阶段）：
-- 软件名改为「PG素材管理系统」V2.0.0，开发者 Fuchikami；新增 `src/config/app.ts` 集中管理；设置页加「关于」tab
-- Git 初始化，初始提交 + tag v2.0.0
-- 系统托盘：关闭按钮改为隐藏到后台，托盘左键恢复，右键菜单（显示窗口/退出）
-- 图标：从 `icon.ico` 生成全平台尺寸
-- 打包：NSIS 目标，中文界面，免 UAC，自定义 header/sidebar BMP 图片
-- 修复：hotkey.rs release 模式翻译窗口 URL 指向 index.html（应为 /translator）
-- 修复：CSP 缺少 media-src 导致打包后视频/视频缩略图全部失效
-- 移除 UI 自动缩放模式，默认固定 100%
-- 新增 `docs/打包发布指南.md`
-
-之前会话（2026-02-21）：Sidebar 视觉优化；ShortcutDialog 图标预览；useRubberBandSelect 全局框选；TitleBar flipWidth Bug 修复；Prototype Bug 修复；游戏介绍页「启动原型」功能；**副标题行固定滚动架构修复**：MainLayout `.page-wrapper { height:100% }` + `.main-content { overflow-y:hidden }`（原 min-height:100% + overflow-y:auto 导致玻璃面板自滚，页面内部 flex 滚动分区失效）；HomePage 补齐 `.scroll-content` 包装
+**最后更新**：2026-04-02

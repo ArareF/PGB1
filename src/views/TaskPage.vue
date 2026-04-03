@@ -27,7 +27,9 @@ import NoteEditor from '../components/NoteEditor.vue'
 import NoteDialog from '../components/NoteDialog.vue'
 import NoteRenderer from '../components/NoteRenderer.vue'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
+import SidebarShell from '../components/SidebarShell.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
+import { formatSize } from '../utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -754,95 +756,6 @@ function onMainContentClick(e: MouseEvent) {
   selectedPreviewGroup.value = null
 }
 
-/** 侧边栏可拖拽宽度（百分比，范围 20-60） */
-const SIDEBAR_WIDTH_KEY = 'pgb1-sidebar-width'
-const _savedW = parseFloat(localStorage.getItem(SIDEBAR_WIDTH_KEY) || '')
-const sidebarWidthPercent = ref(isFinite(_savedW) ? _savedW : 30)
-const isResizing = ref(false)
-
-function startResize(e: MouseEvent) {
-  e.preventDefault()
-  isResizing.value = true
-  const startX = e.clientX
-  const startWidth = sidebarWidthPercent.value
-
-  function onMouseMove(ev: MouseEvent) {
-    const windowWidth = window.innerWidth
-    const deltaPercent = ((startX - ev.clientX) / windowWidth) * 100
-    const newWidth = Math.min(60, Math.max(20, startWidth + deltaPercent))
-    sidebarWidthPercent.value = newWidth
-  }
-
-  function onMouseUp() {
-    isResizing.value = false
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidthPercent.value))
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-  }
-
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
-}
-
-// ─── 侧边栏页面内全屏 ────────────────────────────────────
-
-const sidebarEl = ref<HTMLElement | null>(null)
-const isFullscreen = ref(false)
-const fsLeft = ref('0px')
-
-async function toggleFullscreen() {
-  const el = sidebarEl.value
-
-  if (!isFullscreen.value) {
-    const mainEl = document.querySelector('.main-content') as HTMLElement | null
-    const crEl = document.getElementById('content-row') as HTMLElement | null
-    if (mainEl && crEl) {
-      fsLeft.value = `${mainEl.getBoundingClientRect().left - crEl.getBoundingClientRect().left}px`
-    } else {
-      fsLeft.value = '0px'
-    }
-  }
-
-  const startRect = el?.getBoundingClientRect()
-  isFullscreen.value = !isFullscreen.value
-  await nextTick()
-
-  if (!el || !startRect) return
-  const endRect = el.getBoundingClientRect()
-  const dx = startRect.left - endRect.left
-  const dy = startRect.top - endRect.top
-  const scaleX = startRect.width / endRect.width
-  const scaleY = startRect.height / endRect.height
-
-  el.style.transformOrigin = 'top left'
-  el.style.transform = `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})`
-  el.style.transition = 'none'
-  void el.offsetWidth
-
-  el.style.transition = `transform var(--duration-normal) var(--ease-out)`
-  el.style.transform = ''
-
-  el.addEventListener('transitionend', () => {
-    el.style.transform = ''
-    el.style.transition = ''
-    el.style.transformOrigin = ''
-  }, { once: true })
-}
-
-function onSidebarKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && isFullscreen.value) {
-    isFullscreen.value = false
-  }
-}
-
-/** 文件大小格式化 */
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-}
-
 /** 素材类型中文映射 */
 function typeLabel(type: string): string {
   const map: Record<string, string> = { image: t('task.typeImage'), sequence: t('task.typeSequence'), video: t('task.typeVideo'), other: t('task.typeOther') }
@@ -990,10 +903,8 @@ function onVisibilityChange() {
   }
 }
 document.addEventListener('visibilitychange', onVisibilityChange)
-window.addEventListener('keydown', onSidebarKeyDown)
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
-  window.removeEventListener('keydown', onSidebarKeyDown)
 })
 </script>
 
@@ -1165,163 +1076,153 @@ onUnmounted(() => {
     </div>
   </div>
 
-  <!-- 侧边栏：传送到 content-row，与主功能区同级 -->
-  <Teleport to="#content-row">
-    <Transition name="sidebar">
-    <div
-      v-if="selectedMaterial"
-      ref="sidebarEl"
-      class="detail-sidebar"
-      :class="{ 'is-resizing': isResizing, 'is-fullscreen': isFullscreen }"
-      :style="isFullscreen ? { left: fsLeft } : { width: sidebarWidthPercent + '%' }"
-    >
-      <!-- 拖拽把手 -->
-      <div class="resize-handle" @mousedown="startResize" />
-      <div class="sidebar-header">
-        <span class="sidebar-title">{{ $t('task.detail') }}</span>
-      </div>
-      <div class="sidebar-body">
-        <!-- 预览区 -->
-        <div class="sidebar-preview">
-          <SequencePreview
-            v-if="selectedMaterial.material_type === 'sequence'"
-            :key="`${selectedMaterial.path}-${selectedMaterial.name}`"
-            :folder-path="selectedMaterial.path"
-            :base-name="selectedMaterial.name"
-            :fps="selectedMaterial.fps ?? settings?.preview.defaultFps ?? 24"
-            :max-width="400"
-            :transparent="settings?.preview.backgroundTransparent ?? false"
-          />
-          <ImageViewer
-            v-else-if="selectedMaterial.preview_path"
-            :key="selectedMaterial.preview_path"
-            :src="convertFileSrc(selectedMaterial.preview_path)"
-            :alt="selectedMaterial.name"
-          />
-          <div v-else class="sidebar-no-preview">{{ $t('common.noPreview') }}</div>
-          <button
-            v-if="selectedMaterial.material_type === 'sequence' || selectedMaterial.preview_path"
-            class="preview-fullscreen-btn"
-            :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')"
-            @click="toggleFullscreen"
-          >
-            <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-              <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
-              <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-            </svg>
-            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-              <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
-              <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
-            </svg>
-          </button>
-        </div>
-        <!-- 基本信息 -->
-        <div class="sidebar-section">
-          <p class="section-title">{{ $t('task.basicInfo') }}</p>
-          <div class="info-list">
-            <div class="info-row">
-              <span class="info-label">{{ $t('task.fileName') }}</span>
-              <span class="info-value">{{ selectedMaterial.file_name }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">{{ $t('common.type') }}</span>
-              <span class="info-value">{{ typeLabel(selectedMaterial.material_type) }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">{{ $t('common.size') }}</span>
-              <span class="info-value">{{ formatSize(selectedMaterial.size_bytes) }}</span>
-            </div>
-            <div v-if="selectedMaterial.material_type === 'sequence'" class="info-row">
-              <span class="info-label">{{ $t('task.frameCount') }}</span>
-              <span class="info-value">{{ selectedMaterial.frame_count }}</span>
-            </div>
-            <div v-if="selectedMaterial.material_type === 'sequence'" class="info-row">
-              <span class="info-label">{{ $t('task.frameRate') }}</span>
-              <template v-if="selectedMaterial.fps != null">
-                <span v-if="!editingFps" class="info-value fps-clickable" :title="$t('task.modify')" @click="startEditFps">
-                  {{ selectedMaterial.fps }} fps
-                </span>
-                <span v-else class="fps-edit-group">
-                  <input
-                    class="fps-input"
-                    type="number"
-                    min="1"
-                    max="120"
-                    v-model="fpsInput"
-                    @keydown.enter="confirmEditFps"
-                    @keydown.escape="cancelEditFps"
-                    @blur="cancelEditFps"
-                  />
-                  <span class="fps-unit">fps</span>
-                </span>
-              </template>
-              <span v-else class="info-value">{{ $t('task.notConverted') }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">{{ $t('task.progress') }}</span>
-              <span class="info-value">{{ progressLabel(selectedMaterial.progress) }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 笔记编辑区 -->
-        <div class="sidebar-section">
-          <p class="section-title">{{ $t('note.note') }}</p>
-          <NoteEditor
-            v-model="sidebarNoteText"
-            @save="onSidebarNoteSave"
-            @toggle-checkbox="(idx: number) => { sidebarNoteText = toggleCheckbox(sidebarNoteText, idx); onSidebarNoteSave() }"
-          />
-        </div>
-
-        <!-- 其他版本 -->
-        <div v-if="versions.length > 0" class="sidebar-section">
-          <p class="section-title">{{ $t('task.otherVersions') }}</p>
-          <div class="version-list">
-            <div
-              v-for="v in versions"
-              :key="v.file_path"
-              class="version-card"
-              :title="v.file_path"
-              @click="openInExplorer(v.file_path)"
-              @mousedown="onVersionMouseDown($event, v)"
-            >
-              <div class="version-card-left">
-                <span class="version-name">
-                  <template v-if="v.scale">{{ v.scale }}% - </template>
-                  {{ v.stage_label }}
-                </span>
-                <span class="version-meta">{{ formatSize(v.size_bytes) }}</span>
-              </div>
-              <div class="version-card-right">
-                <span class="version-ext">{{ v.extension.toUpperCase() }}</span>
-                <button
-                  class="version-folder-btn"
-                  :title="$t('common.openContainingFolder')"
-                  @click.stop="openInExplorer(v.folder_path)"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 底部悬浮操作按钮 -->
-      <div class="sidebar-actions">
+  <!-- 素材详情侧边栏 -->
+  <SidebarShell
+    :show="!!selectedMaterial"
+    :title="$t('task.detail')"
+    :has-actions="true"
+  >
+    <template v-if="selectedMaterial" #default="{ isFullscreen, toggleFullscreen }">
+      <!-- 预览区 -->
+      <div class="sidebar-preview">
+        <SequencePreview
+          v-if="selectedMaterial.material_type === 'sequence'"
+          :key="`${selectedMaterial.path}-${selectedMaterial.name}`"
+          :folder-path="selectedMaterial.path"
+          :base-name="selectedMaterial.name"
+          :fps="selectedMaterial.fps ?? settings?.preview.defaultFps ?? 24"
+          :max-width="400"
+          :transparent="settings?.preview.backgroundTransparent ?? false"
+        />
+        <ImageViewer
+          v-else-if="selectedMaterial.preview_path"
+          :key="selectedMaterial.preview_path"
+          :src="convertFileSrc(selectedMaterial.preview_path)"
+          :alt="selectedMaterial.name"
+        />
+        <div v-else class="sidebar-no-preview">{{ $t('common.noPreview') }}</div>
         <button
-          v-if="selectedMaterial?.material_type === 'sequence' && versions.some(v => v.stage === '02_done')"
-          class="sidebar-action-btn"
-          @click="openTpsFile"
-        >{{ $t('task.modify') }}</button>
-        <button class="sidebar-action-btn" @click="openRenameDialog">{{ $t('common.rename') }}</button>
-        <button class="sidebar-action-btn danger" @click="openDeleteDialog">{{ $t('common.delete') }}</button>
+          v-if="selectedMaterial.material_type === 'sequence' || selectedMaterial.preview_path"
+          class="preview-fullscreen-btn"
+          :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')"
+          @click="toggleFullscreen"
+        >
+          <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+            <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
+            <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+          </svg>
+        </button>
+      </div>
+      <!-- 基本信息 -->
+      <div class="sidebar-section">
+        <p class="section-title">{{ $t('task.basicInfo') }}</p>
+        <div class="info-list">
+          <div class="info-row">
+            <span class="info-label">{{ $t('task.fileName') }}</span>
+            <span class="info-value">{{ selectedMaterial.file_name }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ $t('common.type') }}</span>
+            <span class="info-value">{{ typeLabel(selectedMaterial.material_type) }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ $t('common.size') }}</span>
+            <span class="info-value">{{ formatSize(selectedMaterial.size_bytes) }}</span>
+          </div>
+          <div v-if="selectedMaterial.material_type === 'sequence'" class="info-row">
+            <span class="info-label">{{ $t('task.frameCount') }}</span>
+            <span class="info-value">{{ selectedMaterial.frame_count }}</span>
+          </div>
+          <div v-if="selectedMaterial.material_type === 'sequence'" class="info-row">
+            <span class="info-label">{{ $t('task.frameRate') }}</span>
+            <template v-if="selectedMaterial.fps != null">
+              <span v-if="!editingFps" class="info-value fps-clickable" :title="$t('task.modify')" @click="startEditFps">
+                {{ selectedMaterial.fps }} fps
+              </span>
+              <span v-else class="fps-edit-group">
+                <input
+                  class="fps-input"
+                  type="number"
+                  min="1"
+                  max="120"
+                  v-model="fpsInput"
+                  @keydown.enter="confirmEditFps"
+                  @keydown.escape="cancelEditFps"
+                  @blur="cancelEditFps"
+                />
+                <span class="fps-unit">fps</span>
+              </span>
+            </template>
+            <span v-else class="info-value">{{ $t('task.notConverted') }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ $t('task.progress') }}</span>
+            <span class="info-value">{{ progressLabel(selectedMaterial.progress) }}</span>
+          </div>
+        </div>
       </div>
 
-      <!-- 内联操作弹窗（覆盖整个侧边栏） -->
+      <!-- 笔记编辑区 -->
+      <div class="sidebar-section">
+        <p class="section-title">{{ $t('note.note') }}</p>
+        <NoteEditor
+          v-model="sidebarNoteText"
+          @save="onSidebarNoteSave"
+          @toggle-checkbox="(idx: number) => { sidebarNoteText = toggleCheckbox(sidebarNoteText, idx); onSidebarNoteSave() }"
+        />
+      </div>
+
+      <!-- 其他版本 -->
+      <div v-if="versions.length > 0" class="sidebar-section">
+        <p class="section-title">{{ $t('task.otherVersions') }}</p>
+        <div class="version-list">
+          <div
+            v-for="v in versions"
+            :key="v.file_path"
+            class="version-card"
+            :title="v.file_path"
+            @click="openInExplorer(v.file_path)"
+            @mousedown="onVersionMouseDown($event, v)"
+          >
+            <div class="version-card-left">
+              <span class="version-name">
+                <template v-if="v.scale">{{ v.scale }}% - </template>
+                {{ v.stage_label }}
+              </span>
+              <span class="version-meta">{{ formatSize(v.size_bytes) }}</span>
+            </div>
+            <div class="version-card-right">
+              <span class="version-ext">{{ v.extension.toUpperCase() }}</span>
+              <button
+                class="version-folder-btn"
+                :title="$t('common.openContainingFolder')"
+                @click.stop="openInExplorer(v.folder_path)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template #actions>
+      <button
+        v-if="selectedMaterial?.material_type === 'sequence' && versions.some(v => v.stage === '02_done')"
+        class="sidebar-action-btn"
+        @click="openTpsFile"
+      >{{ $t('task.modify') }}</button>
+      <button class="sidebar-action-btn" @click="openRenameDialog">{{ $t('common.rename') }}</button>
+      <button class="sidebar-action-btn danger" @click="openDeleteDialog">{{ $t('common.delete') }}</button>
+    </template>
+
+    <template #overlay>
       <div v-if="sidebarDialog !== 'none'" class="sidebar-dialog-overlay">
         <!-- 重命名弹窗 -->
         <div v-if="sidebarDialog === 'rename'" class="sidebar-dialog">
@@ -1348,9 +1249,8 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-    </div>
-    </Transition>
-  </Teleport>
+    </template>
+  </SidebarShell>
 
   <!-- 预览视频侧边栏（复用 FileDetailSidebar） -->
   <FileDetailSidebar
@@ -1484,90 +1384,14 @@ onUnmounted(() => {
 
 </style>
 
-<!-- 侧边栏样式（Teleport 到 #content-row，不在 scoped 范围内） -->
+<!-- 素材侧边栏内容层样式（通过 SidebarShell Teleport，需非 scoped） -->
 <style>
-.detail-sidebar {
-  position: relative;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--floating-main-radius);
-  padding: var(--floating-main-padding);
-  overflow: hidden;
-  flex-shrink: 0;
-  /* 手动复刻 glass-strong 视觉，不用 backdrop-filter：
-     与 main-content(glass-medium) 相邻时，双 backdrop-filter
-     在 WebView2 + Windows Acrylic 下 gap 区域产生白色闪烁伪影 */
-  background: var(--glass-strong-bg);
-  border: var(--glass-strong-border);
-  box-shadow: var(--glass-strong-shadow);
-}
-
-.detail-sidebar.is-resizing {
-  user-select: none;
-}
-
-.resize-handle {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  cursor: col-resize;
-  z-index: 10;
-}
-
-.resize-handle:hover,
-.resize-handle:active {
-  background: var(--color-primary);
-  opacity: 0.5;
-}
-
-/* 侧边栏进入/离开动画 */
-.sidebar-enter-active {
-  transition: transform var(--duration-normal) var(--ease-slide-in),
-              width var(--duration-normal) var(--ease-slide-in);
-  overflow: hidden;
-}
-.sidebar-leave-active {
-  transition: transform var(--duration-fast) var(--ease-slide-out),
-              width var(--duration-fast) var(--ease-slide-out);
-  overflow: hidden;
-}
-.sidebar-enter-from,
-.sidebar-leave-to {
-  transform: translateX(100%);
-  width: 0 !important;
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  padding-bottom: var(--spacing-3);
-  border-bottom: 1px solid var(--border-medium);
-  flex-shrink: 0;
-}
-
-.sidebar-title {
-  font-size: var(--text-2xl);
-  font-weight: var(--font-weight-heading);
-  color: var(--text-primary);
-}
-
-.sidebar-body {
-  flex: 1;
-  overflow-y: auto;
-  padding-top: var(--spacing-4);
-  padding-bottom: calc(var(--button-md-height) + var(--spacing-4) * 2);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
-}
-
+/* ─── 预览区 ─── */
 .sidebar-preview {
   position: relative;
   width: 100%;
   aspect-ratio: 4 / 3;
+  max-height: var(--sidebar-preview-max-height);
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--bg-hover);
@@ -1581,172 +1405,31 @@ onUnmounted(() => {
   opacity: 1;
 }
 
-/* ─── 侧边栏页面内全屏模式 ─── */
-
-.detail-sidebar.is-fullscreen {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  /* left 由 JS 动态注入 */
-  width: auto !important;
-  z-index: 1;
-  border-radius: var(--floating-main-radius);
-  box-shadow: none;
-  padding: 0;
-}
-
-/* 全屏时隐藏非预览元素 */
-.detail-sidebar.is-fullscreen .resize-handle,
-.detail-sidebar.is-fullscreen .sidebar-header,
-.detail-sidebar.is-fullscreen .sidebar-section,
-.detail-sidebar.is-fullscreen .sidebar-actions,
-.detail-sidebar.is-fullscreen .sidebar-dialog-overlay {
-  display: none;
-}
-
-/* sidebar-body 用 display:contents 消除中间层 */
-.detail-sidebar.is-fullscreen .sidebar-body {
-  display: contents;
-}
-
-/* 预览区铺满 */
-.detail-sidebar.is-fullscreen .sidebar-preview {
+/* 全屏模式：预览区铺满 */
+.sidebar-shell.is-fullscreen .sidebar-preview {
   flex: 1;
   min-height: 0;
+  max-height: none;
   aspect-ratio: unset;
   border-radius: 0;
   overflow: hidden;
 }
 
 /* 全屏模式下全屏按钮常驻可见 */
-.detail-sidebar.is-fullscreen .preview-fullscreen-btn {
+.sidebar-shell.is-fullscreen .preview-fullscreen-btn {
   opacity: 1;
 }
 
+/* 全屏时隐藏非预览内容 */
+.sidebar-shell.is-fullscreen .sidebar-section,
+.sidebar-shell.is-fullscreen .sidebar-dialog-overlay {
+  display: none;
+}
 
 .sidebar-no-preview {
   font-size: var(--text-base);
   color: var(--text-tertiary);
 }
-
-/* 侧边栏区块（基本信息 / 其他版本） */
-.sidebar-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-3);
-}
-
-.section-title {
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-heading);
-  color: var(--text-secondary);
-  padding-bottom: var(--spacing-2);
-  border-bottom: 1px solid var(--border-light);
-}
-
-.info-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-2);
-}
-
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--spacing-2);
-}
-
-.info-label {
-  font-size: var(--text-base);
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-}
-
-.info-value {
-  font-size: var(--text-base);
-  color: var(--text-primary);
-  text-align: right;
-  word-break: break-all;
-}
-
-.version-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-2);
-}
-
-.version-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-light);
-  background: transparent;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.version-card:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-medium);
-}
-
-.version-card-left {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-1);
-  min-width: 0;
-}
-
-.version-name {
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-heading);
-  color: var(--text-primary);
-}
-
-.version-meta {
-  font-size: var(--text-sm);
-  color: var(--text-tertiary);
-}
-
-.version-card-right {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  flex-shrink: 0;
-}
-
-.version-ext {
-  font-size: var(--text-sm);
-  font-weight: var(--font-medium);
-  color: var(--text-secondary);
-}
-
-.version-folder-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--border-medium);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.version-folder-btn:hover {
-  background: var(--color-primary);
-  color: var(--color-neutral-0);
-  border-color: var(--color-primary);
-}
-
-/* ─── 侧边栏底部悬浮操作按钮 ─── */
-/* .sidebar-actions / .sidebar-action-btn → design-system.css 公共类 */
 
 /* ─── 帧率内联编辑 ─── */
 .fps-edit-group {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { formatSize } from '../utils/format'
@@ -8,6 +8,7 @@ import { getPsdThumbnail, invalidatePsdCache } from '../composables/usePsdThumbn
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import { toggleCheckbox } from '../composables/useNotes'
+import SidebarShell from './SidebarShell.vue'
 import NoteEditor from './NoteEditor.vue'
 import ImageViewer from './ImageViewer.vue'
 import VideoPlayer from './VideoPlayer.vue'
@@ -43,6 +44,8 @@ const emit = defineEmits<{
 
 const { openInExplorer } = useDirectoryFiles()
 const { t } = useI18n()
+
+const shellRef = ref<InstanceType<typeof SidebarShell> | null>(null)
 
 // 笔记编辑
 const noteText = ref('')
@@ -167,405 +170,216 @@ function confirmDelete() {
   emit('delete')
   closeSidebarDialog()
 }
-
-// ─── 页面内全屏 ──────────────────────────────────────
-
-const isFullscreen = ref(false)
-const fsLeft = ref('0px')
-const sidebarEl = ref<HTMLElement | null>(null)
-
-async function toggleFullscreen() {
-  const el = sidebarEl.value
-
-  if (!isFullscreen.value) {
-    // 测量 .main-content 相对于 #content-row 的左偏移，全屏只盖这一段
-    const mainEl = document.querySelector('.main-content') as HTMLElement | null
-    const crEl   = document.getElementById('content-row') as HTMLElement | null
-    if (mainEl && crEl) {
-      const offset = mainEl.getBoundingClientRect().left - crEl.getBoundingClientRect().left
-      fsLeft.value = `${offset}px`
-    } else {
-      fsLeft.value = '0px'
-    }
-  }
-
-  // FLIP：记录切换前的位置与尺寸
-  const startRect = el?.getBoundingClientRect()
-
-  isFullscreen.value = !isFullscreen.value
-
-  await nextTick()
-
-  if (!el || !startRect) return
-  const endRect = el.getBoundingClientRect()
-
-  const dx     = startRect.left - endRect.left
-  const dy     = startRect.top  - endRect.top
-  const scaleX = startRect.width  / endRect.width
-  const scaleY = startRect.height / endRect.height
-
-  // 瞬间还原到起始形态（无动画）
-  el.style.transformOrigin = 'top left'
-  el.style.transform  = `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})`
-  el.style.transition = 'none'
-  void el.offsetWidth // 强制 reflow
-
-  // 播放到终态
-  el.style.transition = `transform var(--duration-normal) var(--ease-out)`
-  el.style.transform  = ''
-
-  el.addEventListener('transitionend', () => {
-    el.style.transform      = ''
-    el.style.transition     = ''
-    el.style.transformOrigin = ''
-  }, { once: true })
-}
-
-function onGlobalKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && isFullscreen.value) {
-    isFullscreen.value = false
-  }
-}
-
-onMounted(() => window.addEventListener('keydown', onGlobalKeyDown))
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onGlobalKeyDown)
-  resizeCleanup?.()
-})
-
-// ─── 拖拽调整宽度 ────────────────────────────────────
-
-const isResizing = ref(false)
-const SIDEBAR_WIDTH_KEY = 'pgb1-sidebar-width'
-const savedWidth = parseFloat(localStorage.getItem(SIDEBAR_WIDTH_KEY) || '')
-const currentWidth = ref(isFinite(savedWidth) ? savedWidth : (props.widthPercent ?? 30))
-
-watch(() => props.widthPercent, (v) => {
-  if (v != null) currentWidth.value = v
-})
-
-let resizeCleanup: (() => void) | null = null
-
-function startResize(e: MouseEvent) {
-  e.preventDefault()
-  isResizing.value = true
-  const startX     = e.clientX
-  const startWidth = currentWidth.value
-
-  function onMouseMove(ev: MouseEvent) {
-    const windowWidth  = window.innerWidth
-    const deltaPercent = ((startX - ev.clientX) / windowWidth) * 100
-    currentWidth.value = Math.min(60, Math.max(20, startWidth + deltaPercent))
-    emit('update:widthPercent', currentWidth.value)
-  }
-  function onMouseUp() {
-    isResizing.value = false
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(currentWidth.value))
-    window.removeEventListener('mousemove', onMouseMove)
-    window.removeEventListener('mouseup', onMouseUp)
-    resizeCleanup = null
-  }
-  window.addEventListener('mousemove', onMouseMove)
-  window.addEventListener('mouseup', onMouseUp)
-  resizeCleanup = onMouseUp
-}
 </script>
 
 <template>
-  <Teleport :to="teleportTarget" :disabled="teleportDisabled">
-    <Transition name="file-sidebar">
-      <div
-        v-if="file"
-        ref="sidebarEl"
-        class="file-detail-sidebar"
-        :class="{ 'is-resizing': isResizing, 'is-fullscreen': isFullscreen }"
-        :style="isFullscreen ? { left: fsLeft } : { width: currentWidth + '%' }"
-      >
-        <!-- 拖拽把手 -->
-        <div class="resize-handle" @mousedown="startResize" />
+  <SidebarShell
+    ref="shellRef"
+    :show="!!file"
+    :title="$t('fileDetail.detail')"
+    :width-percent="widthPercent"
+    :teleport-target="teleportTarget"
+    :teleport-disabled="teleportDisabled"
+    :has-actions="allowActions"
+    @update:width-percent="emit('update:widthPercent', $event)"
+  >
+    <template #default="{ isFullscreen, toggleFullscreen }">
 
-        <!-- 标题 -->
-        <div class="sidebar-header">
-          <span class="sidebar-title">{{ $t('fileDetail.detail') }}</span>
-        </div>
+      <!-- 图片预览 -->
+      <div v-if="fileType === 'image'" class="preview-image-wrap">
+        <ImageViewer
+          :key="file!.path"
+          :src="convertFileSrc(file!.path)"
+          :alt="file!.name"
+        />
+        <button v-if="!teleportDisabled" class="preview-fullscreen-btn" :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')" @click="toggleFullscreen">
+          <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+            <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
+            <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+          </svg>
+        </button>
+      </div>
 
-        <!-- 内容区 -->
-        <div class="sidebar-body">
+      <!-- 视频预览 -->
+      <VideoPlayer
+        v-else-if="fileType === 'video'"
+        :src="file!.path"
+        :is-fullscreen="isFullscreen"
+        @toggle-fullscreen="toggleFullscreen"
+      />
 
-          <!-- 图片预览 -->
-          <div v-if="fileType === 'image'" class="preview-image-wrap">
-            <ImageViewer
-              :key="file.path"
-              :src="convertFileSrc(file.path)"
-              :alt="file.name"
-            />
-            <button v-if="!teleportDisabled" class="preview-fullscreen-btn" :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')" @click="toggleFullscreen">
-              <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
-                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-              </svg>
-              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
-                <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
-              </svg>
-            </button>
-          </div>
+      <!-- TXT 文本预览 -->
+      <div v-else-if="fileType === 'text'" class="preview-text-wrap">
+        <p v-if="txtLoading" class="txt-loading">{{ $t('common.loading') }}</p>
+        <pre v-else class="txt-content">{{ txtContent }}</pre>
+      </div>
 
-          <!-- 视频预览 -->
-          <VideoPlayer
-            v-else-if="fileType === 'video'"
-            :src="file!.path"
-            :is-fullscreen="isFullscreen"
-            @toggle-fullscreen="isFullscreen = !isFullscreen"
+      <!-- PSD/PSB 预览 -->
+      <div v-else-if="fileType === 'psd'" class="preview-psd-section">
+        <div class="preview-psd-wrap">
+          <p v-if="psdThumbLoading" class="txt-loading">{{ $t('fileDetail.loadingThumbnail') }}</p>
+          <img
+            v-else-if="psdThumbnail"
+            :src="psdThumbnail"
+            :alt="file!.name"
+            class="psd-thumb-img"
           />
-
-          <!-- TXT 文本预览 -->
-          <div v-else-if="fileType === 'text'" class="preview-text-wrap">
-            <p v-if="txtLoading" class="txt-loading">{{ $t('common.loading') }}</p>
-            <pre v-else class="txt-content">{{ txtContent }}</pre>
-          </div>
-
-          <!-- PSD/PSB 预览 -->
-          <div v-else-if="fileType === 'psd'" class="preview-psd-wrap">
-            <p v-if="psdThumbLoading" class="txt-loading">{{ $t('fileDetail.loadingThumbnail') }}</p>
-            <img
-              v-else-if="psdThumbnail"
-              :src="psdThumbnail"
-              :alt="file.name"
-              class="psd-thumb-img"
-            />
-            <div v-else class="preview-other">
-              <div class="file-icon">
-                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                  <rect width="48" height="48" rx="8" fill="#001E36"/>
-                  <text x="24" y="33" font-family="sans-serif" font-size="17" font-weight="700" fill="#31A8FF" text-anchor="middle">Ps</text>
-                </svg>
-                <span class="file-ext">{{ file.extension.toUpperCase() }}</span>
-              </div>
-            </div>
-            <button class="open-file-btn" @click="openFile">{{ $t('fileDetail.openInPhotoshop') }}</button>
-            <button v-if="!teleportDisabled" class="preview-fullscreen-btn" :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')" @click="toggleFullscreen">
-              <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
-                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-              </svg>
-              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
-                <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
-              </svg>
-            </button>
-          </div>
-
-          <!-- PDF 预览 + 翻译 -->
-          <PdfPreviewSection
-            v-else-if="fileType === 'pdf'"
-            :file-path="file!.path"
-            :is-fullscreen="isFullscreen"
-            @toggle-fullscreen="isFullscreen = !isFullscreen"
-          />
-
-          <!-- 其他：文件类型图标 + 打开按钮 -->
           <div v-else class="preview-other">
             <div class="file-icon">
-              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                <rect width="48" height="48" rx="8" fill="#001E36"/>
+                <text x="24" y="33" font-family="sans-serif" font-size="17" font-weight="700" fill="#31A8FF" text-anchor="middle">Ps</text>
               </svg>
-              <span class="file-ext">{{ file.extension.toUpperCase() || $t('fileDetail.file') }}</span>
-            </div>
-            <button class="open-file-btn" @click="openFile">{{ $t('fileDetail.openFile') }}</button>
-          </div>
-
-          <!-- 基本信息（文本类不显示） -->
-          <div v-if="fileType !== 'text'" class="sidebar-section">
-            <p class="section-title">{{ $t('fileDetail.basicInfo') }}</p>
-            <div class="info-list">
-              <div class="info-row">
-                <span class="info-label">{{ $t('fileDetail.fileName') }}</span>
-                <span class="info-value">{{ file.name }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">{{ $t('fileDetail.type') }}</span>
-                <span class="info-value">{{ file.extension.toUpperCase() || $t('fileDetail.unknown') }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-label">{{ $t('fileDetail.size') }}</span>
-                <span class="info-value">{{ formatSize(file.size_bytes) }}</span>
-              </div>
+              <span class="file-ext">{{ file!.extension.toUpperCase() }}</span>
             </div>
           </div>
+          <button v-if="!teleportDisabled" class="preview-fullscreen-btn" :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')" @click="toggleFullscreen">
+            <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+              <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
+              <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
+            </svg>
+          </button>
+        </div>
+        <button class="open-file-btn" @click="openFile">{{ $t('fileDetail.openInPhotoshop') }}</button>
+      </div>
 
-          <!-- 版本列表（仅预览视频使用） -->
-          <div v-if="versions && versions.length > 0" class="sidebar-section">
-            <p class="section-title">{{ $t('fileDetail.versionHistory') }}</p>
-            <div class="version-list">
-              <div
-                v-for="(v, i) in versions"
-                :key="v.path"
-                class="version-card"
-                :class="{ active: v.path === file.path }"
-                :title="v.path"
-                @click="emit('select-version', v)"
+      <!-- PDF 预览 + 翻译 -->
+      <PdfPreviewSection
+        v-else-if="fileType === 'pdf'"
+        :file-path="file!.path"
+        :is-fullscreen="isFullscreen"
+        @toggle-fullscreen="toggleFullscreen"
+      />
+
+      <!-- 其他：文件类型图标 + 打开按钮 -->
+      <div v-else class="preview-other">
+        <div class="file-icon">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+          <span class="file-ext">{{ file!.extension.toUpperCase() || $t('fileDetail.file') }}</span>
+        </div>
+        <button class="open-file-btn" @click="openFile">{{ $t('fileDetail.openFile') }}</button>
+      </div>
+
+      <!-- 基本信息（文本类不显示） -->
+      <div v-if="fileType !== 'text'" class="sidebar-section">
+        <p class="section-title">{{ $t('fileDetail.basicInfo') }}</p>
+        <div class="info-list">
+          <div class="info-row">
+            <span class="info-label">{{ $t('fileDetail.fileName') }}</span>
+            <span class="info-value">{{ file!.name }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ $t('fileDetail.type') }}</span>
+            <span class="info-value">{{ file!.extension.toUpperCase() || $t('fileDetail.unknown') }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">{{ $t('fileDetail.size') }}</span>
+            <span class="info-value">{{ formatSize(file!.size_bytes) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 版本列表（仅预览视频使用） -->
+      <div v-if="versions && versions.length > 0" class="sidebar-section">
+        <p class="section-title">{{ $t('fileDetail.versionHistory') }}</p>
+        <div class="version-list">
+          <div
+            v-for="(v, i) in versions"
+            :key="v.path"
+            class="version-card"
+            :class="{ active: v.path === file!.path }"
+            :title="v.path"
+            @click="emit('select-version', v)"
+          >
+            <div class="version-card-left">
+              <span class="version-name">
+                {{ i === versions.length - 1 ? $t('fileDetail.latestVersion') : $t('fileDetail.versionN', { n: i + 1 }) }}
+              </span>
+              <span class="version-meta">{{ formatSize(v.size_bytes) }}</span>
+            </div>
+            <div class="version-card-right">
+              <span class="version-ext">{{ v.extension.toUpperCase() }}</span>
+              <button
+                class="version-folder-btn"
+                :title="$t('common.openContainingFolder')"
+                @click.stop="openInExplorer(getFolderPath(v.path))"
               >
-                <div class="version-card-left">
-                  <span class="version-name">
-                    {{ i === versions.length - 1 ? $t('fileDetail.latestVersion') : $t('fileDetail.versionN', { n: i + 1 }) }}
-                  </span>
-                  <span class="version-meta">{{ formatSize(v.size_bytes) }}</span>
-                </div>
-                <div class="version-card-right">
-                  <span class="version-ext">{{ v.extension.toUpperCase() }}</span>
-                  <button
-                    class="version-folder-btn"
-                    :title="$t('common.openContainingFolder')"
-                    @click.stop="openInExplorer(getFolderPath(v.path))"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 笔记编辑区 -->
-          <div v-if="note != null" class="sidebar-section">
-            <p class="section-title">{{ $t('note.note') }}</p>
-            <NoteEditor
-              v-model="noteText"
-              @save="emit('save-note', noteText)"
-              @toggle-checkbox="(idx: number) => { noteText = toggleCheckbox(noteText, idx); emit('save-note', noteText) }"
-            />
-          </div>
-
-        </div>
-
-        <!-- 底部操作按钮（重命名/删除）；allowActions=false 时不渲染 -->
-        <div v-if="allowActions" class="sidebar-actions">
-          <button class="sidebar-action-btn" @click="openRenameDialog">{{ $t('common.rename') }}</button>
-          <button class="sidebar-action-btn danger" @click="openDeleteDialog">{{ $t('common.delete') }}</button>
-        </div>
-
-        <!-- 内联操作弹窗 -->
-        <div v-if="sidebarDialog !== 'none'" class="sidebar-dialog-overlay">
-          <!-- 重命名弹窗 -->
-          <div v-if="sidebarDialog === 'rename'" class="sidebar-dialog">
-            <p class="sidebar-dialog-title">{{ $t('fileDetail.renameTitle') }}</p>
-            <input
-              v-model="renameInput"
-              class="sidebar-dialog-input"
-              :placeholder="$t('fileDetail.renamePlaceholder')"
-              @keydown.enter="confirmRename"
-              @keydown.escape="closeSidebarDialog"
-            />
-            <div class="sidebar-dialog-actions">
-              <button class="sidebar-dialog-btn" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
-              <button class="sidebar-dialog-btn primary" @click="confirmRename">{{ $t('common.confirm') }}</button>
-            </div>
-          </div>
-          <!-- 删除确认弹窗 -->
-          <div v-if="sidebarDialog === 'delete'" class="sidebar-dialog">
-            <p class="sidebar-dialog-title">{{ $t('fileDetail.deleteTitle') }}</p>
-            <p class="sidebar-dialog-desc">{{ $t('fileDetail.deleteDesc', { name: file?.name }) }}</p>
-            <div class="sidebar-dialog-actions">
-              <button class="sidebar-dialog-btn" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
-              <button class="sidebar-dialog-btn danger" @click="confirmDelete">{{ $t('fileDetail.confirmDelete') }}</button>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
       </div>
-    </Transition>
-  </Teleport>
+
+      <!-- 笔记编辑区 -->
+      <div v-if="note != null" class="sidebar-section">
+        <p class="section-title">{{ $t('note.note') }}</p>
+        <NoteEditor
+          v-model="noteText"
+          @save="emit('save-note', noteText)"
+          @toggle-checkbox="(idx: number) => { noteText = toggleCheckbox(noteText, idx); emit('save-note', noteText) }"
+        />
+      </div>
+
+    </template>
+
+    <template v-if="allowActions" #actions>
+      <button class="sidebar-action-btn" @click="openRenameDialog">{{ $t('common.rename') }}</button>
+      <button class="sidebar-action-btn danger" @click="openDeleteDialog">{{ $t('common.delete') }}</button>
+    </template>
+
+    <template #overlay>
+      <div v-if="sidebarDialog !== 'none'" class="sidebar-dialog-overlay">
+        <!-- 重命名弹窗 -->
+        <div v-if="sidebarDialog === 'rename'" class="sidebar-dialog">
+          <p class="sidebar-dialog-title">{{ $t('fileDetail.renameTitle') }}</p>
+          <input
+            v-model="renameInput"
+            class="sidebar-dialog-input"
+            :placeholder="$t('fileDetail.renamePlaceholder')"
+            @keydown.enter="confirmRename"
+            @keydown.escape="closeSidebarDialog"
+          />
+          <div class="sidebar-dialog-actions">
+            <button class="sidebar-dialog-btn" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
+            <button class="sidebar-dialog-btn primary" @click="confirmRename">{{ $t('common.confirm') }}</button>
+          </div>
+        </div>
+        <!-- 删除确认弹窗 -->
+        <div v-if="sidebarDialog === 'delete'" class="sidebar-dialog">
+          <p class="sidebar-dialog-title">{{ $t('fileDetail.deleteTitle') }}</p>
+          <p class="sidebar-dialog-desc">{{ $t('fileDetail.deleteDesc', { name: file?.name }) }}</p>
+          <div class="sidebar-dialog-actions">
+            <button class="sidebar-dialog-btn" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
+            <button class="sidebar-dialog-btn danger" @click="confirmDelete">{{ $t('fileDetail.confirmDelete') }}</button>
+          </div>
+        </div>
+      </div>
+    </template>
+  </SidebarShell>
 </template>
 
 <style>
 /* 非 scoped — 因为 Teleport 到 #content-row 层级 */
 
-.file-detail-sidebar {
-  position: relative;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--floating-main-radius);
-  padding: var(--floating-main-padding);
-  overflow: hidden;
-  flex-shrink: 0;
-  /* 手动复刻 glass-strong 视觉，不用 backdrop-filter：
-     与 main-content(glass-medium) 相邻时，双 backdrop-filter
-     在 WebView2 + Windows Acrylic 下产生白色闪烁伪影 */
-  background: var(--glass-strong-bg);
-  border: var(--glass-strong-border);
-  box-shadow: var(--glass-strong-shadow);
-}
-
-.file-detail-sidebar.is-resizing {
-  user-select: none;
-}
-
-.file-detail-sidebar .resize-handle {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  cursor: col-resize;
-  z-index: 10;
-}
-
-.file-detail-sidebar .resize-handle:hover,
-.file-detail-sidebar .resize-handle:active {
-  background: var(--color-primary);
-  opacity: 0.5;
-}
-
-/* 文件侧边栏进入/离开动画 */
-.file-sidebar-enter-active {
-  transition: transform var(--duration-normal) var(--ease-slide-in),
-              width var(--duration-normal) var(--ease-slide-in);
-  overflow: hidden;
-}
-.file-sidebar-leave-active {
-  transition: transform var(--duration-fast) var(--ease-slide-out),
-              width var(--duration-fast) var(--ease-slide-out);
-  overflow: hidden;
-}
-.file-sidebar-enter-from,
-.file-sidebar-leave-to {
-  transform: translateX(100%);
-  width: 0 !important;
-}
-
-/* 标题 */
-.file-detail-sidebar .sidebar-header {
-  display: flex;
-  align-items: center;
-  padding-bottom: var(--spacing-3);
-  border-bottom: 1px solid var(--border-medium);
-  flex-shrink: 0;
-}
-
-.file-detail-sidebar .sidebar-title {
-  font-size: var(--text-2xl);
-  font-weight: var(--font-weight-heading);
-  color: var(--text-primary);
-}
-
-/* body 滚动区 */
-.file-detail-sidebar .sidebar-body {
-  flex: 1;
-  overflow-y: auto;
-  padding-top: var(--spacing-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
-  min-height: 0;
-}
-
 /* ─── 图片预览 ─── */
 .preview-image-wrap {
   width: 100%;
   aspect-ratio: 4 / 3;
+  max-height: var(--sidebar-preview-max-height);
   border-radius: var(--radius-lg);
   background: var(--glass-subtle-bg);
   overflow: hidden;
@@ -595,7 +409,7 @@ function startResize(e: MouseEvent) {
 }
 
 /* ─── PSD 预览 ─── */
-.preview-psd-wrap {
+.preview-psd-section {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -603,8 +417,19 @@ function startResize(e: MouseEvent) {
   flex-shrink: 0;
 }
 
+.preview-psd-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-height: var(--sidebar-preview-max-height);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
 .psd-thumb-img {
   width: 100%;
+  max-height: 100%;
   border-radius: var(--radius-lg);
   object-fit: contain;
   background: var(--glass-subtle-bg);
@@ -653,183 +478,41 @@ function startResize(e: MouseEvent) {
   color: var(--text-primary);
 }
 
-/* ─── 基本信息区 ─── */
-.file-detail-sidebar .sidebar-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-2);
-}
-
-.file-detail-sidebar .section-title {
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-heading);
-  color: var(--text-secondary);
-}
-
-.file-detail-sidebar .info-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-2);
-}
-
-.file-detail-sidebar .info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--spacing-3);
-}
-
-.file-detail-sidebar .info-label {
-  font-size: var(--text-sm);
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-}
-
-.file-detail-sidebar .info-value {
-  font-size: var(--text-sm);
-  color: var(--text-primary);
-  text-align: right;
-  word-break: break-all;
-}
-
-/* ─── 版本列表 ─── */
-.file-detail-sidebar .version-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-2);
-}
-
-.file-detail-sidebar .version-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-light);
-  background: transparent;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.file-detail-sidebar .version-card:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-medium);
-}
-
-.file-detail-sidebar .version-card.active {
-  background: var(--bg-selected);
-  border-color: var(--color-primary);
-}
-
-.file-detail-sidebar .version-card-left {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-1);
-  min-width: 0;
-}
-
-.file-detail-sidebar .version-name {
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-heading);
-  color: var(--text-primary);
-}
-
-.file-detail-sidebar .version-card.active .version-name {
-  color: var(--color-primary);
-}
-
-.file-detail-sidebar .version-meta {
-  font-size: var(--text-sm);
-  color: var(--text-tertiary);
-}
-
-.file-detail-sidebar .version-card-right {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  flex-shrink: 0;
-}
-
-.file-detail-sidebar .version-ext {
-  font-size: var(--text-sm);
-  font-weight: var(--font-medium);
-  color: var(--text-secondary);
-}
-
-.file-detail-sidebar .version-folder-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--border-medium);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.file-detail-sidebar .version-folder-btn:hover {
-  background: var(--color-primary);
-  color: var(--color-neutral-0);
-  border-color: var(--color-primary);
-}
-
 /* .sidebar-actions / .sidebar-action-btn / .sidebar-dialog-* → design-system.css 公共类 */
 
-/* ─── 页面内全屏模式 ─── */
-
-.file-detail-sidebar.is-fullscreen {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  /* left 由 JS 动态注入（.main-content 左边缘偏移量），不盖左侧快捷应用 */
-  width: auto !important;
-  z-index: 1;
-  border-radius: var(--floating-main-radius);
-  box-shadow: none;
-  padding: 0;
-}
-
-/* 全屏时隐藏非预览元素 */
-.file-detail-sidebar.is-fullscreen .resize-handle,
-.file-detail-sidebar.is-fullscreen .sidebar-header,
-.file-detail-sidebar.is-fullscreen .sidebar-section,
-.file-detail-sidebar.is-fullscreen .sidebar-actions {
-  display: none;
-}
-
-/* body 用 display:contents 消除中间层，让预览区直接参与侧边栏 flex 布局 */
-.file-detail-sidebar.is-fullscreen .sidebar-body {
-  display: contents;
-}
+/* ─── 页面内全屏模式（预览区铺满） ─── */
 
 /* 图片/PDF/PSD 预览铺满 */
-.file-detail-sidebar.is-fullscreen .preview-image-wrap,
-.file-detail-sidebar.is-fullscreen .preview-pdf-wrap {
+.sidebar-shell.is-fullscreen .preview-image-wrap,
+.sidebar-shell.is-fullscreen .preview-pdf-wrap {
   flex: 1;
   min-height: 0;
+  max-height: none;
   aspect-ratio: unset;
   border-radius: 0;
   overflow: hidden;
 }
 
 /* PSD 全屏：图片充满，隐藏"用 PS 打开"按钮 */
-.file-detail-sidebar.is-fullscreen .preview-psd-wrap {
+.sidebar-shell.is-fullscreen .preview-psd-wrap {
   flex: 1;
   min-height: 0;
+  max-height: none;
   justify-content: center;
   border-radius: 0;
   overflow: hidden;
 }
 
-.file-detail-sidebar.is-fullscreen .preview-psd-wrap .open-file-btn {
+.sidebar-shell.is-fullscreen .preview-psd-section .open-file-btn {
   display: none;
 }
 
-.file-detail-sidebar.is-fullscreen .psd-thumb-img {
+.sidebar-shell.is-fullscreen .preview-psd-section {
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar-shell.is-fullscreen .psd-thumb-img {
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -837,14 +520,15 @@ function startResize(e: MouseEvent) {
 }
 
 /* 视频全屏：wrap 铺满，video flex: 1 + contain 显示完整画面 */
-.file-detail-sidebar.is-fullscreen .preview-video-wrap {
+.sidebar-shell.is-fullscreen .preview-video-wrap {
   flex: 1;
   min-height: 0;
+  max-height: none;
   border-radius: 0;
   overflow: hidden;
 }
 
-.file-detail-sidebar.is-fullscreen .preview-video {
+.sidebar-shell.is-fullscreen .preview-video {
   flex: 1;
   min-height: 0;
   height: 0; /* 让 flex: 1 生效 */
@@ -852,7 +536,7 @@ function startResize(e: MouseEvent) {
 }
 
 /* PDF iframe 全屏 min-height 解除 */
-.file-detail-sidebar.is-fullscreen .preview-pdf-frame {
+.sidebar-shell.is-fullscreen .preview-pdf-frame {
   min-height: 0;
 }
 
@@ -893,7 +577,7 @@ function startResize(e: MouseEvent) {
 }
 
 /* 全屏模式下按钮常驻可见 */
-.file-detail-sidebar.is-fullscreen .preview-fullscreen-btn {
+.sidebar-shell.is-fullscreen .preview-fullscreen-btn {
   opacity: 1;
 }
 

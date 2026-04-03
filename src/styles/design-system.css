@@ -406,6 +406,7 @@
   --sidebar-slide-out-duration: 200ms;
   --sidebar-slide-in-ease:      var(--ease-slide-in);
   --sidebar-slide-out-ease:     var(--ease-slide-out);
+  --sidebar-preview-max-height: 50vh;
 
   /* 悬浮操作按钮（导航栏独立小悬浮岛按钮，如「更多」） */
   --floating-action-height:       var(--button-lg-height);

@@ -173,6 +173,7 @@ const progressPercent = computed(() =>
 .preview-video-wrap {
   position: relative;
   width: 100%;
+  max-height: var(--sidebar-preview-max-height);
   border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--color-neutral-900);
@@ -188,6 +189,7 @@ const progressPercent = computed(() =>
 
 .preview-video {
   width: 100%;
+  min-height: 0;
   display: block;
   object-fit: contain;
   cursor: pointer;

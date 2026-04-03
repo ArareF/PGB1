@@ -144,7 +144,10 @@ function onActionsWheel(e: WheelEvent) {
               v-for="action in actions"
               :key="action.id"
               class="action-btn"
-              :class="{ 'action-btn--active': action.active }"
+              :class="{
+                'action-btn--active': action.active,
+                'action-btn--success': action.variant === 'success',
+              }"
               :title="action.onLongPress ? action.label + $t('common.longPressHint') : action.label"
               :disabled="action.disabled"
               @pointerdown="onActionPointerDown($event, action)"
@@ -330,6 +333,21 @@ function onActionsWheel(e: WheelEvent) {
   border-color: color-mix(in srgb, var(--color-primary-500) 50%, transparent);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25),
               inset 0 0 0 1px color-mix(in srgb, var(--color-primary-500) 40%, transparent);
+  transform: translateY(-2px);
+}
+
+.action-btn--success {
+  background: color-mix(in srgb, var(--color-success) 20%, transparent);
+  color: var(--color-success-light);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-success) 40%, transparent);
+}
+
+.action-btn--success:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-success) 35%, transparent);
+  color: var(--color-success-light);
+  border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25),
+              inset 0 0 0 1px color-mix(in srgb, var(--color-success) 40%, transparent);
   transform: translateY(-2px);
 }
 

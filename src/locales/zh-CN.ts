@@ -54,6 +54,7 @@ export default {
     sortDefault: '默认',
     sortDeadline: '截止日期',
     sortPriority: '优先度',
+    endOvertime: '结束加班',
   },
 
   project: {
@@ -464,6 +465,7 @@ export default {
     viewResult: '查看结果',
     clocking: '正在打卡',
     preparing: '正在准备...',
+    missedClockOut: '昨天忘记打退勤卡了',
   },
 
   overtime: {

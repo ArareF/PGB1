@@ -41,6 +41,7 @@ const hasClockIn = ref(false)   // 今天已执行上班打卡
 const hasClockOut = ref(false)  // 今天已执行下班打卡
 const actualClockInTime = ref<string | null>(null)   // 实际出勤时间 "HH:MM"
 const actualClockOutTime = ref<string | null>(null)  // 实际退勤时间 "HH:MM"
+const isOvertime = ref(localStorage.getItem('pgb1-overtime-active') === 'true')  // 加班中状态
 
 // 番茄钟状态
 export type PomodoroPhase = 'idle' | 'work' | 'work-done' | 'break' | 'break-done'
@@ -421,6 +422,16 @@ export function useStatusBar() {
     loadHoliday(now.value)
   }
 
+  function startOvertime() {
+    isOvertime.value = true
+    localStorage.setItem('pgb1-overtime-active', 'true')
+  }
+
+  function endOvertime() {
+    isOvertime.value = false
+    localStorage.removeItem('pgb1-overtime-active')
+  }
+
   return {
     config,
     saveConfig,
@@ -440,5 +451,8 @@ export function useStatusBar() {
     pomodoroLeftSeconds,
     pomodoroDisplay,
     onPomodoroClick,
+    isOvertime,
+    startOvertime,
+    endOvertime,
   }
 }

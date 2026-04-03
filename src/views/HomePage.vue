@@ -3,9 +3,11 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useNavigation } from '../composables/useNavigation'
 import { useProjects } from '../composables/useProjects'
 import { useSettings } from '../composables/useSettings'
+import { useStatusBar } from '../composables/useStatusBar'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import { useNotes, usePageNote } from '../composables/useNotes'
 import type { ProjectInfo } from '../composables/useProjects'
@@ -23,6 +25,7 @@ const { setNavigation } = useNavigation()
 const { projects, loading, loadProjects } = useProjects()
 const { loadSettings } = useSettings()
 const { openInExplorer } = useDirectoryFiles()
+const { isOvertime, startOvertime, endOvertime } = useStatusBar()
 
 const showCreateDialog = ref(false)
 const showGuide = ref(false)
@@ -190,19 +193,40 @@ function onProjectRefresh() {
   loadProjects()
 }
 
-/* 注册主页导航配置 */
-setNavigation({
-  title: t('app.name'),
-  showBackButton: false,
-  actions: [],
-  moreMenuItems: [
-    { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
-  ],
-})
+/* 注册主页导航配置（根据加班状态动态更新 actions） */
+function refreshHomeNav() {
+  const actions = isOvertime.value
+    ? [{
+        id: 'end-overtime',
+        label: t('home.endOvertime'),
+        variant: 'success' as const,
+        handler: async () => {
+          try {
+            await invoke('open_reminder_window', { reminderType: 'overtime' })
+          } catch (e) {
+            console.error('打开退勤打卡窗口失败:', e)
+          }
+        },
+      }]
+    : []
+  setNavigation({
+    title: t('app.name'),
+    showBackButton: false,
+    actions,
+    moreMenuItems: [
+      { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
+    ],
+  })
+}
+
+refreshHomeNav()
+watch(isOvertime, refreshHomeNav)
 
 function onVisibilityChange() {
   if (document.visibilityState === 'visible') loadProjects()
 }
+
+let unlistenOvertime: UnlistenFn | null = null
 
 onMounted(async () => {
   loadProjects()
@@ -212,9 +236,25 @@ onMounted(async () => {
     projectRootDir.value = s.general.projectRootDir
     await loadPageNotes()
   }
+  // 监听退勤弹窗发出的加班事件
+  unlistenOvertime = await listen('overtime-started', () => {
+    startOvertime()
+  })
+  // 监听加班状态清除（出勤弹窗检测到漏打退勤时发出）
+  listen('overtime-ended', () => {
+    endOvertime()
+  })
+  // 监听打卡完成事件（退勤成功后清除加班状态）
+  listen('clock-progress', (event: any) => {
+    const step = event.payload?.step
+    if (isOvertime.value && (step === 'success' || step === 'already-done')) {
+      endOvertime()
+    }
+  })
 })
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  if (unlistenOvertime) unlistenOvertime()
 })
 
 function openProject(project: ProjectInfo) {

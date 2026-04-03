@@ -73,6 +73,7 @@ pub fn run() {
             commands::schedule_overtime_reminder,
             commands::show_overtime_dialog,
             commands::reschedule_attendance,
+            commands::open_reminder_window,
             commands::translate_text_stream,
             commands::toggle_translator_window,
             commands::open_pinboard_window,

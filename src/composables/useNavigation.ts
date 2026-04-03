@@ -10,6 +10,7 @@ export interface NavAction {
   handler: () => void
   onLongPress?: (btnRect: DOMRect) => void  /* 长按 500ms 触发，btnRect = 按钮位置 */
   active?: boolean          /* 按钮强调状态（如已设默认时的「打开AE」） */
+  variant?: 'default' | 'success'  /* 按钮颜色变体，success = 绿色玻璃 */
   disabled?: boolean
 }
 

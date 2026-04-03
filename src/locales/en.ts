@@ -54,6 +54,7 @@ export default {
     sortDefault: 'Default',
     sortDeadline: 'Deadline',
     sortPriority: 'Priority',
+    endOvertime: 'End Overtime',
   },
 
   project: {
@@ -447,6 +448,7 @@ export default {
     viewResult: 'View Result',
     clocking: 'Clocking...',
     preparing: 'Preparing...',
+    missedClockOut: 'You forgot to clock out yesterday',
   },
 
   overtime: {

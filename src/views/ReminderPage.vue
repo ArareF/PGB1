@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -12,6 +12,7 @@ const reminderType = computed(() => route.params.type as string)
 
 const loading = ref(false)
 const errorMsg = ref('')
+const missedClockOut = ref(false)  // 上次出勤后忘记打退勤卡
 
 // 打卡进度状态
 const clockingMode = ref(false)
@@ -28,6 +29,29 @@ onMounted(async () => {
     await getCurrentWindow().show()
   } catch (e) {
     console.error('reminder window show() failed:', e)
+  }
+
+  // 出勤提醒时检测：上次是否漏打退勤卡
+  if (reminderType.value === 'clock-in') {
+    // 方式1：加班状态残留（昨天点了加班但没结束）
+    const overtimeActive = localStorage.getItem('pgb1-overtime-active') === 'true'
+    if (overtimeActive) {
+      missedClockOut.value = true
+      localStorage.removeItem('pgb1-overtime-active')
+      emit('overtime-ended')
+    }
+    // 方式2：attendance record 中 last_clock_in > last_clock_out（有出勤无退勤）
+    if (!overtimeActive) {
+      try {
+        const record = await invoke<{
+          last_clock_in: string | null
+          last_clock_out: string | null
+        }>('load_attendance_record')
+        if (record.last_clock_in && (!record.last_clock_out || record.last_clock_out < record.last_clock_in)) {
+          missedClockOut.value = true
+        }
+      } catch { /* 静默 */ }
+    }
   }
 
   unlisten = await listen<{ step: string; message: string }>('clock-progress', (event) => {
@@ -123,8 +147,8 @@ async function handleAction(action: string) {
         break
 
       case 'overtime':
+        await emit('overtime-started')
         await closeWindow()
-        await invoke('show_overtime_dialog')
         break
 
       case 'openReport':
@@ -201,6 +225,11 @@ async function handleAction(action: string) {
     <template v-else>
       <p class="reminder-title">{{ config.title }}</p>
       <div class="divider"></div>
+      <!-- 漏打退勤卡警告 -->
+      <div v-if="missedClockOut && reminderType === 'clock-in'" class="missed-clock-out-warning">
+        <span class="warning-icon">!</span>
+        <span>{{ $t('reminder.missedClockOut') }}</span>
+      </div>
       <p class="reminder-body">
         <template v-for="(line, i) in config.body.split('\n')" :key="i">
           {{ line }}<br v-if="i < config.body.split('\n').length - 1" />
@@ -291,6 +320,34 @@ async function handleAction(action: string) {
 .error-text {
   font-size: var(--text-sm);
   color: var(--color-danger);
+}
+
+/* 漏打退勤卡醒目警告 */
+.missed-clock-out-warning {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  background: color-mix(in srgb, var(--color-warning) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 50%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--color-warning);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-heading);
+}
+
+.warning-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  color: var(--color-neutral-900);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-heading);
+  flex-shrink: 0;
 }
 
 /* 进度条 */

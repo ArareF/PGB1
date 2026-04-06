@@ -231,6 +231,10 @@ let unlistenOvertime: UnlistenFn | null = null
 onMounted(async () => {
   loadProjects()
   document.addEventListener('visibilitychange', onVisibilityChange)
+  // 补偿检测：用户可能在非主页时点了加班，localStorage 已设置但 ref 未同步
+  if (localStorage.getItem('pgb1-overtime-active') === 'true' && !isOvertime.value) {
+    startOvertime()
+  }
   const s = await loadSettings()
   if (s?.general.projectRootDir) {
     projectRootDir.value = s.general.projectRootDir

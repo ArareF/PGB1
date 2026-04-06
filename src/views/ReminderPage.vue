@@ -147,6 +147,7 @@ async function handleAction(action: string) {
         break
 
       case 'overtime':
+        localStorage.setItem('pgb1-overtime-active', 'true')
         await emit('overtime-started')
         await closeWindow()
         break

@@ -1096,12 +1096,19 @@ pub fn reschedule_attendance(
 }
 
 /// 前端主动打开提醒窗口（用于「结束加班」按钮触发退勤打卡）
+/// 必须 spawn 到 async runtime（同 test_reminder，防止 build() 主线程死锁）
 #[tauri::command]
 pub fn open_reminder_window(
     app_handle: tauri::AppHandle,
     reminder_type: String,
 ) -> Result<(), String> {
-    crate::scheduler::create_reminder_window(&app_handle, &reminder_type)
+    let app = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = crate::scheduler::create_reminder_window(&app, &reminder_type) {
+            log::error!("创建提醒窗口失败: {}", e);
+        }
+    });
+    Ok(())
 }
 
 /// 通过 Win32 SendInput 发送真实 Ctrl+End 按键

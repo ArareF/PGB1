@@ -79,7 +79,13 @@ pub fn rename_material(task_path: String, base_name: String, new_base_name: Stri
                     for frame_entry in frames.flatten() {
                         let fpath = frame_entry.path();
                         let fname = match fpath.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
-                        if matches_base_name(&fname, base_name.as_str()) {
+                        // 序列帧帧文件命名为 {base_name}_{帧编号}.png（下划线分隔），
+                        // matches_base_name 只认连字符后缀，这里单独放宽：允许 '_' 或 '-' 分隔帧号
+                        let fstem = Path::new(&fname).file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                        let is_frame = fstem == base_name.as_str()
+                            || fstem.starts_with(&format!("{}_", base_name))
+                            || fstem.starts_with(&format!("{}-", base_name));
+                        if is_frame {
                             let fsuffix = &fname[base_name.len()..];
                             let new_fname = format!("{}{}", new_base_name, fsuffix);
                             let _ = fs::rename(&fpath, fpath.parent().expect("read_dir frame must have parent").join(&new_fname));

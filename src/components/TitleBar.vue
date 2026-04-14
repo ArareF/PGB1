@@ -146,6 +146,7 @@ function onActionsWheel(e: WheelEvent) {
               class="action-btn"
               :class="{
                 'action-btn--active': action.active,
+                'action-btn--hint': action.hint && !action.active,
                 'action-btn--success': action.variant === 'success',
               }"
               :title="action.onLongPress ? action.label + $t('common.longPressHint') : action.label"
@@ -333,6 +334,18 @@ function onActionsWheel(e: WheelEvent) {
   border-color: color-mix(in srgb, var(--color-primary-500) 50%, transparent);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25),
               inset 0 0 0 1px color-mix(in srgb, var(--color-primary-500) 40%, transparent);
+  transform: translateY(-2px);
+}
+
+/* 弱强调态：只描边不填色，用于「有活但不是优先下一步」的按钮 */
+.action-btn--hint {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary-500) 55%, transparent);
+}
+
+.action-btn--hint:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary-500) 10%, transparent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25),
+              inset 0 0 0 1px color-mix(in srgb, var(--color-primary-500) 55%, transparent);
   transform: translateY(-2px);
 }
 

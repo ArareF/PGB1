@@ -63,15 +63,34 @@ const {
   toggleMultiSelect: _toggleMultiSelect, toggleSelection, toggleSelectAll,
   isSelecting, selectionRect, justFinished, onContainerMouseDown, onContainerScroll,
 } = useMultiSelect({
-  allPaths: computed(() => materials.value.map(m => m.path)),
-  onEnter: () => { if (selectedMaterial.value) closeSidebar() },
-  rubberBand: { containerRef: scrollRef, cardSelector: '.material-card[data-path]' },
+  allPaths: computed(() => [
+    ...materials.value.map(m => m.path),
+    ...previewGroups.value.map(previewGroupKey),
+  ]),
+  onEnter: () => {
+    if (selectedMaterial.value) closeSidebar()
+    selectedPreviewVideo.value = null
+    selectedPreviewGroup.value = null
+  },
+  rubberBand: {
+    containerRef: scrollRef,
+    cardSelector: '.material-card[data-path], .preview-video-card[data-path]',
+  },
 })
 
 function toggleMultiSelect() { _toggleMultiSelect() }
 
+/** 预览视频组的选中 key = 最新版本的文件路径（与 selectedPaths Set 对齐） */
+function previewGroupKey(g: PreviewVideoGroup): string {
+  return g.versions[g.versions.length - 1].path
+}
+
 const selectedMaterials = computed(() =>
   materials.value.filter(m => selectedPaths.value.has(m.path))
+)
+
+const selectedPreviewGroups = computed(() =>
+  previewGroups.value.filter(g => selectedPaths.value.has(previewGroupKey(g)))
 )
 
 /** 卡片点击处理：多选模式下切换选中，否则打开侧边栏 */
@@ -85,9 +104,10 @@ function onCardClick(material: MaterialInfo) {
 
 // ─── 拖拽上传 ──────────────────────────────────────
 
-/** 上传确认弹窗状态 */
+/** 上传确认弹窗状态（素材 + 预览视频 混合） */
 const showUploadConfirm = ref(false)
 const draggedMaterials = ref<MaterialInfo[]>([])
+const draggedPreviewGroupsForUpload = ref<PreviewVideoGroup[]>([])
 
 /** 预览视频上传确认弹窗状态 */
 const showPreviewUploadConfirm = ref(false)
@@ -96,6 +116,37 @@ const draggedPreviewFile = ref<PreviewVideoEntry | null>(null)
 /** 规范化弹窗状态 */
 const showNormalizeDialog = ref(false)
 const showGuide = ref(false)
+
+/** ─── 导航按钮高亮判定 ──────────────────────────────
+ * 规范化：需要异步扫 00_original 与命名规则比对，结果写入 ref
+ * 缩放 / 转换：可从 materials.value 同步 computed */
+const hasNormalizeWork = ref(false)
+const hasScaleWork = computed(() =>
+  materials.value.some(m =>
+    m.material_type === 'image' &&
+    m.progress !== 'uploaded' &&
+    m.scales.length === 0
+  )
+)
+const hasConvertWork = computed(() =>
+  materials.value.some(m =>
+    (m.material_type === 'image' || m.material_type === 'sequence') &&
+    m.progress !== 'done' &&
+    m.progress !== 'uploaded'
+  )
+)
+
+/** 扫描 00_original 判断是否存在需要规范化的文件 */
+async function checkNormalizeWork() {
+  if (!taskFolderPath) { hasNormalizeWork.value = false; return }
+  try {
+    const items = await invoke<unknown[]>('preview_normalize', { taskPath: taskFolderPath })
+    hasNormalizeWork.value = items.length > 0
+  } catch (e) {
+    console.error('检测规范化状态失败:', e)
+    hasNormalizeWork.value = false
+  }
+}
 
 // 笔记
 const sidebarNoteText = ref('')
@@ -122,33 +173,42 @@ function onCardMouseDown(e: MouseEvent, material: MaterialInfo) {
           toggleSelection(material.path)
         }
         if (selectedPaths.value.size > 0) {
-          performDrag(selectedMaterials.value)
+          performDrag(selectedMaterials.value, selectedPreviewGroups.value)
         }
       } else {
-        performDrag([material])
+        performDrag([material], [])
       }
     },
     (ev) => ev.button !== 0,
   )(e)
 }
 
-async function performDrag(materialsToDrag: MaterialInfo[]) {
+async function performDrag(
+  materialsToDrag: MaterialInfo[],
+  previewGroupsToDrag: PreviewVideoGroup[],
+) {
   try {
-    // 调用 Rust 后端收集实际文件路径
-    const filePaths = await invoke<string[]>('collect_drag_files', {
-      taskPath: taskFolderPath,
-      materials: materialsToDrag.map(m => ({
-        name: m.name,
-        material_type: m.material_type,
-      })),
-    })
+    // 素材走 Rust 后端解析具体文件路径；预览视频直接取最新版本的 path
+    let filePaths: string[] = []
+    if (materialsToDrag.length > 0) {
+      filePaths = await invoke<string[]>('collect_drag_files', {
+        taskPath: taskFolderPath,
+        materials: materialsToDrag.map(m => ({
+          name: m.name,
+          material_type: m.material_type,
+        })),
+      })
+    }
+    for (const g of previewGroupsToDrag) {
+      filePaths.push(previewGroupKey(g))
+    }
 
     if (filePaths.length === 0) {
       console.warn('没有可拖拽的文件')
       return
     }
 
-    // 用第一个素材的预览图作为拖拽图标
+    // 用第一个素材的预览图作为拖拽图标（预览视频没有独立预览图，留空即可）
     const iconPath = materialsToDrag[0]?.preview_path ?? ''
 
     // 发起 OS 级拖拽
@@ -156,10 +216,12 @@ async function performDrag(materialsToDrag: MaterialInfo[]) {
       { item: filePaths, icon: iconPath },
       (payload) => {
         if (payload.result === 'Dropped') {
-          // 只有拖拽的素材包含"已输出"状态时才询问上传
-          const hasDone = materialsToDrag.some(m => m.progress === 'done')
-          if (hasDone) {
+          // 素材「已输出」 或 预览视频「非已上传」 才询问上传
+          const hasMaterialDone = materialsToDrag.some(m => m.progress === 'done')
+          const previewsToUpload = previewGroupsToDrag.filter(g => g.uploadStatus !== 'uploaded')
+          if (hasMaterialDone || previewsToUpload.length > 0) {
             draggedMaterials.value = materialsToDrag
+            draggedPreviewGroupsForUpload.value = previewsToUpload
             showUploadConfirm.value = true
           }
         }
@@ -182,36 +244,66 @@ function onVersionMouseDown(e: MouseEvent, version: MaterialVersion) {
   )(e)
 }
 
-/** 确认上传：复制文件到 nextcloud */
+/** 确认上传：素材走 copy_to_nextcloud；预览视频逐个走 copy_preview_to_nextcloud */
 async function confirmUpload() {
   showUploadConfirm.value = false
 
-  try {
-    const result = await invoke<{ copied_count: number; errors: string[] }>('copy_to_nextcloud', {
-      taskPath: taskFolderPath,
-      materialNames: draggedMaterials.value.map(m => ({
-        name: m.name,
-        material_type: m.material_type,
-      })),
-    })
+  const materials = draggedMaterials.value
+  const previewGroupsToUpload = draggedPreviewGroupsForUpload.value
 
-    // 刷新素材列表（进度会更新为"已上传"）
-    await refresh()
-
-    // 如果在多选模式，退出多选
-    if (isMultiSelect.value) {
-      isMultiSelect.value = false
-      selectedPaths.value = new Set()
+  // 素材批量上传
+  if (materials.length > 0) {
+    try {
+      const result = await invoke<{ copied_count: number; errors: string[] }>('copy_to_nextcloud', {
+        taskPath: taskFolderPath,
+        materialNames: materials.map(m => ({
+          name: m.name,
+          material_type: m.material_type,
+        })),
+      })
+      if (result.errors.length > 0) {
+        console.warn('部分素材复制失败:', result.errors)
+      }
+    } catch (err) {
+      console.error('复制素材到 nextcloud 失败:', err)
     }
+  }
 
-    if (result.errors.length > 0) {
-      console.warn('部分文件复制失败:', result.errors)
+  // 预览视频逐个上传（后端接口单文件语义）
+  for (const g of previewGroupsToUpload) {
+    const latestPath = previewGroupKey(g)
+    try {
+      await invoke('copy_preview_to_nextcloud', {
+        filePath: latestPath,
+        nextcloudPreviewPath,
+      })
+    } catch (err) {
+      console.error(`预览视频复制失败 (${latestPath}):`, err)
     }
-  } catch (err) {
-    console.error('复制到 nextcloud 失败:', err)
+  }
+
+  // 刷新素材 + 预览视频列表
+  await refresh()
+  if (previewGroupsToUpload.length > 0) {
+    try {
+      const files = await invoke<PreviewVideoEntry[]>('scan_preview_videos', {
+        taskPath: taskFolderPath,
+        nextcloudPreviewPath,
+      })
+      previewGroups.value = groupPreviewVideos(files)
+    } catch (e) {
+      console.error('刷新预览视频失败:', e)
+    }
+  }
+
+  // 多选模式下清理
+  if (isMultiSelect.value) {
+    isMultiSelect.value = false
+    selectedPaths.value = new Set()
   }
 
   draggedMaterials.value = []
+  draggedPreviewGroupsForUpload.value = []
 }
 
 function startScaling() {
@@ -225,6 +317,7 @@ function startScaling() {
 function cancelUpload() {
   showUploadConfirm.value = false
   draggedMaterials.value = []
+  draggedPreviewGroupsForUpload.value = []
 }
 
 /** 当前选中的素材（用于侧边栏） */
@@ -485,6 +578,21 @@ let currentProjectPath = ''
 /** 更新导航栏（含子任务数量） */
 function updateNavigation() {
   const hasSubtasks = subtaskTotal.value > 0
+
+  // 工作流优先级：规范化 > 缩放 > 转换
+  // 优先级最高且有活的按钮 → 全亮 (active)
+  // 其余有活的按钮 → 弱强调描边 (hint)
+  // 无活按钮 → 常态
+  const primaryId: 'normalize' | 'scale' | 'convert' | null =
+    hasNormalizeWork.value ? 'normalize'
+    : hasScaleWork.value ? 'scale'
+    : hasConvertWork.value ? 'convert'
+    : null
+  const levelFor = (id: 'normalize' | 'scale' | 'convert', hasWork: boolean) => ({
+    active: primaryId === id,
+    hint: primaryId !== id && hasWork,
+  })
+
   setNavigation({
     title: taskId,
     showBackButton: true,
@@ -496,9 +604,9 @@ function updateNavigation() {
         handler: () => { subtaskAutoPrompt.value = false; subtaskRevertPrompt.value = false; showSubtaskDialog.value = true },
         disabled: !hasSubtasks,
       },
-      { id: 'normalize', label: t('task.normalize'), handler: () => { showNormalizeDialog.value = true } },
-      { id: 'scale', label: t('task.scale'), handler: startScaling },
-      { id: 'convert', label: t('task.convert'), handler: () => router.push({ name: 'convert', params: { projectId, taskId }, query: { taskPath: taskFolderPath } }) },
+      { id: 'normalize', label: t('task.normalize'), handler: () => { showNormalizeDialog.value = true }, ...levelFor('normalize', hasNormalizeWork.value) },
+      { id: 'scale', label: t('task.scale'), handler: startScaling, ...levelFor('scale', hasScaleWork.value) },
+      { id: 'convert', label: t('task.convert'), handler: () => router.push({ name: 'convert', params: { projectId, taskId }, query: { taskPath: taskFolderPath } }), ...levelFor('convert', hasConvertWork.value) },
     ],
     moreMenuItems: [
       { id: 'open-nextcloud', label: t('task.openNextcloudFolder'), handler: () => { if (nextcloudPath) openInExplorer(nextcloudPath) } },
@@ -527,6 +635,11 @@ async function toggleSubtaskCompletion(subtaskKey: string) {
 
 // 初始注册导航
 updateNavigation()
+
+// 三个按钮的"有活可干"信号变化时自动刷新导航，保证按钮高亮态实时对齐
+watch([hasNormalizeWork, hasScaleWork, hasConvertWork], () => {
+  updateNavigation()
+})
 
 /** 判断是否为 Prototype 任务 */
 const isPrototype = computed(() => taskId.toLowerCase() === 'prototype')
@@ -687,6 +800,18 @@ async function onSidebarNoteSave() {
 function onPreviewVideoMouseDown(e: MouseEvent, group: PreviewVideoGroup) {
   createDragHandler(
     () => {
+      // 多选模式：若当前组未选中先勾上，再走统一的混合批量拖拽
+      if (isMultiSelect.value) {
+        const key = previewGroupKey(group)
+        if (!selectedPaths.value.has(key)) {
+          toggleSelection(key)
+        }
+        if (selectedPaths.value.size > 0) {
+          performDrag(selectedMaterials.value, selectedPreviewGroups.value)
+        }
+        return
+      }
+      // 单选模式：保留原"单文件拖拽 + 独立预览视频上传弹窗"
       const latest = group.versions[group.versions.length - 1]
       startDrag({ item: [latest.path], icon: '' }, (payload) => {
         if (payload.result === 'Dropped') {
@@ -730,6 +855,11 @@ function cancelPreviewUpload() {
 }
 
 function selectPreviewVideo(group: PreviewVideoGroup) {
+  // 多选模式：点击切换勾选态，不打开侧边栏
+  if (isMultiSelect.value) {
+    toggleSelection(previewGroupKey(group))
+    return
+  }
   const latest = group.versions[group.versions.length - 1]
   // 再次点击同一组则关闭
   if (selectedPreviewGroup.value?.baseName === group.baseName) {
@@ -824,6 +954,8 @@ async function refresh() {
     await loadMaterials(taskFolderPath)
     // 刷新后清除选中列表（素材列表可能变化）
     selectedPaths.value = new Set()
+    // 刷新规范化按钮高亮态（与 materials 解耦，需独立 invoke）
+    checkNormalizeWork()
     // 同步刷新预览视频列表
     try {
       const files = await invoke<PreviewVideoEntry[]>('scan_preview_videos', {
@@ -858,6 +990,7 @@ onMounted(async () => {
     nextcloudPreviewPath = `${project.path}\\03_Render_VFX\\VFX\\nextcloud\\preview`
     projectPathRef.value = project.path
     await loadMaterials(taskFolderPath)
+    checkNormalizeWork()
     await loadNotes()
     await loadProjectNotes()
 
@@ -1045,10 +1178,24 @@ onUnmounted(() => {
               v-for="group in previewGroups"
               :key="group.baseName"
               class="preview-video-card glass-subtle"
-              :class="{ selected: selectedPreviewGroup?.baseName === group.baseName }"
+              :data-path="previewGroupKey(group)"
+              :class="{
+                selected: !isMultiSelect && selectedPreviewGroup?.baseName === group.baseName,
+                'multi-checked': isMultiSelect && selectedPaths.has(previewGroupKey(group)),
+              }"
               @click="selectPreviewVideo(group)"
               @mousedown="(e: MouseEvent) => onPreviewVideoMouseDown(e, group)"
             >
+              <!-- 多选复选框 -->
+              <span
+                v-if="isMultiSelect"
+                class="pv-card-checkbox"
+                :class="{ checked: selectedPaths.has(previewGroupKey(group)) }"
+              >
+                <svg v-if="selectedPaths.has(previewGroupKey(group))" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                </svg>
+              </span>
               <div class="pv-card-preview">
                 <!-- 截帧缩略图 -->
                 <img
@@ -1489,6 +1636,7 @@ onUnmounted(() => {
 }
 
 .preview-video-card {
+  position: relative;
   width: var(--card-material-width);
   display: flex;
   flex-direction: column;
@@ -1509,6 +1657,34 @@ onUnmounted(() => {
 .preview-video-card.selected {
   border-color: var(--color-primary);
   background: rgba(59, 130, 246, 0.1);
+}
+
+.preview-video-card.multi-checked {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.pv-card-checkbox {
+  position: absolute;
+  top: var(--spacing-2);
+  left: var(--spacing-2);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border-heavy);
+  background: var(--glass-subtle-bg);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition: all var(--transition-fast);
+}
+
+.pv-card-checkbox.checked {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-neutral-0);
 }
 
 .pv-card-preview {

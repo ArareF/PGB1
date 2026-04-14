@@ -9,7 +9,8 @@ export interface NavAction {
   icon?: string      /* 预留：SVG 图标名，Phase 3+ 实现图标系统 */
   handler: () => void
   onLongPress?: (btnRect: DOMRect) => void  /* 长按 500ms 触发，btnRect = 按钮位置 */
-  active?: boolean          /* 按钮强调状态（如已设默认时的「打开AE」） */
+  active?: boolean          /* 按钮强调状态（全亮：有底色 + 描边） */
+  hint?: boolean            /* 弱强调状态（只描边，不填充）—— 与 active 互斥 */
   variant?: 'default' | 'success'  /* 按钮颜色变体，success = 绿色玻璃 */
   disabled?: boolean
 }

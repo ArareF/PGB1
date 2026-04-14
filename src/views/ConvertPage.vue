@@ -139,6 +139,8 @@ let unlistenFailed: (() => void) | null = null
 let expectedNames = new Set<string>()
 /** 已完成的素材名去重集，防止同一素材多次计数 */
 let organizedNames = new Set<string>()
+/** 已跳过（未发布）的序列帧名去重集，对称防止同名重复扣减 total */
+let failedNames = new Set<string>()
 
 async function handleStart() {
   if (!canStart.value || !taskPath) return
@@ -162,6 +164,7 @@ async function handleStart() {
   sequenceError.value = ''
   expectedNames = new Set([...Object.keys(images), ...sequences.map(s => s.name)])
   organizedNames = new Set()
+  failedNames = new Set()
   conversionProgress.value = { current: 0, total: expectedNames.size }
 
   try {
@@ -178,7 +181,13 @@ async function handleStart() {
       }
     })
     unlistenFailed = await listen<string>('sequence-conversion-failed', (event) => {
-      failedSequences.value.push(event.payload)
+      const name = event.payload
+      // 白名单过滤 + 去重：跳过的序列帧从 total 中剔除，保证 current/total 能正常收敛到相等
+      if (expectedNames.has(name) && !failedNames.has(name)) {
+        failedNames.add(name)
+        conversionProgress.value.total -= 1
+        failedSequences.value.push(name)
+      }
     })
 
     if (!settings.value) throw new Error('应用设置未加载')

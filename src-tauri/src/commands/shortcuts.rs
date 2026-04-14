@@ -76,11 +76,34 @@ pub fn launch_shortcut(shortcut_type: String, path: String) -> Result<(), String
                 .map_err(|e| format!("打开文件夹失败: {}", e))?;
         }
         "web" => {
-            // 用系统默认浏览器打开 URL
-            std::process::Command::new("cmd")
-                .args(["/C", "start", "", &path])
-                .spawn()
-                .map_err(|e| format!("打开网页失败: {}", e))?;
+            // 用系统默认浏览器打开 URL。
+            // 不再走 `cmd /C start "" <path>` — cmd 会解析 path 中的 `&`/`|`/`%` 等元字符
+            // 造成命令注入。改用 ShellExecuteW 直接把 URL 交给 Shell 处理，零解析歧义。
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::ffi::OsStrExt;
+                use windows::core::PCWSTR;
+                use windows::Win32::UI::Shell::ShellExecuteW;
+                use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+                let path_wide: Vec<u16> = std::ffi::OsStr::new(&path)
+                    .encode_wide()
+                    .chain(std::iter::once(0))
+                    .collect();
+                let verb: Vec<u16> = "open\0".encode_utf16().collect();
+                let result = unsafe {
+                    ShellExecuteW(
+                        None,
+                        PCWSTR(verb.as_ptr()),
+                        PCWSTR(path_wide.as_ptr()),
+                        None,
+                        None,
+                        SW_SHOWNORMAL,
+                    )
+                };
+                if (result.0 as isize) <= 32 {
+                    return Err(format!("打开网页失败，错误码: {:?}", result.0));
+                }
+            }
         }
         _ => return Err(format!("未知快捷方式类型: {}", shortcut_type)),
     }

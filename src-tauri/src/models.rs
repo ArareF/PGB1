@@ -368,7 +368,9 @@ pub struct NormalizePreviewItem {
 #[derive(Debug, Deserialize, Clone)]
 pub struct ScaleRequest {
     pub original_path: String,
-    pub target_dir: String,
+    /// 任务根目录。后端据此自己用 PathBuf 组装 `01_scale/[{scale_percent}]/`，
+    /// 避免前端拼接平台相关路径分隔符
+    pub task_path: String,
     pub scale_percent: u32,
     pub base_name: String,
 }

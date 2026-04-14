@@ -11,8 +11,23 @@ use tauri::{
     Manager,
 };
 
+/// 主窗口 / 贴图板 Acrylic 毛玻璃底色：纯净深灰黑 #0C0D10，A=225 ≈ 88% 不透明。
+/// 与 design-system.css `--canvas-bg: #0C0D10` 保持一致。
+pub const MAIN_ACRYLIC: (u8, u8, u8, u8) = (12, 13, 16, 225);
+
+/// 浮动窗口（提醒弹窗 / 翻译悬浮窗）Acrylic 底色：几乎全透明，让玻璃效果主要由 CSS 提供。
+pub const FLOATING_ACRYLIC: (u8, u8, u8, u8) = (0, 0, 0, 1);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 初始化 logger：dev 构建走 stderr，release 构建通过 RUST_LOG 环境变量控制。
+    // 不做 pretty format / file rollover — 那是后续 Sprint 引入 tauri-plugin-log 的事，
+    // 这里只保证 log::error!/warn!/info! 不再被默默丢弃。
+    let _ = env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("warn"),
+    )
+    .try_init();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // 已有实例在运行：把主窗口带到前台
@@ -165,8 +180,7 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             {
                 use window_vibrancy::apply_acrylic;
-                // 纯净深灰黑 #0C0D10 (R=12 G=13 B=16)，A=225 ≈ 88% 不透明
-                let _ = apply_acrylic(&window, Some((12, 13, 16, 225)));
+                let _ = apply_acrylic(&window, Some(MAIN_ACRYLIC));
             }
 
             // 初始化考勤调度器
@@ -184,7 +198,10 @@ pub fn run() {
                 // 加载考勤配置
                 let config_dir = match app_handle.path().app_config_dir() {
                     Ok(dir) => dir,
-                    Err(_) => return,
+                    Err(e) => {
+                        log::error!("[startup] 获取 app_config_dir 失败: {}", e);
+                        return;
+                    }
                 };
 
                 let config_path = config_dir.join("attendance_config.json");
@@ -192,12 +209,18 @@ pub fn run() {
                     match std::fs::read_to_string(&config_path) {
                         Ok(content) => match serde_json::from_str(&content) {
                             Ok(c) => c,
-                            Err(_) => return,
+                            Err(e) => {
+                                log::error!("[startup] 解析 attendance_config.json 失败: {}", e);
+                                return;
+                            }
                         },
-                        Err(_) => return,
+                        Err(e) => {
+                            log::error!("[startup] 读取 attendance_config.json 失败: {}", e);
+                            return;
+                        }
                     }
                 } else {
-                    return; // 无配置，不启动
+                    return; // 无配置，不启动（首次运行属正常）
                 };
 
                 // 有有效配置才启动定时器
@@ -289,13 +312,25 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let settings_path = match hotkey_app.path().app_config_dir() {
                     Ok(dir) => dir.join("app_settings.json"),
-                    Err(_) => return,
+                    Err(e) => {
+                        log::error!("[hotkey] 获取 app_config_dir 失败: {}", e);
+                        return;
+                    }
                 };
                 let settings: models::AppSettings = if settings_path.exists() {
-                    std::fs::read_to_string(&settings_path)
-                        .ok()
-                        .and_then(|c| serde_json::from_str(&c).ok())
-                        .unwrap_or_default()
+                    match std::fs::read_to_string(&settings_path) {
+                        Ok(content) => match serde_json::from_str(&content) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                log::error!("[hotkey] 解析 app_settings.json 失败，使用默认配置: {}", e);
+                                models::AppSettings::default()
+                            }
+                        },
+                        Err(e) => {
+                            log::error!("[hotkey] 读取 app_settings.json 失败，使用默认配置: {}", e);
+                            models::AppSettings::default()
+                        }
+                    }
                 } else {
                     models::AppSettings::default()
                 };

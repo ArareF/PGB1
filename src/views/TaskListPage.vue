@@ -22,8 +22,20 @@ const showGuide = ref(false)
 // 从路由参数/query 读取
 const projectId = route.params.projectId as string
 const projectPath = route.query.projectPath as string
-const enabledTasksRaw = route.query.enabledTasks as string
-const initialEnabledTasks: string[] = enabledTasksRaw ? JSON.parse(enabledTasksRaw) : []
+
+// 安全解析 enabledTasks query：任何异常都 fallback 为空数组，防止 URL 损坏 / 历史恢复 / 深链截断
+// 直接 JSON.parse 会在 setup 阶段抛错，导致整个页面白屏
+function safeParseTasks(raw: unknown): string[] {
+  if (typeof raw !== 'string' || !raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((t): t is string => typeof t === 'string') : []
+  } catch (e) {
+    console.warn('[TaskListPage] enabledTasks query 解析失败，使用空列表:', e)
+    return []
+  }
+}
+const initialEnabledTasks: string[] = safeParseTasks(route.query.enabledTasks)
 
 const { loadSettings } = useSettings()
 

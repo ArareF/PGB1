@@ -201,7 +201,7 @@ const progressPercent = computed(() =>
   align-items: center;
   gap: var(--spacing-2);
   padding: var(--spacing-2) var(--spacing-3);
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--video-control-bg);
   backdrop-filter: blur(var(--glass-light-blur));
   -webkit-backdrop-filter: blur(var(--glass-light-blur));
 }
@@ -211,9 +211,9 @@ const progressPercent = computed(() =>
   width: 28px;
   height: 28px;
   border: none;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--video-btn-bg);
   border-radius: 50%;
-  color: #fff;
+  color: var(--video-btn-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -222,13 +222,13 @@ const progressPercent = computed(() =>
 }
 
 .video-play-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--video-btn-bg-hover);
 }
 
 .video-progress-bar {
   flex: 1;
   height: 4px;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--video-track-bg);
   border-radius: 2px;
   position: relative;
   cursor: pointer;
@@ -251,7 +251,7 @@ const progressPercent = computed(() =>
   transform: translate(-50%, -50%);
   width: 10px;
   height: 10px;
-  background: #fff;
+  background: var(--video-btn-text);
   border-radius: 50%;
   pointer-events: none;
   opacity: 0;
@@ -265,7 +265,7 @@ const progressPercent = computed(() =>
 .video-time {
   flex-shrink: 0;
   font-size: var(--text-xs);
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--video-time-text);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }

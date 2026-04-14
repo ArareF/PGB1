@@ -100,7 +100,7 @@ fn load_attendance_record_internal(path: &Path) -> AttendanceRecord {
 fn save_attendance_record_internal(path: &Path, record: &AttendanceRecord) {
     if let Ok(json) = serde_json::to_string_pretty(record) {
         if let Err(e) = fs::write(path, &json) {
-            eprintln!("打卡记录写入失败: {e}");
+            log::error!("打卡记录写入失败: {e}");
         }
     }
 }
@@ -195,14 +195,14 @@ async fn webview_login_flow(
 
     emit_fn(app_handle, "logging-in", "正在登录...");
 
-    // 3. 填写账号
+    // 3. 填写账号（与密码一样用 serde_json 序列化，避免 \n/\r/\\/Unicode LS 等特殊字符造成 JS 注入）
+    let username_json = serde_json::to_string(&config.username).unwrap_or_default();
     let fill_username_js = format!(
         r#"(function() {{
             var el = document.querySelector('input[type="email"], input[name="username"], input[name="email"], input[type="text"]');
-            if (el) {{ el.value = '{}'; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
+            if (el) {{ el.value = {username_json}; el.dispatchEvent(new Event('input', {{bubbles: true}})); return 'ok'; }}
             return 'not_found';
-        }})()"#,
-        config.username.replace('\'', "\\'").replace('"', "\\\"")
+        }})()"#
     );
     let _ = webview_window.eval(&fill_username_js);
 
@@ -784,13 +784,13 @@ fn spawn_daily_report_scroll(window: tauri::WebviewWindow, force_immediate: bool
 
         let detected = if already_ready {
             if force_immediate {
-                eprintln!("[daily-report] 窗口已可见，跳过轮询直接滚动");
+                log::debug!("[daily-report] 窗口已可见，跳过轮询直接滚动");
             } else {
-                eprintln!("[daily-report] 预热命中，页面已就绪");
+                log::info!("[daily-report] 预热命中，页面已就绪");
             }
             true
         } else {
-            eprintln!("[daily-report] 页面未就绪，开始轮询...");
+            log::info!("[daily-report] 页面未就绪，开始轮询...");
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
             let mut iteration: u32 = 0;
@@ -803,15 +803,15 @@ fn spawn_daily_report_scroll(window: tauri::WebviewWindow, force_immediate: bool
 
                 match window.url() {
                     Err(e) => {
-                        eprintln!("[daily-report] 第{}次: url() 失败: {:?}，窗口已关闭", iteration, e);
+                        log::warn!("[daily-report] 第{}次: url() 失败: {:?}，窗口已关闭", iteration, e);
                         break;
                     }
                     Ok(url) => {
                         let fragment = url.fragment().unwrap_or("(none)");
-                        eprintln!("[daily-report] 第{}次 hash: {}", iteration, fragment);
+                        log::debug!("[daily-report] 第{}次 hash: {}", iteration, fragment);
 
                         if fragment == "pgb-ready" {
-                            eprintln!("[daily-report] 编辑器就绪！");
+                            log::info!("[daily-report] 编辑器就绪！");
                             result = true;
                             break;
                         }
@@ -849,11 +849,11 @@ fn spawn_daily_report_scroll(window: tauri::WebviewWindow, force_immediate: bool
             #[cfg(target_os = "windows")]
             {
                 send_ctrl_end();
-                eprintln!("[daily-report] send_ctrl_end() 已发送");
+                log::debug!("[daily-report] send_ctrl_end() 已发送");
             }
         }
 
-        eprintln!("[daily-report] 后台检测任务结束");
+        log::debug!("[daily-report] 后台检测任务结束");
     });
 }
 

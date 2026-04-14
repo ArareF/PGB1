@@ -336,31 +336,7 @@ onMounted(() => {
   color: var(--text-tertiary);
 }
 
-/* 复用卡片样式调整 */
-.mini-card {
-  --card-material-width: 100% !important;
-  --card-material-padding: var(--spacing-2) !important;
-  --card-material-gap: var(--spacing-2) !important;
-}
-
-
-
-/* 深度选择器覆盖内部样式 */
-.mini-card :deep(.card-name) {
-  font-size: var(--text-xs) !important;
-}
-.mini-card :deep(.progress-tag) {
-  height: 18px !important;
-  font-size: var(--text-2xs) !important;
-  padding: 0 4px !important;
-}
-.mini-card :deep(.size-tag) {
-  font-size: var(--text-2xs) !important;
-}
-.mini-card :deep(.checkbox) {
-  width: 16px !important;
-  height: 16px !important;
-}
+/* .mini-card 公共类已提取到 design-system.css */
 
 .empty-state {
   padding: var(--spacing-12);

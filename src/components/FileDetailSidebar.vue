@@ -82,7 +82,12 @@ const psdThumbLoading = ref(false)
 // 侧边栏进场动画时长，与 --duration-normal 保持一致
 const SIDEBAR_ENTER_MS = 300
 
+// 快速切换文件时，慢速 invoke 可能在新文件已选中后才返回，覆盖当前状态。
+// loadToken 每次切换递增，异步回调只在 token 未变时写入结果
+let loadToken = 0
+
 watch(() => props.file, async (file, prevFile) => {
+  const token = ++loadToken
   txtContent.value = null
   psdThumbnail.value = null
 
@@ -91,12 +96,15 @@ watch(() => props.file, async (file, prevFile) => {
   if (fileType.value === 'text') {
     txtLoading.value = true
     try {
-      txtContent.value = await invoke<string>('read_text_file', { path: file.path })
+      const content = await invoke<string>('read_text_file', { path: file.path })
+      if (token !== loadToken) return   // 过期结果，丢弃
+      txtContent.value = content
     } catch (e) {
+      if (token !== loadToken) return
       txtContent.value = t('fileDetail.readFailed')
       console.error('读取文本文件失败:', e)
     } finally {
-      txtLoading.value = false
+      if (token === loadToken) txtLoading.value = false
     }
   }
 
@@ -106,13 +114,14 @@ watch(() => props.file, async (file, prevFile) => {
     // 侧边栏刚打开时（prevFile 为 null）正在播放进场动画，等动画结束再加载
     if (!prevFile) {
       await new Promise(resolve => setTimeout(resolve, SIDEBAR_ENTER_MS))
-      // 延迟期间用户可能已切换文件，避免覆盖最新结果
-      if (props.file?.path !== file.path) return
+      if (token !== loadToken) return
     }
 
     // 800px 不走 JS 缓存（侧边栏需要感知文件修改，freshness > perf）
     invalidatePsdCache(file.path, 800)
-    psdThumbnail.value = await getPsdThumbnail(file.path, 800)
+    const thumb = await getPsdThumbnail(file.path, 800)
+    if (token !== loadToken) return
+    psdThumbnail.value = thumb
     psdThumbLoading.value = false
   }
 })
@@ -555,9 +564,9 @@ function confirmDelete() {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.45);
-  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--overlay-btn-border);
+  background: var(--overlay-btn-bg);
+  color: var(--overlay-btn-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -582,7 +591,7 @@ function confirmDelete() {
 }
 
 .preview-fullscreen-btn:hover {
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--overlay-btn-bg-hover);
 }
 
 </style>

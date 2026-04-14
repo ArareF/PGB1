@@ -150,14 +150,15 @@ async function handleExecute() {
       scalingProgress.value = event.payload
     })
 
-    const requests: { original_path: string; target_dir: string; scale_percent: number; base_name: string }[] = []
+    const requests: { original_path: string; task_path: string; scale_percent: number; base_name: string }[] = []
 
     scaleMap.value.forEach((scale, path) => {
       const m = imageMaterials.value.find(m => m.path === path)
       if (!m) return
+      // task_path + scale_percent 交给 Rust 端用 PathBuf 组装目标目录，避免前端拼 Windows 路径
       requests.push({
         original_path: m.path,
-        target_dir: `${taskPath}\\01_scale\\[${scale}]`,
+        task_path: taskPath,
         scale_percent: scale,
         base_name: m.name,
       })

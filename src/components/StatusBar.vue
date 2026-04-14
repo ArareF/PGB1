@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useStatusBar } from '../composables/useStatusBar'
 import type { CalendarRegion } from '../composables/useStatusBar'
@@ -26,12 +26,13 @@ const {
 
 const { t } = useI18n()
 
-const REGION_LABELS: Record<CalendarRegion, string> = {
+// computed 而非 setup 时捕获 t()：语言切换后文案即时刷新
+const REGION_LABELS = computed<Record<CalendarRegion, string>>(() => ({
   auto: t('status.calendarAuto'),
   CN:   t('status.calendarChina'),
   JP:   t('status.calendarJapan'),
   none: t('status.calendarNone'),
-}
+}))
 
 function onRegionChange(e: Event) {
   config.value.calendarRegion = (e.target as HTMLSelectElement).value as CalendarRegion
@@ -41,13 +42,13 @@ function onRegionChange(e: Event) {
 
 // 配置项标签映射（boolean 开关项）
 type BoolConfigKey = 'showTime' | 'showDate' | 'showWorked' | 'showCountdown' | 'showPomodoro'
-const configLabels: Record<BoolConfigKey, string> = {
+const configLabels = computed<Record<BoolConfigKey, string>>(() => ({
   showTime:      t('status.showTime'),
   showDate:      t('status.showDate'),
   showWorked:    t('status.showWorked'),
   showCountdown: t('status.showCountdown'),
   showPomodoro:  t('status.pomodoro'),
-}
+}))
 
 // 配置面板开关
 const showConfigPanel = ref(false)
@@ -389,7 +390,7 @@ onUnmounted(() => {
   position: absolute;
   inset: -4px -8px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--pomodoro-halo-bg);
   filter: blur(16px);
   opacity: 0.08;           /* 空闲：白色极淡光晕 */
   z-index: -1;

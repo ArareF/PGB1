@@ -530,16 +530,7 @@ onMounted(async () => {
   gap: var(--spacing-3);
 }
 
-.mini-card {
-  --card-material-width: 100% !important;
-  --card-material-padding: var(--spacing-2) !important;
-  --card-material-gap: var(--spacing-2) !important;
-}
-
-.mini-card :deep(.card-name) { font-size: var(--text-xs) !important; }
-.mini-card :deep(.progress-tag) { height: 18px !important; font-size: var(--text-2xs) !important; padding: 0 4px !important; }
-.mini-card :deep(.size-tag) { font-size: var(--text-2xs) !important; }
-.mini-card :deep(.checkbox) { width: 16px !important; height: 16px !important; }
+/* .mini-card 公共类已提取到 design-system.css */
 </style>
 
 <!-- Teleport 出去的面板用非 scoped style -->
@@ -686,11 +677,11 @@ onMounted(async () => {
 }
 
 .convert-control-panel .execute-btn.done {
-  background: var(--color-success-500, #22c55e);
+  background: var(--color-success);
 }
 
 .convert-control-panel .execute-btn.done:hover {
-  background: var(--color-success-600, #16a34a);
+  background: var(--color-success-dark);
 }
 
 /* TP 预设折叠面板 */

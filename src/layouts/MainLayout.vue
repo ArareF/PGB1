@@ -176,7 +176,7 @@ const allMoreMenuItems = computed(() => {
   color: var(--text-primary);
   border-color: var(--border-medium);
   transform: translateY(-2px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-button-md);
 }
 
 .more-menu-btn:active {

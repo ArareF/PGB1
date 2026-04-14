@@ -193,7 +193,7 @@ const {
 .pdf-translate-open-btn {
   padding: var(--spacing-1) var(--spacing-3);
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-inverse);
   border: none;
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);

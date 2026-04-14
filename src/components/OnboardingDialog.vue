@@ -443,7 +443,7 @@ async function finish() {
 .lang-btn.active {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 /* ─── 目录选择 ───────────────────────────────────── */
@@ -530,7 +530,7 @@ async function finish() {
 .mode-btn.active {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 /* ─── 提示文本 ───────────────────────────────────── */
@@ -603,7 +603,7 @@ async function finish() {
 
 .action-btn.primary {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-inverse);
   border-color: var(--color-primary);
 }
 

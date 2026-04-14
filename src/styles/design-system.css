@@ -1465,3 +1465,74 @@ html {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* =============================================================================
+   紧凑版素材卡片 .mini-card（ConvertPage 控制面板 / ConversionDialog 复用）
+   从两处重复样式提取；非 scoped 不需要 :deep()
+   ============================================================================= */
+.mini-card {
+  --card-material-width: 100%;
+  --card-material-padding: var(--spacing-2);
+  --card-material-gap: var(--spacing-2);
+}
+
+.mini-card .card-name {
+  font-size: var(--text-xs);
+}
+
+.mini-card .progress-tag {
+  height: 18px;
+  font-size: var(--text-2xs);
+  padding: 0 4px;
+}
+
+.mini-card .size-tag {
+  font-size: var(--text-2xs);
+}
+
+.mini-card .checkbox {
+  width: 16px;
+  height: 16px;
+}
+
+/* =============================================================================
+   Sprint 2 · R-6 语义化 token（收敛 28 处硬编码 rgba/hex）
+   这些 token 为特定 UI 场景设计，故意不跟随明暗主题切换：
+   - 视频控制条：黑底 overlay，白色控件，无论主题都应保持
+   - 全屏按钮：叠在图片/视频上的悬浮控件，同理
+   - 笔刷光标：跨主题保持可见（设计决定）
+   ============================================================================= */
+:root {
+  /* 按钮与下拉阴影 */
+  --shadow-button-sm:     0 1px 3px rgba(0, 0, 0, 0.15);
+  --shadow-button-md:     0 2px 6px rgba(0, 0, 0, 0.25);
+  --shadow-dropdown:      0 3px 8px rgba(0, 0, 0, 0.25);
+  --shadow-popover-sm:    0 1px 3px rgba(0, 0, 0, 0.30);
+
+  /* 全屏按钮（悬浮在媒体预览上） */
+  --overlay-btn-bg:          rgba(0, 0, 0, 0.45);
+  --overlay-btn-bg-hover:    rgba(0, 0, 0, 0.65);
+  --overlay-btn-border:      rgba(255, 255, 255, 0.20);
+  --overlay-btn-text:        rgba(255, 255, 255, 0.85);
+
+  /* 笔刷/橡皮擦光标指示器（PinItem / PinboardCanvas 共用） */
+  --cursor-indicator-border:     rgba(255, 255, 255, 0.85);
+  --cursor-indicator-outline:    rgba(0, 0, 0, 0.40);
+
+  /* 视频控制条（VideoPlayer） */
+  --video-control-bg:            rgba(0, 0, 0, 0.60);
+  --video-btn-bg:                rgba(255, 255, 255, 0.15);
+  --video-btn-bg-hover:          rgba(255, 255, 255, 0.25);
+  --video-track-bg:              rgba(255, 255, 255, 0.20);
+  --video-btn-text:              rgba(255, 255, 255, 1.00);
+  --video-time-text:             rgba(255, 255, 255, 0.70);
+
+  /* 弹窗遮罩 */
+  --overlay-dialog-backdrop:     rgba(0, 0, 0, 0.55);
+
+  /* 新手引导遮罩内文字 */
+  --guide-text-muted:            rgba(255, 255, 255, 0.60);
+
+  /* StatusBar 番茄钟光晕 */
+  --pomodoro-halo-bg:            #ffffff;
+}

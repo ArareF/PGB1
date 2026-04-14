@@ -9,7 +9,6 @@ import { useSettings } from '../composables/useSettings'
 import { useTheme } from '../composables/useTheme'
 import { useScale } from '../composables/useScale'
 import type { AppSettings } from '../composables/useSettings'
-import { reloadConfig as reloadStatusBarConfig } from '../composables/useStatusBar'
 import { APP_NAME, APP_VERSION, APP_DEVELOPER } from '../config/app'
 import { useUpdater } from '../composables/useUpdater'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
@@ -24,16 +23,6 @@ const { setNavigation } = useNavigation()
 const { loadSettings, saveSettings, pickFile, pickDir } = useSettings()
 const { theme, toggleTheme } = useTheme()
 const { setManualScale } = useScale()
-
-// 直接读写 localStorage，避免在页面级组件里调用单例 composable 导致 refCount 异常
-const STATUS_BAR_CONFIG_KEY = 'status_bar_config'
-const statusBarConfig = ref<{ showTime: boolean; showDate: boolean; showWorked: boolean; showCountdown: boolean }>((() => {
-  try {
-    const raw = localStorage.getItem(STATUS_BAR_CONFIG_KEY)
-    if (raw) return JSON.parse(raw)
-  } catch {}
-  return { showTime: true, showDate: true, showWorked: true, showCountdown: true }
-})())
 
 type TabId = 'workflow' | 'translation' | 'attendance' | 'general' | 'about'
 const activeTab = ref<TabId>('workflow')
@@ -244,8 +233,6 @@ async function handleAttendanceSave() {
       }
     }
     await invoke('reschedule_attendance')
-    localStorage.setItem(STATUS_BAR_CONFIG_KEY, JSON.stringify(statusBarConfig.value))
-    reloadStatusBarConfig()
     initialPassword = attendancePassword.value
     initialUsername = attendanceUsername.value
     attendanceDirty.value = false

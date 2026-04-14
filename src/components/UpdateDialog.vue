@@ -194,7 +194,7 @@ const {
   border-radius: var(--radius-button);
   border: none;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-inverse);
   font-size: var(--text-sm);
   font-weight: var(--font-medium);
   font-family: inherit;

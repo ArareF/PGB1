@@ -75,22 +75,37 @@ pub fn rename_material(task_path: String, base_name: String, new_base_name: Stri
             let new_name = format!("{}{}", new_base_name, suffix);
             let new_path = dir.join(&new_name);
             if is_sequence && path.is_dir() {
-                if let Ok(frames) = fs::read_dir(&path) {
-                    for frame_entry in frames.flatten() {
-                        let fpath = frame_entry.path();
-                        let fname = match fpath.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
-                        // 序列帧帧文件命名为 {base_name}_{帧编号}.png（下划线分隔），
-                        // matches_base_name 只认连字符后缀，这里单独放宽：允许 '_' 或 '-' 分隔帧号
-                        let fstem = Path::new(&fname).file_stem().and_then(|s| s.to_str()).unwrap_or("");
-                        let is_frame = fstem == base_name.as_str()
-                            || fstem.starts_with(&format!("{}_", base_name))
-                            || fstem.starts_with(&format!("{}-", base_name));
-                        if is_frame {
-                            let fsuffix = &fname[base_name.len()..];
-                            let new_fname = format!("{}{}", new_base_name, fsuffix);
-                            let _ = fs::rename(&fpath, fpath.parent().expect("read_dir frame must have parent").join(&new_fname));
+                // 先收集所有需要改名的帧文件，检测目标冲突，然后原子性批量重命名
+                // 任何一帧失败立即返回错误，防止目录改名后留下半成功的帧集
+                let mut frame_renames: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
+                let frames = fs::read_dir(&path)
+                    .map_err(|e| format!("读取序列帧目录 {} 失败: {}", file_name, e))?;
+                for frame_entry in frames.flatten() {
+                    let fpath = frame_entry.path();
+                    let fname = match fpath.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
+                    // 序列帧帧文件命名为 {base_name}_{帧编号}.png（下划线分隔），
+                    // matches_base_name 只认连字符后缀，这里单独放宽：允许 '_' 或 '-' 分隔帧号
+                    let fstem = Path::new(&fname).file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    let is_frame = fstem == base_name.as_str()
+                        || fstem.starts_with(&format!("{}_", base_name))
+                        || fstem.starts_with(&format!("{}-", base_name));
+                    if is_frame {
+                        let fsuffix = &fname[base_name.len()..];
+                        let new_fname = format!("{}{}", new_base_name, fsuffix);
+                        let new_fpath = fpath.parent()
+                            .ok_or_else(|| format!("帧文件 {} 无父目录", fname))?
+                            .join(&new_fname);
+                        if new_fpath.exists() && new_fpath != fpath {
+                            return Err(format!("帧文件目标已存在: {}", new_fname));
                         }
+                        frame_renames.push((fpath, new_fpath));
                     }
+                }
+                for (src, dst) in &frame_renames {
+                    fs::rename(src, dst).map_err(|e| {
+                        let fname = src.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                        format!("重命名帧文件 {} 失败: {}", fname, e)
+                    })?;
                 }
                 fs::rename(&path, &new_path).map_err(|e| format!("重命名目录 {} 失败: {}", file_name, e))?;
             } else if !path.is_dir() {

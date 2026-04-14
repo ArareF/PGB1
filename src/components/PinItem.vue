@@ -614,8 +614,8 @@ onBeforeUnmount(() => {
 
 .pin-brush-cursor {
   position: absolute;
-  border: 1.5px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  border: 1.5px solid var(--cursor-indicator-border);
+  box-shadow: 0 0 0 1px var(--cursor-indicator-outline);
   border-radius: 50%;
   pointer-events: none;
   z-index: 15;

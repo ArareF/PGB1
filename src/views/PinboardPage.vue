@@ -905,6 +905,6 @@ onBeforeUnmount(() => {
   border: none;
   margin-top: -4px;
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-popover-sm);
 }
 </style>

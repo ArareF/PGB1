@@ -196,8 +196,8 @@ fn pre_warm_daily_report(app: &AppHandle) {
         .initialization_script(crate::commands::DAILY_REPORT_INIT_JS)
         .build()
     {
-        Ok(_) => eprintln!("[daily-report] 预热窗口已创建（隐藏）"),
-        Err(e) => eprintln!("[daily-report] 预热创建窗口失败: {}", e),
+        Ok(_) => log::info!("[daily-report] 预热窗口已创建（隐藏）"),
+        Err(e) => log::error!("[daily-report] 预热创建窗口失败: {}", e),
     }
 }
 
@@ -258,7 +258,7 @@ pub fn create_reminder_window(app: &AppHandle, reminder_type: &str) -> Result<()
     #[cfg(target_os = "windows")]
     {
         use window_vibrancy::apply_acrylic;
-        let _ = apply_acrylic(&window, Some((0, 0, 0, 1)));
+        let _ = apply_acrylic(&window, Some(crate::FLOATING_ACRYLIC));
     }
 
     // 后备机制：Rust 侧延迟显示窗口

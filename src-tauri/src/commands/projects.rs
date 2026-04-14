@@ -554,7 +554,8 @@ pub fn update_project_deadline(
 
 /// 将项目目录移入回收站（Windows Shell API）
 #[tauri::command]
-pub fn delete_project(project_path: String) -> Result<(), String> {
+pub fn delete_project(app_handle: tauri::AppHandle, project_path: String) -> Result<(), String> {
+    use tauri::Manager;
     use windows::Win32::UI::Shell::{SHFileOperationW, SHFILEOPSTRUCTW, FO_DELETE};
     use windows::Win32::Foundation::HWND;
     use windows::core::PCWSTR;
@@ -563,9 +564,36 @@ pub fn delete_project(project_path: String) -> Result<(), String> {
     if !path.exists() {
         return Err(format!("项目目录不存在: {}", project_path));
     }
-    // 安全检查：必须包含 .pgb1_project.json，防止误操作非项目目录
+    // 安全检查 1：必须包含 .pgb1_project.json，防止误操作非项目目录
     if !path.join(".pgb1_project.json").exists() {
         return Err("目标目录不是有效的 PGB1 项目（缺少 .pgb1_project.json）".to_string());
+    }
+    // 安全检查 2：project_path 必须位于用户配置的 project_root_dir 之下
+    // 防止前端被污染后调用 delete_project("C:\\") 这类越界路径
+    let settings_path = app_handle
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("获取配置目录失败: {}", e))?
+        .join("app_settings.json");
+    if settings_path.exists() {
+        let content = fs::read_to_string(&settings_path)
+            .map_err(|e| format!("读取应用设置失败: {}", e))?;
+        let settings: crate::models::AppSettings = serde_json::from_str(&content)
+            .map_err(|e| format!("解析应用设置失败: {}", e))?;
+        let root = settings.general.project_root_dir.trim().to_string();
+        if !root.is_empty() {
+            // 用 canonicalize 消解 `..` / 符号链接 / 大小写差异后再比较前缀
+            let path_canon = path.canonicalize()
+                .map_err(|e| format!("规范化项目路径失败: {}", e))?;
+            let root_canon = Path::new(&root).canonicalize()
+                .map_err(|e| format!("规范化项目根目录失败: {}", e))?;
+            if !path_canon.starts_with(&root_canon) || path_canon == root_canon {
+                return Err(format!(
+                    "安全限制：只能删除 project_root_dir ({}) 下的项目",
+                    root_canon.display()
+                ));
+            }
+        }
     }
 
     // SHFileOperationW 要求路径以双 null 结尾的宽字符串
@@ -630,16 +658,25 @@ pub fn rename_project(project_path: String, new_name: String) -> Result<ProjectI
         .map_err(|e| format!("重命名目录失败: {}", e))?;
 
     // 更新 .pgb1_project.json 中的 project_name
+    // 任何一步失败都必须把目录改名撤回，否则 config 的 project_name 和目录名会永久不一致
     let config_path = new_path.join(".pgb1_project.json");
+    let rollback = |stage: &str, err: String| -> String {
+        log::error!("[rename_project] {} 失败，正在回滚目录改名: {}", stage, err);
+        if let Err(re) = fs::rename(&new_path, old_path) {
+            log::error!("[rename_project] 回滚失败！目录名与配置不一致: {}", re);
+            return format!("{}，且回滚失败（目录名已改但配置未更新）: {}", err, re);
+        }
+        format!("{}（已回滚目录改名）", err)
+    };
     let content = fs::read_to_string(&config_path)
-        .map_err(|e| format!("读取配置文件失败: {}", e))?;
+        .map_err(|e| rollback("读取配置文件", format!("读取配置文件失败: {}", e)))?;
     let mut config: ProjectConfig = serde_json::from_str(&content)
-        .map_err(|e| format!("解析配置失败: {}", e))?;
+        .map_err(|e| rollback("解析配置", format!("解析配置失败: {}", e)))?;
     config.project_name = trimmed.to_string();
     let json = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("序列化配置失败: {}", e))?;
+        .map_err(|e| rollback("序列化配置", format!("序列化配置失败: {}", e)))?;
     fs::write(&config_path, json)
-        .map_err(|e| format!("写入配置失败: {}", e))?;
+        .map_err(|e| rollback("写入配置", format!("写入配置失败: {}", e)))?;
 
     // 返回新的 ProjectInfo（重新扫描单个项目）
     let config = load_or_create_config(&new_path)?;

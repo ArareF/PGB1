@@ -47,7 +47,7 @@ const { t } = useI18n()
   bottom: var(--spacing-6);
   left: 50%;
   transform: translateX(-50%);
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--guide-text-muted);
   font-size: var(--text-sm);
   pointer-events: none;
   z-index: var(--z-modal);

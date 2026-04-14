@@ -384,10 +384,13 @@ pub fn execute_scaling(app_handle: AppHandle, requests: Vec<ScaleRequest>) -> Re
             return Err(format!("原文件不存在: {}", req.original_path));
         }
 
-        let target_dir = Path::new(&req.target_dir);
+        // 后端组装路径，避免前端拼接 Windows 分隔符
+        let target_dir = Path::new(&req.task_path)
+            .join("01_scale")
+            .join(format!("[{}]", req.scale_percent));
         if !target_dir.exists() {
-            fs::create_dir_all(target_dir)
-                .map_err(|e| format!("创建目标目录 {} 失败: {}", req.target_dir, e))?;
+            fs::create_dir_all(&target_dir)
+                .map_err(|e| format!("创建目标目录 {} 失败: {}", target_dir.display(), e))?;
         }
 
         let img = image::open(old_path)

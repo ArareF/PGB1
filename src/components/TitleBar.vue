@@ -301,7 +301,7 @@ function onActionsWheel(e: WheelEvent) {
               color var(--duration-fast) var(--ease-out);
   white-space: nowrap;
   flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-button-sm);
 }
 
 .action-btn:hover:not(:disabled) {
@@ -309,7 +309,7 @@ function onActionsWheel(e: WheelEvent) {
   color: var(--text-primary);
   border-color: var(--border-medium);
   transform: translateY(-2px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-button-md);
 }
 
 .action-btn:active:not(:disabled) {
@@ -332,7 +332,7 @@ function onActionsWheel(e: WheelEvent) {
   background: color-mix(in srgb, var(--color-primary-500) 25%, transparent);
   color: var(--color-primary-500);
   border-color: color-mix(in srgb, var(--color-primary-500) 50%, transparent);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25),
+  box-shadow: var(--shadow-button-md),
               inset 0 0 0 1px color-mix(in srgb, var(--color-primary-500) 40%, transparent);
   transform: translateY(-2px);
 }
@@ -344,7 +344,7 @@ function onActionsWheel(e: WheelEvent) {
 
 .action-btn--hint:hover:not(:disabled) {
   background: color-mix(in srgb, var(--color-primary-500) 10%, transparent);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25),
+  box-shadow: var(--shadow-button-md),
               inset 0 0 0 1px color-mix(in srgb, var(--color-primary-500) 55%, transparent);
   transform: translateY(-2px);
 }
@@ -359,7 +359,7 @@ function onActionsWheel(e: WheelEvent) {
   background: color-mix(in srgb, var(--color-success) 35%, transparent);
   color: var(--color-success-light);
   border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25),
+  box-shadow: var(--shadow-button-md),
               inset 0 0 0 1px color-mix(in srgb, var(--color-success) 40%, transparent);
   transform: translateY(-2px);
 }

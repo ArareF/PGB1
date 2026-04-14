@@ -354,7 +354,7 @@ function startDrag(shortcut: Shortcut) {
   color: var(--color-primary-500);
   background: var(--bg-active);
   transform: translateY(-2px);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-dropdown);
 }
 
 .sidebar-items {

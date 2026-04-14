@@ -37,6 +37,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
 log = "0.4"
+env_logger = "0.11"
 lopdf = "0.34"
 pdf-extract = "0.7"
 ttf-parser = "0.21"

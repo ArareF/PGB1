@@ -61,17 +61,24 @@ async function sendPomodoroNotification(title: string, body: string) {
     if (granted) {
       sendNotification({ title, body })
     }
-  } catch { /* 通知不可用时静默 */ }
+  } catch (e) {
+    // 通知权限被系统拒绝或插件不可用 — 番茄钟不阻断，静默降级但留警告用于排查
+    console.warn('[statusBar] 发送番茄钟通知失败:', e)
+  }
 }
 
 let timer: ReturnType<typeof setInterval> | null = null
+let pendingAlignTimeout: ReturnType<typeof setTimeout> | null = null
 let refCount = 0
 
 function loadConfig(): StatusBarConfig {
   try {
     const raw = localStorage.getItem(CONFIG_KEY)
     if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw) }
-  } catch { /* ignore */ }
+  } catch (e) {
+    // localStorage 损坏或格式非 JSON — 不阻断，回退到默认值
+    console.warn('[statusBar] 加载配置失败，使用默认值:', e)
+  }
   return { ...DEFAULT_CONFIG }
 }
 
@@ -97,7 +104,10 @@ async function loadAttendanceRecord() {
     // 仅当日期匹配时使用实际时间（跨天后清零）
     actualClockInTime.value = hasClockIn.value ? (record.actual_clock_in_time ?? null) : null
     actualClockOutTime.value = hasClockOut.value ? (record.actual_clock_out_time ?? null) : null
-  } catch { /* 静默 */ }
+  } catch (e) {
+    // 打卡记录不存在是正常场景（未使用考勤功能），其他错误记 warn 便于排查
+    console.warn('[statusBar] 加载打卡记录失败:', e)
+  }
 }
 
 async function loadAttendanceConfig() {
@@ -109,7 +119,10 @@ async function loadAttendanceConfig() {
     clockOutTime.value = cfg.attendance.clock_out_time
     lunchStartTime.value = cfg.attendance.lunch_start_time ?? null
     lunchEndTime.value = cfg.attendance.lunch_end_time ?? null
-  } catch { /* 未配置考勤，静默 */ }
+  } catch (e) {
+    // 未配置考勤属于正常场景，命令返回默认值；此处 warn 仅用于捕获真正的后端异常
+    console.warn('[statusBar] 加载考勤配置失败:', e)
+  }
 }
 
 // ─── IP 地理位置检测 ────────────────────────────────────────
@@ -132,7 +145,10 @@ async function detectCountry(): Promise<string | null> {
       localStorage.setItem(IP_CACHE_KEY, JSON.stringify({ country, expires: Date.now() + IP_CACHE_TTL }))
       return country
     }
-  } catch { /* 网络不可用时静默 */ }
+  } catch (e) {
+    // 网络不可用或缓存损坏 — 降级为 null 走默认 region（CN）
+    console.warn('[statusBar] IP 地理位置检测失败，将使用默认地区:', e)
+  }
   return null
 }
 
@@ -148,7 +164,12 @@ async function getEffectiveRegion(): Promise<string> {
 async function fetchTimorType(date: Date): Promise<number | null> {
   const key = `holiday_cache_${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
   const cached = localStorage.getItem(key)
-  if (cached !== null) return JSON.parse(cached)
+  if (cached !== null) {
+    try { return JSON.parse(cached) } catch (e) {
+      console.warn('[statusBar] 节假日缓存损坏，删除后重新获取:', e)
+      localStorage.removeItem(key)
+    }
+  }
   try {
     const url = `https://timor.tech/api/holiday/info/${date.getFullYear()}-${date.getMonth()+1}-${date.getDate()}`
     const res = await fetch(url)
@@ -156,7 +177,8 @@ async function fetchTimorType(date: Date): Promise<number | null> {
     const type: number | null = data?.type?.type ?? null
     localStorage.setItem(key, JSON.stringify(type))
     return type
-  } catch {
+  } catch (e) {
+    console.warn('[statusBar] timor.tech 节假日 API 失败:', e)
     return null
   }
 }
@@ -169,15 +191,24 @@ function dateToISO(date: Date): string {
 async function fetchNagerHolidays(year: number, countryCode: string): Promise<Set<string>> {
   const cacheKey = `holiday_nager_${countryCode}_${year}`
   const cached = localStorage.getItem(cacheKey)
-  if (cached) return new Set(JSON.parse(cached))
+  if (cached) {
+    try { return new Set(JSON.parse(cached)) } catch (e) {
+      console.warn('[statusBar] Nager 节假日缓存损坏，删除后重新获取:', e)
+      localStorage.removeItem(cacheKey)
+    }
+  }
   try {
     const res = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${countryCode}`)
-    if (!res.ok) return new Set()
+    if (!res.ok) {
+      console.warn(`[statusBar] Nager API HTTP ${res.status} for ${countryCode}/${year}`)
+      return new Set()
+    }
     const data: Array<{ date: string }> = await res.json()
     const dates = data.map(h => h.date)
     localStorage.setItem(cacheKey, JSON.stringify(dates))
     return new Set(dates)
-  } catch {
+  } catch (e) {
+    console.warn(`[statusBar] Nager API 失败 (${countryCode}/${year}):`, e)
     return new Set()
   }
 }
@@ -230,15 +261,24 @@ function tick() {
 }
 
 function startTimer() {
-  if (timer) return
+  // 同时防护 interval 和 pending 对齐 timeout — 后者在首个整分钟到来前不可见，
+  // 如果只看 timer，stopTimer 无法取消它，重挂载后会泄漏出一个旧 interval
+  if (timer || pendingAlignTimeout) return
   const msToNextMinute = (60 - now.value.getSeconds()) * 1000 - now.value.getMilliseconds()
-  setTimeout(() => {
+  pendingAlignTimeout = setTimeout(() => {
+    pendingAlignTimeout = null
+    // 如果期间被 stopTimer 清过，不再启动 interval（避免延迟触发绕过 refCount 清理）
+    if (refCount === 0) return
     tick()
     timer = setInterval(tick, 60_000)
   }, msToNextMinute)
 }
 
 function stopTimer() {
+  if (pendingAlignTimeout) {
+    clearTimeout(pendingAlignTimeout)
+    pendingAlignTimeout = null
+  }
   if (timer) {
     clearInterval(timer)
     timer = null

@@ -97,7 +97,7 @@ fn create_translator_window(app: &AppHandle) {
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                     use window_vibrancy::apply_acrylic;
-                    let _ = apply_acrylic(&win_clone, Some((0, 0, 0, 1)));
+                    let _ = apply_acrylic(&win_clone, Some(crate::FLOATING_ACRYLIC));
                 });
             }
         }

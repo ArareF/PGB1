@@ -234,8 +234,8 @@ function progressLabel(progress: string): string {
 .progress-done     { background: var(--tag-progress-done-bg); }
 .progress-uploaded { background: var(--tag-progress-uploaded-bg); }
 .progress-broken {
-  background: var(--color-danger-500, #ef4444);
-  color: white;
+  background: var(--color-danger);
+  color: var(--text-inverse);
   animation: broken-pulse 2s ease-in-out infinite;
 }
 

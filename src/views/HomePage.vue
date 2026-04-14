@@ -80,8 +80,12 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 function parseDeadline(deadline: string | null | undefined): Date | null {
   if (!deadline || !DATE_PATTERN.test(deadline)) return null
-  const d = new Date(deadline)
-  return isNaN(d.getTime()) ? null : d
+  // 不用 new Date('YYYY-MM-DD')：JS 会把纯日期当作 UTC 00:00 解析，
+  // 负时区机器（如 UTC-7）下 '2026-04-14' 会落到本地 2026-04-13 17:00，
+  // 导致"是否逾期"判断与排序整体错位。必须按本地时区构造。
+  const [y, m, d] = deadline.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  return isNaN(date.getTime()) ? null : date
 }
 
 const sortedProjects = computed(() => {
@@ -226,7 +230,9 @@ function onVisibilityChange() {
   if (document.visibilityState === 'visible') loadProjects()
 }
 
-let unlistenOvertime: UnlistenFn | null = null
+let unlistenOvertimeStarted: UnlistenFn | null = null
+let unlistenOvertimeEnded: UnlistenFn | null = null
+let unlistenClockProgress: UnlistenFn | null = null
 
 onMounted(async () => {
   loadProjects()
@@ -241,15 +247,15 @@ onMounted(async () => {
     await loadPageNotes()
   }
   // 监听退勤弹窗发出的加班事件
-  unlistenOvertime = await listen('overtime-started', () => {
+  unlistenOvertimeStarted = await listen('overtime-started', () => {
     startOvertime()
   })
   // 监听加班状态清除（出勤弹窗检测到漏打退勤时发出）
-  listen('overtime-ended', () => {
+  unlistenOvertimeEnded = await listen('overtime-ended', () => {
     endOvertime()
   })
   // 监听打卡完成事件（退勤成功后清除加班状态）
-  listen('clock-progress', (event: any) => {
+  unlistenClockProgress = await listen('clock-progress', (event: any) => {
     const step = event.payload?.step
     if (isOvertime.value && (step === 'success' || step === 'already-done')) {
       endOvertime()
@@ -258,7 +264,9 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
-  if (unlistenOvertime) unlistenOvertime()
+  unlistenOvertimeStarted?.()
+  unlistenOvertimeEnded?.()
+  unlistenClockProgress?.()
 })
 
 function openProject(project: ProjectInfo) {

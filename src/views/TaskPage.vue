@@ -1656,7 +1656,7 @@ onUnmounted(() => {
 
 .preview-video-card.selected {
   border-color: var(--color-primary);
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--bg-selected);
 }
 
 .preview-video-card.multi-checked {

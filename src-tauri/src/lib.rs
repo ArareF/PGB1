@@ -127,6 +127,9 @@ pub fn run() {
             commands::translate_text_once,
             commands::build_translated_pdf,
             commands::check_translated_pdf_exists,
+            commands::fetch_ip_country,
+            commands::fetch_cn_holiday_type,
+            commands::fetch_nager_holidays,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main 窗口必须在 tauri.conf.json 中声明");

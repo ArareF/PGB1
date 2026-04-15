@@ -1,7 +1,7 @@
 # PGB1 代码索引
 
 > 全量源代码文件职责说明，按目录分组。新会话快速了解代码现状用。
-> 最后更新: 2026-04-14
+> 最后更新: 2026-04-15
 
 ---
 
@@ -10,14 +10,14 @@
 | 目录 | 文件数 | 总行数 | 备注 |
 |------|--------|--------|------|
 | src/components/ | 30 | ~10140 | UI 组件（新增 VideoPlayer/PdfPreviewSection/SubtaskDialog，FDS 拆分瘦身） |
-| src/composables/ | 18 | ~1940 | 逻辑组件（新增 useDragIntent/useMultiSelect，useNotes 扩展） |
+| src/composables/ | 20 | ~2400 | 逻辑组件（Sprint 3 新增 useOnboardingForm/useShortcutForm 从 SFC 剥离） |
 | src/views/ | 13 | ~8880 | 页面（TaskPage 集成预览视频多选全链路 + 三工作流按钮双级高亮） |
 | src/styles/ | 4 | ~1720 | CSS 设计系统（新增 dialog.css 弹窗公共样式） |
 | src/types/ | 2 | ~46 | TypeScript 类型定义（task.ts/material.ts，从页面提取） |
 | src/utils/ | 1 | ~23 | 工具函数（formatSize/normalizeDeadline，从多页面提取） |
 | src/i18n + src/locales/ | 3 | ~1310 | 国际化：i18n 实例 + zh-CN/en locale 文件 |
 | src/其他 | 8 | ~590 | 入口、路由、配置（含 onboarding.ts + fileTypes.ts）、布局 |
-| src-tauri/src/ | 18 | ~8720 | Rust 后端（commands.rs 拆分为 12 个子模块 + 6 个根文件） |
+| src-tauri/src/ | 22 | ~8960 | Rust 后端（Sprint 3：translation.rs 拆为 translation/{pdf_font,pdf_reflow,pdf_cmds} + 新增 holiday.rs 外部 API 代理） |
 | **合计** | **97** | **~33400** | |
 
 ---
@@ -63,13 +63,13 @@
 | `TitleBar.vue` | ~409 | — | 顶部标题栏（返回按钮+标题+快捷功能区），消费 useNavigation()。返回箭头 SVG 40×40。支持 action 长按（500ms，`pointerdown` 计时，`onLongPress(btnRect)` 回调传递按钮 DOMRect）。`active` 属性控制按钮全亮强调样式（蓝色背景+描边），**`hint` 属性控制弱强调样式（只 inset box-shadow 描边，无背景填充，与 active 互斥）**，`variant='success'` 绿色玻璃样式（`--color-success` 系列）。中间岛集成 **StatusBar**（常驻状态栏）。布局：左侧标题岛 `flex-shrink: 0` 不压缩，右侧功能岛独自承担窄窗口压缩。两岛 `align-items: flex-end` 底部对齐，右侧功能岛高度由内容撑开（比标题岛矮）。有 actions 时状态栏+分隔线+按钮共存，按钮区域支持滚轮横滚。**左岛手动 glass**：不用 `glass-medium` 类（与 center 岛相邻会触发 backdrop-filter 兄弟冲突），手动 `background/border/box-shadow`。**标题文字裁切**：`.title-text-wrap` 包裹层（`overflow:hidden; position:relative`），防止转场动画 leave 态 `position:absolute` 标题文字侵入返回按钮区域。**动画**：JS FLIP 宽度动画（`watch flush:pre/post` + `flipWidth`）；**flipWidth Bug 修复**：读 toWidth 前先清除残留内联样式（`style.width/transition/overflow = ''`）再 `offsetWidth` 强制 layout，防止快速连续导航时旧内联宽度污染 toWidth 导致岛宽卡死；标题/返回按钮/操作区 `<Transition name="nav-forward/back">` 方向感知滑入；**返回按钮 leave 动画修复**：`.nav-back-leave-active.back-btn` 加 `top:0; bottom:0`，防止 `position:absolute` 脱离 flex 后 `align-self:stretch` 失效导致向上跳动；新增 `leftIslandRef`、`centerIslandRef` template ref。**Hover**：`.action-btn` normal 态有微弱阴影（`0 1px 3px`）；`:hover` = `translateY(-2px)` + `--bg-active` + `border-color: --border-medium` + shadow（`0 2px 6px`）；`:active` 弹回 `translateY(0)`。**hover 裁切修复**：`glass-medium` 的 `overflow:hidden` 会裁切 translateY(-2px)，在 `.title-bar-center` 覆盖为 `overflow:visible`；`overflow-x:auto` 强制 `overflow-y:auto` 导致 ink overflow 被裁切，在 `.title-bar-actions` 加 `padding-block:6px` 建立缓冲区 |
 | `StatusBar.vue` | ~570 | — | **状态栏组件**（嵌入 TitleBar 中间岛）。左列：时间/日期/节假日标签（短文案，`white-space:nowrap` + `flex-shrink:0` 防折行）。右列：已工作胶囊（需 `hasClockIn && !hasClockOut`）+ 倒计时胶囊（需 `hasClockIn`，`hasClockOut` 后显示"下班咯"，午休显示`午休 Xm`/`午休中`）。最右：**番茄钟按钮**（无形态纯光晕：`::before` + `filter:blur(16px)` + `isolation:isolate`）——空闲=白色极淡，专注=蓝色，超时=红绿交替动画，休息=绿色，休息结束=绿色呼吸。长按 500ms 弹出配置面板（Teleport to body，`<Transition name="config-panel">` 进出场动画：`translateY(-6px) scale(0.95)` + opacity，`transform-origin: top right`）：5 个 boolean 开关 + 番茄钟时长 + **假日日历地区下拉**（自动/中国/日本/不显示，切换后即时刷新） |
 | `Sidebar.vue` | ~310 | — | 左侧快捷方式栏。**手动 glass**：不用 `glass-medium` 类（与 main-content 相邻会触发 backdrop-filter 兄弟冲突），手动 `background/border/box-shadow`。iOS 风格交互：单击启动，长按 500ms 进入编辑模式（图标抖动 + 右上角红色 × 删除徽章），点击空白退出。编辑模式内拖拽重排（`pointermove + elementFromPoint`，实时更新 `displayOrder`）。**拖拽排序动画**：`<TransitionGroup name="sort">` + `.sort-move { transition: transform 200ms }` FLIP 动画，其他图标平滑滑走。添加时自动提取图标（应用=`extract_exe_icon` 256px，网页=`fetch_favicon`）。[+] 固定在底部。**Hover**：`::before` 伪元素蓝色模糊光晕（`filter:blur(14px)` + `isolation:isolate`，`opacity` 0→0.45），无边框无阴影，`translateY(-2px)` 上浮；`:active` = `translateY(0) scale(0.95)`。**编辑模式抖动**：`0.45s linear infinite`，6个不规则关键帧（±3~4deg + 微量 translateY），`nth-child(2n/3n/4n)` 错开相位避免整齐同步 |
-| `ShortcutDialog.vue` | ~280 | — (emits: save, cancel) | **快捷方式添加弹窗**（仅添加，无编辑）。应用类型：扫描开始菜单/桌面 `.lnk` 列表 + 搜索过滤 + 手动浏览备用。文件夹：浏览选择。网页：手动输入 URL。名称自动填充。Teleport to body。`show?: boolean` prop 控制内部 `v-if`，完整进出动画（遮罩 opacity + 内容 translateY/scale）。**图标预览区**（表单底部分隔行）：44×44 可点击图标框，未自定义时显示类型占位 SVG，已自定义显示实际图片 + 蓝色边框；悬停出现铅笔遮罩，点击唤起文件选择框（PNG/JPG/ICO/BMP/WEBP）→ 调用 `copy_icon_to_cache` 缓存为 PNG。**"预览自动图标"按钮**：有选中目标时显示，点击在弹窗内预取图标并填入预览（app=`extract_exe_icon`，web=`fetch_favicon`）。`emit.save` 增加 `custom_icon: string \| null`，有值时 Sidebar.vue 跳过重复提取 |
+| `ShortcutDialog.vue` | ~541 | — (emits: save, cancel) | **快捷方式添加弹窗**（仅添加，无编辑）。三类快捷方式（app/folder/web）的表单状态、路径选择、图标预览、应用列表扫描**全部下沉到 `useShortcutForm` composable**（Sprint 3·Y-17）。应用类型：扫描开始菜单/桌面 `.lnk` 列表 + 搜索过滤 + 手动浏览备用。文件夹：浏览选择。网页：手动输入 URL。名称自动填充。Teleport to body。`show?: boolean` prop 控制内部 `v-if`，完整进出动画（遮罩 opacity + 内容 translateY/scale）。**图标预览区**（表单底部分隔行）：44×44 可点击图标框，未自定义时显示类型占位 SVG，已自定义显示实际图片 + 蓝色边框；悬停出现铅笔遮罩，点击唤起文件选择框（PNG/JPG/ICO/BMP/WEBP）→ 调用 `copy_icon_to_cache` 缓存为 PNG。**"预览自动图标"按钮**：有选中目标时显示，点击在弹窗内预取图标并填入预览（app=`extract_exe_icon`，web=`fetch_favicon`）。`emit.save` 增加 `custom_icon: string \| null`，有值时 Sidebar.vue 跳过重复提取 |
 | `UploadConfirmDialog.vue` | 100 | `fileCount` | 上传确认弹窗（拖拽后询问是否已上传到网盘），Teleport to body。`show?: boolean` prop 控制内部 `v-if`，完整进出动画（遮罩 opacity + 内容 translateY/scale） |
 | `WindowControls.vue` | 92 | — | 窗口控制按钮（最小化/最大化/关闭） |
 | `CreateProjectDialog.vue` | 209 | — (emits: created, cancel) | **新建项目弹窗**（项目名+截止日期输入）。日期标准化（支持 20260616 / 2026-06-16 格式），调用 create_project 命令，Teleport to body。`show?: boolean` prop 控制内部 `v-if`，完整进出动画（遮罩 opacity + 内容 translateY/scale） |
 | `EditProjectDialog.vue` | ~210 | `project: ProjectInfo, mode: 'rename'\|'deadline'\|'delete'` (emits: updated, deleted, cancel) | **项目管理弹窗**，通过 mode 复用三种操作。rename：输入框预填项目名，调用 rename_project；deadline：输入框预填截止日期+日期标准化，调用 update_project_deadline；delete：红色确认弹窗，调用 delete_project（移入回收站），Teleport to body。`show?: boolean` prop 控制内部 `v-if`，完整进出动画（遮罩 opacity + 内容 translateY/scale） |
 | `AttendanceDialog.vue` | ~210 | — (emits: close) | **日报打卡设置弹窗**（考勤时间+日报时间+URL+账号密码），密码存 Windows Credential Manager，保存后自动调用 reschedule_attendance，Teleport to body |
-| `OnboardingDialog.vue` | ~350 | `show: boolean` (emits: complete[mode]) | **首次引导步骤式弹窗**。4 步：语言选择→项目目录→工具路径→打卡模式。**步骤校验**：项目目录必填、工具路径需 Imagine + TP CLI，未填好"下一步"按钮灰化。**工具路径探测**：onMounted 调用 `scan_app_shortcuts` 扫描 Imagine 和 TexturePacker（CLI/GUI 互推）。完成时 emit 携带打卡模式值，App.vue 据此决定是否跳转设置页。Teleport to body |
+| `OnboardingDialog.vue` | ~481 | `show: boolean` (emits: complete[mode]) | **首次引导步骤式弹窗**。4 步：语言选择→项目目录→工具路径→打卡模式。表单状态机 / 系统扫描 / 保存闭环**全部下沉到 `useOnboardingForm` composable**（Sprint 3·Y-17），SFC 只保留 template & style。**步骤校验**：项目目录必填、工具路径需 Imagine + TP CLI，未填好"下一步"按钮灰化。**工具路径探测**：composable 内 onMounted 调用 `scan_app_shortcuts` 扫描 Imagine 和 TexturePacker（CLI/GUI 互推）。完成时 emit 携带打卡模式值，App.vue 据此决定是否跳转设置页 |
 | `PageGuideOverlay.vue` | ~125 | `show: boolean, annotations: GuideAnnotation[]` (emits: close) | **通用页面指引遮罩**。Teleport to body，全屏半透明遮罩 + fixed 定位批注气泡（支持上下左右箭头），点击任意处关闭。`white-space: pre` 支持 `\n` 手动换行，不自动断行。各页面通过 `PAGE_GUIDE_ANNOTATIONS[pageId]` 传入批注数据 |
 | `NormalizationDialog.vue` | ~240 | `taskPath` | **规范化预览弹窗**，扫描并识别静帧（去 _01）与序列帧（归类），展示变更预览，支持一键执行，Teleport to body。`show?: boolean` prop 控制内部 `v-if`，完整进出动画（遮罩 opacity + 内容 translateY/scale） |
 | `ConversionDialog.vue` | ~410 | `taskPath, materials` | **格式转换选择弹窗**，分区列出未转换的静帧与序列帧，序列帧强制要求输入帧率，提交后开启后端转换会话，Teleport to body。`show?: boolean` prop 控制内部 `v-if`，完整进出动画（遮罩 opacity + 内容 translateY/scale） |
@@ -100,12 +100,14 @@
 | `useTheme.ts` | 30 | `initTheme()`, `toggleTheme()` | 明暗主题切换，localStorage 持久化 |
 | `useScale.ts` | ~60 | `initScale()`, `setManualScale()` | 全局 UI 缩放单例。基准 1920px，clamp [0.67, 1.25]，同步缩放 #app + body（覆盖 Teleport 元素）。支持用户手动覆盖（0 = 自动）。**注意**：自动模式基于 `window.innerWidth`，宽屏（>1920px）会超出 1.0 被夹到 1.25，窄窗口会偏小；默认值已改为 1.0 |
 | `usePsdThumbnail.ts` | ~42 | `getPsdThumbnail(path, maxSize)`, `invalidatePsdCache(path, maxSize)` | PSD 缩略图模块级缓存。key = `path@maxSize`，并发去重（同一 key 只发一个 invoke）。调用 `extract_psd_thumbnail`，返回 `convertFileSrc(cachePath)` asset URL。**`invalidatePsdCache`**：清除指定 key 的 JS 缓存，在 Rust 磁盘缓存不命中时调用（防止同 session 内文件被修改后 JS 缓存返回旧图） |
-| `useStatusBar.ts` | ~458 | `useStatusBar()`, `saveConfig()`, `reloadConfig()` | 状态栏数据单例。分钟级 tick，从 `load_attendance_config` 读上下班+午休时间。**节假日**：`CalendarRegion`（auto/CN/JP/none），auto 模式用 `ipapi.co/country/` 检测 IP（7天缓存），CN 走 timor.tech（含调休概念），其他国家走 date.nager.at（按年缓存）；标签简短：`休息日 🎉`/`调休`/`明天休 🎉`。**打卡状态感知**：每分钟 tick 调 `load_attendance_record`，`hasClockIn`/`hasClockOut` 驱动胶囊显隐（未打卡不显示，打下班卡触发"下班咯"）。**加班状态**：`isOvertime`（localStorage `pgb1-overtime-active` 持久化），`startOvertime()`/`endOvertime()` 管理加班中标记，供 HomePage 动态显示「结束加班」按钮。**番茄钟**：5 阶段状态机（idle→work→work-done→break→break-done→idle），秒级倒计时，归零发系统通知。配置项（localStorage）：`showPomodoro`/`pomodoroWork`（25m）/`pomodoroBreak`（5m）/`calendarRegion`（auto）。暴露：`timeStr`/`dateStr`/`holidayLabel`/`hasClockIn`/`hasClockOut`/`workedMinutes`/`countdownMinutes`/`isLunch`/`toLunchMinutes`/`lunchLeftMinutes`/`formatMinutes`/`pomodoroPhase`/`pomodoroDisplay`/`onPomodoroClick`/`reloadHoliday`/`isOvertime`/`startOvertime`/`endOvertime` |
+| `useStatusBar.ts` | ~458 | `useStatusBar()`, `saveConfig()`, `reloadConfig()` | 状态栏数据单例。分钟级 tick，从 `load_attendance_config` 读上下班+午休时间。**节假日**：`CalendarRegion`（auto/CN/JP/none），auto 模式通过 Rust 后端代理 `fetch_ip_country` 检测 IP（7天缓存，Sprint 3·Y-13），CN 走 Rust 代理 `fetch_cn_holiday_type`（timor.tech，含调休概念），其他国家走 Rust 代理 `fetch_nager_holidays`（date.nager.at，按年缓存）；标签简短：`休息日 🎉`/`调休`/`明天休 🎉`。**打卡状态感知**：每分钟 tick 调 `load_attendance_record`，`hasClockIn`/`hasClockOut` 驱动胶囊显隐（未打卡不显示，打下班卡触发"下班咯"）。**加班状态**：`isOvertime`（localStorage `pgb1-overtime-active` 持久化），`startOvertime()`/`endOvertime()` 管理加班中标记，供 HomePage 动态显示「结束加班」按钮。**番茄钟**：5 阶段状态机（idle→work→work-done→break→break-done→idle），秒级倒计时，归零发系统通知。配置项（localStorage）：`showPomodoro`/`pomodoroWork`（25m）/`pomodoroBreak`（5m）/`calendarRegion`（auto）。暴露：`timeStr`/`dateStr`/`holidayLabel`/`hasClockIn`/`hasClockOut`/`workedMinutes`/`countdownMinutes`/`isLunch`/`toLunchMinutes`/`lunchLeftMinutes`/`formatMinutes`/`pomodoroPhase`/`pomodoroDisplay`/`onPomodoroClick`/`reloadHoliday`/`isOvertime`/`startOvertime`/`endOvertime` |
 | `usePinboard.ts` | ~205 | `usePinboard(dirPath, canvasKey)` | **贴图板 composable**。管理 pins/canvasAnnotations/viewport 状态。`loadPinboard` → invoke `get_pinboard`；`savePinboard` → invoke `save_pinboard`（含 pins + viewport + canvasAnnotations）；`pasteImage(viewportCenter?)` → clipboard readImage → RGBA → invoke `save_pin_image` → 写 `.pgb1_pins/{id}.png`；`viewportCenter` 为世界坐标系中心点，有值时贴图居中于该点，无值时 fallback 随机偏移（PinboardPage 传入当前画布视口中心）；`deletePin` → invoke `delete_pin_image` + 移除 pin。`getPinImageUrl` 用 `convertFileSrc` 构建 asset URL。`bringToFront` 调整 zIndex。接受 `Ref<string> \| string` 参数 |
 | `usePdfTranslate.ts` | ~245 | `usePdfTranslate(filePath)` | **PDF 翻译全局状态 composable**。模块级 `Map<filePath, PdfTranslateSession>` 管理翻译会话（组件卸载不中断）。Session 含 state/progress/error/outputPath/showingTranslated/retryInfo。`startTranslation` 流程：loadSettings → extract_pdf_pages_text → 逐页 translate_text_once（跳过空白页）→ build_translated_pdf。模块级 `listen('pdf-translate-retry')` 更新重试状态。`checkExisting` 首次访问时调 `check_translated_pdf_exists` 自动检测 `_zh.pdf`。返回 state/progress/error/activePdfSrc/start/toggleView/reset |
 | `useRubberBandSelect.ts` | ~75 | `useRubberBandSelect()` | 框选多选逻辑。mousedown（空白区域）→ mousemove（视口矩形 + data-path 碰撞）→ onSelect 回调。justFinished ref 屏蔽框选后 click 事件。onContainerScroll 终止框选防止起点失效 |
 | `useDragIntent.ts` | ~36 | `createDragHandler(onDragStart, shouldIgnore?, threshold?)` | **拖拽意图检测**。mousedown → 移动距离超过阈值（默认 5px）→ 触发 onDragStart 回调，区分点击与拖拽 |
 | `useMultiSelect.ts` | ~86 | `useMultiSelect(options)` | **多选状态管理**。统一封装 isMultiSelect/selectedPaths/toggleSelectAll/togglePath 等多选逻辑 + 框选集成（useRubberBandSelect），多页面复用 |
+| `useOnboardingForm.ts` | ~250 | `useOnboardingForm(onComplete)` | **新手引导表单**（Sprint 3·Y-17 从 OnboardingDialog.vue 剥离）。4 步向导状态机（language/project-dir/tool-paths/attendance），onMounted 调用 `scan_app_shortcuts` 自动补齐 Imagine/TexturePacker CLI/GUI 路径（CLI/GUI 互推），finish() 合并 settings + attendance 配置写回 + 调用 onComplete 回调。canProceed 计算步骤校验。暴露所有 form state + 导航 + 选择器 + finish |
+| `useShortcutForm.ts` | ~217 | `useShortcutForm(onSave)` | **快捷方式表单**（Sprint 3·Y-17 从 ShortcutDialog.vue 剥离）。type (app/folder/web) 切换 + path/name 字段 + customIconPath 自定义图标。watch(type) 切换到 app 时 loadAppList（scan_app_shortcuts）。fetchIconPreview 根据类型调 extract_exe_icon / fetch_favicon。browseCustomIcon 通过 copy_icon_to_cache 缓存用户选的图标。handleSave 组装 payload 回调 onSave |
 
 ---
 
@@ -163,19 +165,23 @@
 | `scheduler.rs` | ~280 | **考勤调度器**：AttendanceScheduler、create_reminder_window（400×200 毛玻璃置顶弹窗，**visible(false) 创建** + Rust 侧 500ms 延迟 show() 双保险，由 ReminderPage onMounted 调 show()）、calc_duration_until。**日报预热**：`DAILY_REPORT_PRE_WARM_SECS`（90 秒）+ `pre_warm_daily_report`（提前创建隐藏 WebView 加载 Google Docs），在 `daily_timer_loop` 中日报提醒前 90 秒触发 |
 | `conversion.rs` | ~144 | **转换管理**：ConversionSession 状态管理（含 `tp_scale`/`tp_webp_quality` TP 预设参数）、`bring_window_to_front`（Win32 API）、`handle_file_event`（监控 01_scale/ 递归）。**双路径支持**：普通任务 `[XX]/file.webp`，Prototype `[XX]/{subcat}/file.webp`，目标分别为 `[img-XX]/` 和 `[img-XX]/{subcat}/`。**事件载荷修复**（v2.5.2）：`conversion-organized` 事件 payload 对 Prototype 携带 `subcat/stem` 格式（与前端 images map key 对齐），普通任务仍为 `stem` |
 
-### commands/ 子模块（从 commands.rs 拆分，70 个命令按职责分布）
+### commands/ 子模块（从 commands.rs 拆分，75 个命令按职责分布）
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `commands/mod.rs` | 22 | `pub use` 重导出所有子模块的命令，统一对外接口 |
+| `commands/mod.rs` | 24 | `pub use` 重导出所有子模块的命令，统一对外接口（Sprint 3 加 `holiday` 子模块） |
 | `commands/scanning.rs` | ~1681 | **扫描命令**：scan_projects, scan_tasks, scan_materials, scan_directory, list_sequence_frames, scan_material_versions, scan_preview_videos, scan_app_shortcuts + DirSnapshot 缓存。**素材进度判定**：`find_file_in_dir` 精确匹配 `file_stem() == base_name`；`find_webp_in_subdirs` / `find_webp_in_proto_subdirs` multipack 感知匹配。**Prototype 修复**：`split_prototype_name` + 各阶段目录深入 subcat 子目录 |
-| `commands/translation.rs` | ~1143 | **翻译命令**：translate_text_stream（SSE 流式 Gemini API）, toggle_translator_window, translate_text_once（单次翻译+6 次重试）, extract_pdf_pages_text, build_translated_pdf（reflow 架构，CID 字体+ToUnicode CMap）, check_translated_pdf_exists |
+| `commands/translation.rs` | ~340 | **翻译命令入口**：translate_text_stream（SSE 流式 Gemini API）, toggle_translator_window, translate_text_once（单次翻译+6 次重试）, extract_pdf_pages_text。PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块 |
+| `commands/translation/pdf_font.rs` | ~212 | **CJK 字体处理**（Sprint 3·Y-7 剥离）：load_cjk_font_bytes（msyh/simhei 候选） + extract_single_ttf_from_data（TTC→TTF 表重定位） + add_yahe_font（Type0+Identity-H+FontFile2+ToUnicode CMap） |
+| `commands/translation/pdf_reflow.rs` | ~450 | **PDF 内容流提取 + 流式排版**（Sprint 3·Y-7 剥离）：obj_to_f32, compute_avg_font_size, extract_image_placements（CTM 栈追踪）, get_page_xobject_dict, render_flow_pages（字符宽度换行+图片穿插+自适应分页） |
+| `commands/translation/pdf_cmds.rs` | ~194 | **PDF 命令整合**（Sprint 3·Y-7 剥离）：build_translated_pdf（reflow 架构整合者） + check_translated_pdf_exists，内部调用 pdf_font / pdf_reflow。通配符 re-export 到 translation.rs，`generate_handler!` 能同时找到原函数和 `__cmd__` wrapper |
+| `commands/holiday.rs` | ~155 | **外部 API 代理**（Sprint 3·Y-13 新增）：fetch_ip_country（ipapi.co，返回 2 字母国家代码）, fetch_cn_holiday_type（timor.tech，返回 Option\<i32\>）, fetch_nager_holidays（date.nager.at）。把前端 fetch 迁到 Rust reqwest，避免 IP 泄漏 + 收敛 CSP connect-src |
 | `commands/attendance.rs` | ~1176 | **考勤命令**：load/save_attendance_config, save/load_attendance_password, execute_clock_action, show/close_clock_webview, open_daily_report（含预热+滚动）, test_reminder, load/save_attendance_record, schedule_overtime_reminder, show_overtime_dialog, reschedule_attendance, **open_reminder_window**（前端主动打开提醒窗口，用于「结束加班」按钮触发退勤打卡）。含 `DAILY_REPORT_INIT_JS` 常量 + `spawn_daily_report_scroll` + `send_ctrl_end` / `scroll_to_bottom_via_wheel`（Win32 API） |
 | `commands/conversion.rs` | ~908 | **转换/缩放命令**：preview_normalize, execute_normalize, execute_scaling（Lanczos3 + scaling-progress 事件）, start_conversion, stop_conversion, execute_sequence_conversion, collect_drag_files, copy_to_nextcloud, import_files, copy_preview_to_nextcloud。`collect_scales_for_proto_sequence`（Prototype 序列帧专用 scale 收集） |
-| `commands/projects.rs` | ~704 | **项目管理命令**：create_project, rename_project, delete_project, update_project_deadline, set_project_priority, set_task_priority, toggle_subtask_completion, mark_upload_prompted, load/save_global_tasks, apply_task_changes, list_archived_tasks, restore_archived_task, delete_archived_version |
+| `commands/projects.rs` | ~670 | **项目管理命令**：create_project, rename_project, delete_project, update_project_deadline, set_project_priority, set_task_priority, toggle_subtask_completion, mark_upload_prompted, load/save_global_tasks, apply_task_changes, list_archived_tasks, restore_archived_task, delete_archived_version。Sprint 3·Y-19：4 个"读→改→写回"命令改用 `mutate_project_config` helper |
 | `commands/shortcuts.rs` | ~568 | **快捷方式命令**：load/save_shortcuts, launch_shortcut, extract_exe_icon（256px JUMBO）, fetch_favicon, copy_icon_to_cache, find_game_exe（Unity/Godot 递归检测） |
-| `commands/helpers.rs` | ~499 | **公共辅助函数**：matches_base_name, DirSnapshot（目录快照缓存）, calc_dir_size, regex_strip_version, extract_psd_thumbnail（PSD 图层合并+PSB 内嵌 JPEG fallback，PSD_SEMAPHORE(2)）, get_file_mtime |
-| `commands/files.rs` | ~220 | **文件操作命令**：open_file（ShellExecuteW）, rename_file（保留扩展名+校验）, delete_file（SHFileOperationW 回收站）, read_text_file, rename_material, delete_material, rename_sequence_fps |
+| `commands/helpers.rs` | ~520 | **公共辅助函数**：matches_base_name, DirSnapshot（目录快照缓存）, calc_dir_size, regex_strip_version, extract_psd_thumbnail（PSD 图层合并+PSB 内嵌 JPEG fallback，PSD_SEMAPHORE(2)）, get_file_mtime, **mutate_project_config**（Sprint 3·Y-19 新增：`.pgb1_project.json` 的"读→闭包改→写回"原子 helper，消除 4 个命令模板重复） |
+| `commands/files.rs` | ~215 | **文件操作命令**：open_file（ShellExecuteW）, rename_file（保留扩展名+校验）, delete_file（SHFileOperationW 回收站）, read_text_file, rename_material, delete_material, rename_sequence_fps, set_default_ae_file（Sprint 3·Y-19 改用 `mutate_project_config`） |
 | `commands/pinboard.rs` | ~182 | **贴图板命令**：get_pinboard, save_pinboard, save_pin_image（RGBA→PNG）, delete_pin_image, open_pinboard_window |
 | `commands/settings.rs` | ~69 | **设置命令**：load_settings（首次运行创建空默认值）, save_settings, set_default_ae_file |
 | `commands/notes.rs` | ~37 | **笔记命令**：get_notes（读 .pgb1_notes.json）, set_note（读-改-写，空时删文件） |
@@ -260,6 +266,9 @@
 | `translate_text_once` | app_handle, api_key, model, text, page_index? | String | Gemini API 单次翻译（英→中），6 次重试 + 指数退避（10s×2^n，上限 120s）。重试前 emit `pdf-translate-retry` 事件（page/attempt/maxRetries/waitSecs/error）供前端显示 |
 | `build_translated_pdf` | path, translations | String | **async + spawn_blocking，reflow 架构**：从原 PDF 提取图片（CTM 跟踪 XObject 显示尺寸），与翻译文本按流式布局混排生成全新页面，页数自动增减。内嵌微软雅黑 CID 字体（ttf-parser 真实度量）+ beginbfchar ToUnicode CMap。输出 `{stem}_zh.pdf` |
 | `check_translated_pdf_exists` | path | Option\<String\> | **async**：检测 `{stem}_zh.pdf` 是否存在，存在返回路径 |
+| `fetch_ip_country` | — | String | **Sprint 3·Y-13**：通过 Rust reqwest 代理 ipapi.co，返回 2 字母国家代码。避免前端直连泄漏 IP |
+| `fetch_cn_holiday_type` | year, month, day | Option\<i32\> | **Sprint 3·Y-13**：代理 timor.tech 查询中国节假日类型（0 工作日/1 假日/2 调休，None 无数据） |
+| `fetch_nager_holidays` | year, country_code | Vec\<String\> | **Sprint 3·Y-13**：代理 date.nager.at 返回某国某年所有公共节假日日期列表 |
 
 ### 数据模型
 

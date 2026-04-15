@@ -1,177 +1,35 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
-import { convertFileSrc } from '@tauri-apps/api/core'
-import { open as openDialog } from '@tauri-apps/plugin-dialog'
-import { useI18n } from 'vue-i18n'
-
-const { t } = useI18n()
+import { useShortcutForm } from '../composables/useShortcutForm'
 
 const props = defineProps<{ show?: boolean }>()
-
-interface AppShortcut {
-  name: string
-  target_path: string
-}
 
 const emit = defineEmits<{
   save: [data: { shortcut_type: string; name: string; path: string; custom_icon: string | null }]
   cancel: []
 }>()
 
-const type = ref<'app' | 'folder' | 'web'>('app')
-const path = ref('')
-const name = ref('')
-const customIconPath = ref<string | null>(null)
-const previewLoading = ref(false)
-
-const customIconUrl = computed(() =>
-  customIconPath.value
-    ? convertFileSrc(customIconPath.value.replace(/\\/g, '/'))
-    : null
-)
-
-const canFetchPreview = computed(() =>
-  (type.value === 'app' && !!selectedApp.value) ||
-  (type.value === 'web' && path.value.trim().length > 0)
-)
-
-async function fetchIconPreview() {
-  if (previewLoading.value || !canFetchPreview.value) return
-  const tempId = crypto.randomUUID()
-  previewLoading.value = true
-  try {
-    let result: string | null = null
-    if (type.value === 'app') {
-      result = await invoke<string>('extract_exe_icon', { exePath: path.value, iconId: tempId })
-    } else if (type.value === 'web') {
-      result = await invoke<string | null>('fetch_favicon', { url: path.value, iconId: tempId })
-    }
-    if (result) customIconPath.value = result
-  } catch (e) {
-    console.error('图标获取失败', e)
-  } finally {
-    previewLoading.value = false
-  }
-}
-
-// 应用选择相关
-const appList = ref<AppShortcut[]>([])
-const appSearch = ref('')
-const appListLoading = ref(false)
-const selectedApp = ref<AppShortcut | null>(null)
-
-const filteredApps = computed(() => {
-  const q = appSearch.value.trim().toLowerCase()
-  if (!q) return appList.value
-  return appList.value.filter(a => a.name.toLowerCase().includes(q))
-})
-
-// 切换为应用类型时加载列表
-watch(type, async (t) => {
-  if (t === 'app' && appList.value.length === 0 && !appListLoading.value) {
-    await loadAppList()
-  }
-})
-
-onMounted(async () => {
-  // 默认是应用类型，直接加载
-  if (type.value === 'app') {
-    await loadAppList()
-  }
-})
-
-async function loadAppList() {
-  appListLoading.value = true
-  try {
-    appList.value = await invoke<AppShortcut[]>('scan_app_shortcuts')
-  } catch (e) {
-    console.error('扫描应用列表失败', e)
-  } finally {
-    appListLoading.value = false
-  }
-}
-
-function selectApp(app: AppShortcut) {
-  selectedApp.value = app
-  path.value = app.target_path
-  name.value = app.name
-  customIconPath.value = null  // 换应用时重置自定义图标
-}
-
-// 切换类型时清空
-function selectType(t: 'app' | 'folder' | 'web') {
-  type.value = t
-  path.value = ''
-  name.value = ''
-  selectedApp.value = null
-  appSearch.value = ''
-  customIconPath.value = null
-}
-
-async function browseCustomIcon() {
-  try {
-    const selected = await openDialog({
-      multiple: false,
-      filters: [{ name: t('shortcut.imageFilter'), extensions: ['png', 'jpg', 'jpeg', 'ico', 'bmp', 'webp'] }],
-    })
-    if (selected && typeof selected === 'string') {
-      const tempId = crypto.randomUUID()
-      const cachedPath = await invoke<string>('copy_icon_to_cache', {
-        srcPath: selected,
-        iconId: tempId,
-      })
-      customIconPath.value = cachedPath
-    }
-  } catch (e) {
-    console.error('图标复制到缓存失败', e)
-  }
-}
-
-async function browse() {
-  try {
-    if (type.value === 'folder') {
-      const selected = await openDialog({ multiple: false, directory: true })
-      if (selected && typeof selected === 'string') {
-        path.value = selected
-        const parts = selected.replace(/\\/g, '/').split('/')
-        name.value = parts[parts.length - 1] || selected
-      }
-    }
-  } catch (e) {
-    console.error('文件夹选择失败', e)
-  }
-}
-
-async function browseExe() {
-  try {
-    const selected = await openDialog({
-      multiple: false,
-      filters: [{ name: t('shortcut.typeApp'), extensions: ['exe'] }],
-    })
-    if (selected && typeof selected === 'string') {
-      path.value = selected
-      const parts = selected.replace(/\\/g, '/').split('/')
-      const filename = parts[parts.length - 1]
-      name.value = filename.replace(/\.exe$/i, '')
-      selectedApp.value = { name: name.value, target_path: selected }
-    }
-  } catch (e) {
-    console.error('文件选择失败', e)
-  }
-}
-
-const canSave = computed(() => path.value.trim().length > 0 && name.value.trim().length > 0)
-
-function handleSave() {
-  if (!canSave.value) return
-  emit('save', {
-    shortcut_type: type.value,
-    name: name.value.trim(),
-    path: path.value.trim(),
-    custom_icon: customIconPath.value,
-  })
-}
+// 三类快捷方式的表单状态、路径选择、图标预览、应用列表全部下沉到 composable
+const {
+  type,
+  path,
+  name,
+  customIconPath,
+  customIconUrl,
+  previewLoading,
+  appSearch,
+  appListLoading,
+  selectedApp,
+  filteredApps,
+  canFetchPreview,
+  canSave,
+  selectApp,
+  selectType,
+  fetchIconPreview,
+  browseCustomIcon,
+  browse,
+  browseExe,
+  handleSave,
+} = useShortcutForm((data) => emit('save', data))
 </script>
 
 <template>

@@ -235,6 +235,28 @@ pub(crate) fn load_or_create_config(project_path: &Path) -> Result<ProjectConfig
     Ok(config)
 }
 
+/// 原子更新 `.pgb1_project.json`：读 → 闭包修改 → 写回
+///
+/// 用于消除 `set_project_priority` / `set_task_priority` /
+/// `set_default_ae_file` / `update_project_deadline` 四个命令里的重复模板：
+/// 每个命令只差一行"在 config 上改字段"，其余读写代码完全一致。
+pub(crate) fn mutate_project_config<F>(project_path: &Path, mutator: F) -> Result<(), String>
+where
+    F: FnOnce(&mut ProjectConfig),
+{
+    let config_path = project_path.join(".pgb1_project.json");
+    let content = fs::read_to_string(&config_path)
+        .map_err(|e| format!("读取配置失败: {}", e))?;
+    let mut config: ProjectConfig = serde_json::from_str(&content)
+        .map_err(|e| format!("解析配置失败: {}", e))?;
+    mutator(&mut config);
+    let json = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("序列化失败: {}", e))?;
+    fs::write(&config_path, json)
+        .map_err(|e| format!("写入失败: {}", e))?;
+    Ok(())
+}
+
 /// 扫描 Export 目录下的任务名称列表
 pub(crate) fn scan_task_names(export_path: &Path) -> Result<Vec<String>, String> {
     let mut names = Vec::new();

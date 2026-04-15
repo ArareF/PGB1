@@ -1,5 +1,4 @@
-use crate::models::ProjectConfig;
-use super::helpers::matches_base_name;
+use super::helpers::{matches_base_name, mutate_project_config};
 use std::fs;
 use std::path::Path;
 
@@ -149,13 +148,7 @@ pub fn delete_material(task_path: String, base_name: String, material_type: Stri
 /// 设置项目的默认 AE 工程文件
 #[tauri::command]
 pub fn set_default_ae_file(project_path: String, file_name: Option<String>) -> Result<(), String> {
-    let config_path = Path::new(&project_path).join(".pgb1_project.json");
-    let content = fs::read_to_string(&config_path).map_err(|e| format!("读取配置文件失败: {}", e))?;
-    let mut config: ProjectConfig = serde_json::from_str(&content).map_err(|e| format!("解析配置文件失败: {}", e))?;
-    config.default_ae_file = file_name;
-    let json = serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
-    fs::write(&config_path, json).map_err(|e| format!("写入配置文件失败: {}", e))?;
-    Ok(())
+    mutate_project_config(Path::new(&project_path), |cfg| cfg.default_ae_file = file_name)
 }
 
 /// 递归扫描目录，寻找游戏原型启动程序

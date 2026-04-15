@@ -139,8 +139,8 @@ async function detectCountry(): Promise<string | null> {
       const { country, expires } = JSON.parse(cached)
       if (Date.now() < expires) return country
     }
-    const res = await fetch('https://ipapi.co/country/')
-    const country = (await res.text()).trim().toUpperCase()
+    // 改走 Rust 后端代理 ipapi.co，避免前端直连泄漏 IP + 收敛 CSP connect-src
+    const country = await invoke<string>('fetch_ip_country')
     if (/^[A-Z]{2}$/.test(country)) {
       localStorage.setItem(IP_CACHE_KEY, JSON.stringify({ country, expires: Date.now() + IP_CACHE_TTL }))
       return country
@@ -160,7 +160,7 @@ async function getEffectiveRegion(): Promise<string> {
   return detectedCountry ?? 'CN'  // 检测失败降级为中国
 }
 
-// ─── CN 节假日（timor.tech）────────────────────────────────
+// ─── CN 节假日（timor.tech 经 Rust 代理）───────────────────
 async function fetchTimorType(date: Date): Promise<number | null> {
   const key = `holiday_cache_${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
   const cached = localStorage.getItem(key)
@@ -171,10 +171,12 @@ async function fetchTimorType(date: Date): Promise<number | null> {
     }
   }
   try {
-    const url = `https://timor.tech/api/holiday/info/${date.getFullYear()}-${date.getMonth()+1}-${date.getDate()}`
-    const res = await fetch(url)
-    const data = await res.json()
-    const type: number | null = data?.type?.type ?? null
+    // Rust 端 Option<i32>：Some(n) → n（number）, None → null
+    const type = await invoke<number | null>('fetch_cn_holiday_type', {
+      year: date.getFullYear(),
+      month: date.getMonth() + 1,
+      day: date.getDate(),
+    })
     localStorage.setItem(key, JSON.stringify(type))
     return type
   } catch (e) {
@@ -198,13 +200,10 @@ async function fetchNagerHolidays(year: number, countryCode: string): Promise<Se
     }
   }
   try {
-    const res = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${countryCode}`)
-    if (!res.ok) {
-      console.warn(`[statusBar] Nager API HTTP ${res.status} for ${countryCode}/${year}`)
-      return new Set()
-    }
-    const data: Array<{ date: string }> = await res.json()
-    const dates = data.map(h => h.date)
+    const dates = await invoke<string[]>('fetch_nager_holidays', {
+      year,
+      countryCode: countryCode.toUpperCase(),
+    })
     localStorage.setItem(cacheKey, JSON.stringify(dates))
     return new Set(dates)
   } catch (e) {

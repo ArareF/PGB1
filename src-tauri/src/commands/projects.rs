@@ -4,7 +4,7 @@ use crate::models::{
 };
 use super::helpers::{
     default_global_tasks, find_app_icon,
-    load_or_create_config, move_dir, scan_task_names, to_title_case,
+    load_or_create_config, move_dir, mutate_project_config, scan_task_names, to_title_case,
     PROTOTYPE_SUBCATEGORIES, PSD_SUBCATEGORIES,
 };
 use std::fs;
@@ -543,13 +543,7 @@ pub fn update_project_deadline(
     project_path: String,
     deadline: Option<String>,
 ) -> Result<(), String> {
-    let config_path = Path::new(&project_path).join(".pgb1_project.json");
-    let raw = fs::read_to_string(&config_path).map_err(|e| format!("读取配置失败: {}", e))?;
-    let mut config: ProjectConfig = serde_json::from_str(&raw).map_err(|e| format!("解析配置失败: {}", e))?;
-    config.deadline = deadline;
-    let json = serde_json::to_string_pretty(&config).map_err(|e| format!("序列化失败: {}", e))?;
-    fs::write(&config_path, json).map_err(|e| format!("写入配置失败: {}", e))?;
-    Ok(())
+    mutate_project_config(Path::new(&project_path), |cfg| cfg.deadline = deadline)
 }
 
 /// 将项目目录移入回收站（Windows Shell API）
@@ -706,36 +700,18 @@ pub fn rename_project(project_path: String, new_name: String) -> Result<ProjectI
     })
 }
 
-/// 重命名单个文件（保留扩展名，仅改基础名）
+/// 设置项目优先度（"high"/"medium"/"low" 或 null 清除）
 #[tauri::command]
 pub fn set_project_priority(project_path: String, priority: Option<String>) -> Result<(), String> {
-    let config_path = std::path::Path::new(&project_path).join(".pgb1_project.json");
-    let content = fs::read_to_string(&config_path)
-        .map_err(|e| format!("读取配置失败: {}", e))?;
-    let mut config: crate::models::ProjectConfig = serde_json::from_str(&content)
-        .map_err(|e| format!("解析配置失败: {}", e))?;
-    config.priority = priority;
-    let json = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("序列化失败: {}", e))?;
-    fs::write(&config_path, json).map_err(|e| format!("写入失败: {}", e))?;
-    Ok(())
+    mutate_project_config(Path::new(&project_path), |cfg| cfg.priority = priority)
 }
 
 /// 设置任务优先度（"high"/"medium"/"low" 或 null 清除）
 #[tauri::command]
 pub fn set_task_priority(project_path: String, task_name: String, priority: Option<String>) -> Result<(), String> {
-    let config_path = std::path::Path::new(&project_path).join(".pgb1_project.json");
-    let content = fs::read_to_string(&config_path)
-        .map_err(|e| format!("读取配置失败: {}", e))?;
-    let mut config: crate::models::ProjectConfig = serde_json::from_str(&content)
-        .map_err(|e| format!("解析配置失败: {}", e))?;
     let key = task_name.to_lowercase();
-    match priority {
-        Some(p) => { config.task_priorities.insert(key, p); }
-        None    => { config.task_priorities.remove(&key); }
-    }
-    let json = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("序列化失败: {}", e))?;
-    fs::write(&config_path, json).map_err(|e| format!("写入失败: {}", e))?;
-    Ok(())
+    mutate_project_config(Path::new(&project_path), |cfg| match priority {
+        Some(p) => { cfg.task_priorities.insert(key, p); }
+        None    => { cfg.task_priorities.remove(&key); }
+    })
 }

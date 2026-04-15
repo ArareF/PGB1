@@ -69,8 +69,11 @@ export function useSettings() {
     loading.value = true
     error.value = null
     try {
-      await invoke('save_settings', { settings: newSettings })
-      settings.value = structuredClone(newSettings) // 深拷贝以解绑引用
+      // newSettings 是 Vue reactive Proxy，含 __v_isRef 等 Symbol key
+      // 必须先 JSON 深拷贝脱壳成纯对象，否则 Tauri IPC / structuredClone 都会抛 DataCloneError
+      const plain = JSON.parse(JSON.stringify(newSettings)) as AppSettings
+      await invoke('save_settings', { settings: plain })
+      settings.value = plain
     } catch (e) {
       error.value = String(e)
       console.error('保存设置失败:', e)

@@ -67,6 +67,13 @@ async function sendPomodoroNotification(title: string, body: string) {
   }
 }
 
+// ─── 单例生命周期 ────────────────────────────────────────────
+// Y-20 原始担忧：refCount 模式可能在组件卸载/重挂载时产生单例可重入。
+// 当前架构下该路径不会触发，因此保留 refCount 而非重构为 provide/inject：
+//   1. 永驻消费者：StatusBar.vue 嵌在 TitleBar.vue 无 v-if → refCount 永远 ≥ 1
+//   2. pendingAlignTimeout 已跟踪（见 startTimer / stopTimer）→ 无悬挂 timeout
+//   3. 对齐 timeout 回调内 refCount === 0 short-circuit → 防 stale 触发新 interval
+// 未来若新增"条件渲染的状态栏消费者"，须重新评估是否需要 provide/inject。
 let timer: ReturnType<typeof setInterval> | null = null
 let pendingAlignTimeout: ReturnType<typeof setTimeout> | null = null
 let refCount = 0

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
@@ -10,12 +10,13 @@ import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import { useMaterials } from '../composables/useMaterials'
 import { useSettings } from '../composables/useSettings'
 import type { MaterialInfo } from '../composables/useMaterials'
-import type { FileEntry } from '../composables/useDirectoryFiles'
 import { useNotes, toggleCheckbox, usePageNote } from '../composables/useNotes'
 import { useMultiSelect } from '../composables/useMultiSelect'
 import { createDragHandler } from '../composables/useDragIntent'
+import { usePreviewVideos, type PreviewVideoGroup } from '../composables/usePreviewVideos'
+import { useMaterialSidebar } from '../composables/useMaterialSidebar'
 import type { GlobalTaskConfig } from '../types/task'
-import type { PreviewVideoEntry, MaterialVersion } from '../types/material'
+import type { MaterialVersion } from '../types/material'
 import MaterialCard from '../components/MaterialCard.vue'
 import SequencePreview from '../components/SequencePreview.vue'
 import ImageViewer from '../components/ImageViewer.vue'
@@ -39,18 +40,19 @@ const { projects, loadProjects } = useProjects()
 const { openInExplorer } = useDirectoryFiles()
 const { materials, loading, loadMaterials } = useMaterials()
 const { loadSettings, settings } = useSettings()
-const taskFolderPathRef = ref('')
-const { loadNotes, hasNote, saveNote: saveTaskNote, getNote } = useNotes(taskFolderPathRef)
-const projectPathRef = ref('')
-const { loadNotes: loadProjectNotes, hasNote: hasProjectNote, getNote: getProjectNote, saveNote: saveProjectNote } = useNotes(projectPathRef)
 
 const projectId = route.params.projectId as string
 const taskId = route.params.taskId as string
 const pageNoteKey = 'card:' + taskId.toLowerCase()
 
-let taskFolderPath = ''
-let nextcloudPath = ''
-let nextcloudPreviewPath = ''
+// ─── 路径：ref 作为 SSOT，script / template / composable 全部走这里 ──
+const taskFolderPathRef = ref('')
+const nextcloudPathRef = ref('')
+const nextcloudPreviewPathRef = ref('')
+
+const { loadNotes, hasNote, saveNote: saveTaskNote, getNote } = useNotes(taskFolderPathRef)
+const projectPathRef = ref('')
+const { loadNotes: loadProjectNotes, hasNote: hasProjectNote, getNote: getProjectNote, saveNote: saveProjectNote } = useNotes(projectPathRef)
 
 /** 当前视图模式 */
 const viewMode = ref<'tree' | 'name'>('tree')
@@ -58,6 +60,59 @@ const viewMode = ref<'tree' | 'name'>('tree')
 /** 滚动容器 ref */
 const scrollRef = ref<HTMLElement | null>(null)
 
+// ─── 预览视频 composable（state + 纯函数 + 单文件上传，不依赖多选） ──
+const {
+  previewGroups,
+  videoThumbnails,
+  selectedPreviewVideo,
+  selectedPreviewGroup,
+  showPreviewUploadConfirm,
+  draggedPreviewFile,
+  selectedPreviewVideoAsFileEntry,
+  selectedPreviewGroupVersionsAsFileEntries,
+  previewGroupKey,
+  loadPreviewGroups,
+  clearSelection: clearPreviewSelection,
+  confirmPreviewUpload,
+  cancelPreviewUpload,
+} = usePreviewVideos({
+  taskFolderPathRef,
+  nextcloudPreviewPathRef,
+  onAfterUpload: () => checkSubtaskAutoPrompt(),
+})
+
+// ─── 素材侧边栏 composable（选中 / 版本 / 重命名 / 删除 / 帧率 / TPS） ──
+const {
+  selectedMaterial,
+  versions,
+  sidebarDialog,
+  renameInput,
+  sidebarNoteText,
+  editingFps,
+  fpsInput,
+  selectMaterial,
+  closeSidebar,
+  onSidebarNoteSave,
+  openRenameDialog,
+  openDeleteDialog,
+  closeSidebarDialog,
+  confirmRename,
+  confirmDelete,
+  startEditFps,
+  cancelEditFps,
+  confirmEditFps,
+  openTpsFile,
+} = useMaterialSidebar({
+  taskFolderPathRef,
+  scrollRef,
+  materials,
+  getNote,
+  saveNote: saveTaskNote,
+  refresh: () => refresh(),
+  onPreviewSelectionCleared: () => clearPreviewSelection(),
+})
+
+// ─── 多选（allPaths 合并 materials + previewGroups；onEnter 互斥关闭两个侧边栏） ──
 const {
   isMultiSelect, selectedPaths, isAllSelected,
   toggleMultiSelect: _toggleMultiSelect, toggleSelection, toggleSelectAll,
@@ -69,8 +124,7 @@ const {
   ]),
   onEnter: () => {
     if (selectedMaterial.value) closeSidebar()
-    selectedPreviewVideo.value = null
-    selectedPreviewGroup.value = null
+    clearPreviewSelection()
   },
   rubberBand: {
     containerRef: scrollRef,
@@ -79,11 +133,6 @@ const {
 })
 
 function toggleMultiSelect() { _toggleMultiSelect() }
-
-/** 预览视频组的选中 key = 最新版本的文件路径（与 selectedPaths Set 对齐） */
-function previewGroupKey(g: PreviewVideoGroup): string {
-  return g.versions[g.versions.length - 1].path
-}
 
 const selectedMaterials = computed(() =>
   materials.value.filter(m => selectedPaths.value.has(m.path))
@@ -102,72 +151,63 @@ function onCardClick(material: MaterialInfo) {
   }
 }
 
-// ─── 拖拽上传 ──────────────────────────────────────
+// ─── 预览视频选中 / 拖拽（依赖多选，作为 wrapper 留在父组件避免循环依赖） ──
+function selectPreviewVideo(group: PreviewVideoGroup) {
+  // 多选模式：点击切换勾选态，不打开侧边栏
+  if (isMultiSelect.value) {
+    toggleSelection(previewGroupKey(group))
+    return
+  }
+  // 再次点击同一组则关闭
+  if (selectedPreviewGroup.value?.baseName === group.baseName) {
+    clearPreviewSelection()
+    return
+  }
+  // 互斥：关闭素材侧边栏
+  if (selectedMaterial.value) {
+    closeSidebar()
+  }
+  selectedPreviewVideo.value = group.versions[group.versions.length - 1]
+  selectedPreviewGroup.value = group
+}
 
-/** 上传确认弹窗状态（素材 + 预览视频 混合） */
+function onPreviewVideoMouseDown(e: MouseEvent, group: PreviewVideoGroup) {
+  createDragHandler(
+    () => {
+      // 多选模式：若当前组未选中先勾上，再走统一的混合批量拖拽
+      if (isMultiSelect.value) {
+        const key = previewGroupKey(group)
+        if (!selectedPaths.value.has(key)) {
+          toggleSelection(key)
+        }
+        if (selectedPaths.value.size > 0) {
+          performDrag(selectedMaterials.value, selectedPreviewGroups.value)
+        }
+        return
+      }
+      // 单选模式：保留原"单文件拖拽 + 独立预览视频上传弹窗"
+      const latest = group.versions[group.versions.length - 1]
+      startDrag({ item: [latest.path], icon: '' }, (payload) => {
+        if (payload.result === 'Dropped') {
+          draggedPreviewFile.value = latest
+          showPreviewUploadConfirm.value = true
+        }
+      }).catch(err => {
+        console.error('预览视频拖拽失败:', err)
+      })
+    },
+    (ev) => ev.button !== 0,
+  )(e)
+}
+
+// ─── 混合拖拽上传（素材 + 预览视频 混合弹窗） ──
 const showUploadConfirm = ref(false)
 const draggedMaterials = ref<MaterialInfo[]>([])
 const draggedPreviewGroupsForUpload = ref<PreviewVideoGroup[]>([])
 
-/** 预览视频上传确认弹窗状态 */
-const showPreviewUploadConfirm = ref(false)
-const draggedPreviewFile = ref<PreviewVideoEntry | null>(null)
-
-/** 规范化弹窗状态 */
-const showNormalizeDialog = ref(false)
-const showGuide = ref(false)
-
-/** ─── 导航按钮高亮判定 ──────────────────────────────
- * 规范化：需要异步扫 00_original 与命名规则比对，结果写入 ref
- * 缩放 / 转换：可从 materials.value 同步 computed */
-const hasNormalizeWork = ref(false)
-const hasScaleWork = computed(() =>
-  materials.value.some(m =>
-    m.material_type === 'image' &&
-    m.progress !== 'uploaded' &&
-    m.scales.length === 0
-  )
-)
-const hasConvertWork = computed(() =>
-  materials.value.some(m =>
-    (m.material_type === 'image' || m.material_type === 'sequence') &&
-    m.progress !== 'done' &&
-    m.progress !== 'uploaded'
-  )
-)
-
-/** 扫描 00_original 判断是否存在需要规范化的文件 */
-async function checkNormalizeWork() {
-  if (!taskFolderPath) { hasNormalizeWork.value = false; return }
-  try {
-    const items = await invoke<unknown[]>('preview_normalize', { taskPath: taskFolderPath })
-    hasNormalizeWork.value = items.length > 0
-  } catch (e) {
-    console.error('检测规范化状态失败:', e)
-    hasNormalizeWork.value = false
-  }
-}
-
-// 笔记
-const sidebarNoteText = ref('')
-const { showPageNote, pageNoteText, openPageNote, closePageNote, onPageNoteSave, onPageNoteUpdate, onPageNoteCheckbox } =
-  usePageNote(getProjectNote, saveProjectNote, computed(() => 'card:' + taskId.toLowerCase()))
-
-async function openPinboard() {
-  if (!projectPathRef.value) return
-  await invoke('open_pinboard_window', {
-    dirPath: projectPathRef.value,
-    canvasKey: `task:${taskId}`,
-    title: taskId,
-  })
-}
-
-// ─── 拖拽意图检测 ──────────────────────────────────────
-
 function onCardMouseDown(e: MouseEvent, material: MaterialInfo) {
   createDragHandler(
     () => {
-      // 确定要拖拽的素材
       if (isMultiSelect.value) {
         if (!selectedPaths.value.has(material.path)) {
           toggleSelection(material.path)
@@ -192,7 +232,7 @@ async function performDrag(
     let filePaths: string[] = []
     if (materialsToDrag.length > 0) {
       filePaths = await invoke<string[]>('collect_drag_files', {
-        taskPath: taskFolderPath,
+        taskPath: taskFolderPathRef.value,
         materials: materialsToDrag.map(m => ({
           name: m.name,
           material_type: m.material_type,
@@ -211,7 +251,6 @@ async function performDrag(
     // 用第一个素材的预览图作为拖拽图标（预览视频没有独立预览图，留空即可）
     const iconPath = materialsToDrag[0]?.preview_path ?? ''
 
-    // 发起 OS 级拖拽
     await startDrag(
       { item: filePaths, icon: iconPath },
       (payload) => {
@@ -248,15 +287,15 @@ function onVersionMouseDown(e: MouseEvent, version: MaterialVersion) {
 async function confirmUpload() {
   showUploadConfirm.value = false
 
-  const materials = draggedMaterials.value
+  const materialsToUpload = draggedMaterials.value
   const previewGroupsToUpload = draggedPreviewGroupsForUpload.value
 
   // 素材批量上传
-  if (materials.length > 0) {
+  if (materialsToUpload.length > 0) {
     try {
       const result = await invoke<{ copied_count: number; errors: string[] }>('copy_to_nextcloud', {
-        taskPath: taskFolderPath,
-        materialNames: materials.map(m => ({
+        taskPath: taskFolderPathRef.value,
+        materialNames: materialsToUpload.map(m => ({
           name: m.name,
           material_type: m.material_type,
         })),
@@ -275,7 +314,7 @@ async function confirmUpload() {
     try {
       await invoke('copy_preview_to_nextcloud', {
         filePath: latestPath,
-        nextcloudPreviewPath,
+        nextcloudPreviewPath: nextcloudPreviewPathRef.value,
       })
     } catch (err) {
       console.error(`预览视频复制失败 (${latestPath}):`, err)
@@ -285,15 +324,7 @@ async function confirmUpload() {
   // 刷新素材 + 预览视频列表
   await refresh()
   if (previewGroupsToUpload.length > 0) {
-    try {
-      const files = await invoke<PreviewVideoEntry[]>('scan_preview_videos', {
-        taskPath: taskFolderPath,
-        nextcloudPreviewPath,
-      })
-      previewGroups.value = groupPreviewVideos(files)
-    } catch (e) {
-      console.error('刷新预览视频失败:', e)
-    }
+    await loadPreviewGroups()
   }
 
   // 多选模式下清理
@@ -310,7 +341,7 @@ function startScaling() {
   router.push({
     name: 'scale',
     params: { projectId, taskId },
-    query: { taskPath: taskFolderPath },
+    query: { taskPath: taskFolderPathRef.value },
   })
 }
 
@@ -320,232 +351,55 @@ function cancelUpload() {
   draggedPreviewGroupsForUpload.value = []
 }
 
-/** 当前选中的素材（用于侧边栏） */
-const selectedMaterial = ref<MaterialInfo | null>(null)
+/** 规范化弹窗状态 */
+const showNormalizeDialog = ref(false)
+const showGuide = ref(false)
 
-/** 03_preview 视频分组 */
-interface PreviewVideoGroup {
-  baseName: string
-  versions: PreviewVideoEntry[]   // 按文件名排序，最后一个是最新版
-  /** 组的上传状态：取最新版本的状态 */
-  uploadStatus: 'uploaded' | 'outdated' | 'none'
-}
+/** ─── 导航按钮高亮判定 ──────────────────────────────
+ * 规范化：需要异步扫 00_original 与命名规则比对，结果写入 ref
+ * 缩放 / 转换：可从 materials.value 同步 computed */
+const hasNormalizeWork = ref(false)
+const hasScaleWork = computed(() =>
+  materials.value.some(m =>
+    m.material_type === 'image' &&
+    m.progress !== 'uploaded' &&
+    m.scales.length === 0
+  )
+)
+const hasConvertWork = computed(() =>
+  materials.value.some(m =>
+    (m.material_type === 'image' || m.material_type === 'sequence') &&
+    m.progress !== 'done' &&
+    m.progress !== 'uploaded'
+  )
+)
 
-const previewGroups = ref<PreviewVideoGroup[]>([])
-
-/** 缩略图缓存：文件 path → canvas dataURL */
-const videoThumbnails = ref<Map<string, string>>(new Map())
-
-/** 当前选中的预览视频（驱动 FileDetailSidebar） */
-const selectedPreviewVideo = ref<PreviewVideoEntry | null>(null)
-
-/** 将 PreviewVideoEntry 适配为 FileEntry（补充 is_dir: false） */
-const selectedPreviewVideoAsFileEntry = computed<FileEntry | null>(() => {
-  const v = selectedPreviewVideo.value
-  if (!v) return null
-  return { name: v.name, path: v.path, extension: v.extension, size_bytes: v.size_bytes, is_dir: false }
-})
-
-/** 将当前组的 versions 适配为 FileEntry[]（补充 is_dir: false） */
-const selectedPreviewGroupVersionsAsFileEntries = computed<FileEntry[] | undefined>(() => {
-  return selectedPreviewGroup.value?.versions.map(v => ({
-    name: v.name, path: v.path, extension: v.extension, size_bytes: v.size_bytes, is_dir: false,
-  }))
-})
-
-/** 当前选中的预览视频组（用于传版本列表给侧边栏） */
-const selectedPreviewGroup = ref<PreviewVideoGroup | null>(null)
-
-/** 侧边栏共享宽度（两个侧边栏用同一宽度变量，避免跳变） */
-const fileDetailWidthPercent = ref(30)
-
-/** 从文件名提取版本号 [major, minor]，无版本返回 [0, 0] */
-function extractVersion(name: string): [number, number] {
-  const stem = name.replace(/\.[^.]+$/, '')
-  const m = stem.match(/_(\d+)(?:\.(\d+))?$/)
-  if (!m) return [0, 0]
-  return [parseInt(m[1], 10), m[2] ? parseInt(m[2], 10) : 0]
-}
-
-/** 将 PreviewVideoEntry[] 分组为 PreviewVideoGroup[] */
-function groupPreviewVideos(files: PreviewVideoEntry[]): PreviewVideoGroup[] {
-  const map = new Map<string, PreviewVideoEntry[]>()
-  for (const f of files) {
-    const nameWithoutExt = f.name.replace(/\.[^.]+$/, '')
-    const baseName = nameWithoutExt.replace(/_\d+(\.\d+)?$/, '')
-    if (!map.has(baseName)) map.set(baseName, [])
-    map.get(baseName)!.push(f)
-  }
-  const groups: PreviewVideoGroup[] = []
-  for (const [baseName, versions] of map) {
-    versions.sort((a, b) => {
-      const va = extractVersion(a.name)
-      const vb = extractVersion(b.name)
-      return va[0] - vb[0] || va[1] - vb[1]
-    })
-    const latest = versions[versions.length - 1]
-    groups.push({ baseName, versions, uploadStatus: latest.upload_status })
-  }
-  groups.sort((a, b) => a.baseName.localeCompare(b.baseName))
-  return groups
-}
-
-/** 对分组数据截帧（取每组 latest），结果写入 videoThumbnails */
-function captureGroupThumbnails(groups: PreviewVideoGroup[]) {
-  for (const group of groups) {
-    const latest = group.versions[group.versions.length - 1]
-    if (videoThumbnails.value.has(latest.path)) continue
-    const video = document.createElement('video')
-    video.crossOrigin = 'anonymous'
-    video.preload = 'metadata'
-    video.src = convertFileSrc(latest.path)
-    video.currentTime = 0.1
-    video.addEventListener('seeked', () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = video.videoWidth || 320
-      canvas.height = video.videoHeight || 180
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-        const newMap = new Map(videoThumbnails.value)
-        newMap.set(latest.path, canvas.toDataURL('image/jpeg', 0.7))
-        videoThumbnails.value = newMap
-      }
-      video.src = ''
-    }, { once: true })
-    video.addEventListener('error', () => { video.src = '' }, { once: true })
+/** 扫描 00_original 判断是否存在需要规范化的文件 */
+async function checkNormalizeWork() {
+  if (!taskFolderPathRef.value) { hasNormalizeWork.value = false; return }
+  try {
+    const items = await invoke<unknown[]>('preview_normalize', { taskPath: taskFolderPathRef.value })
+    hasNormalizeWork.value = items.length > 0
+  } catch (e) {
+    console.error('检测规范化状态失败:', e)
+    hasNormalizeWork.value = false
   }
 }
 
-/** 选中素材的其他版本列表 */
-const versions = ref<MaterialVersion[]>([])
+// ─── 笔记 ──────────────────────────────────────────────
+const { showPageNote, pageNoteText, openPageNote, closePageNote, onPageNoteSave, onPageNoteUpdate, onPageNoteCheckbox } =
+  usePageNote(getProjectNote, saveProjectNote, computed(() => 'card:' + taskId.toLowerCase()))
 
-/** 侧边栏内联操作弹窗 */
-type SidebarDialog = 'none' | 'rename' | 'delete'
-const sidebarDialog = ref<SidebarDialog>('none')
-const renameInput = ref('')
-
-function openRenameDialog() {
-  renameInput.value = selectedMaterial.value?.name ?? ''
-  sidebarDialog.value = 'rename'
-  nextTick(() => {
-    (document.querySelector('.sidebar-dialog-input') as HTMLInputElement)?.focus()
+async function openPinboard() {
+  if (!projectPathRef.value) return
+  await invoke('open_pinboard_window', {
+    dirPath: projectPathRef.value,
+    canvasKey: `task:${taskId}`,
+    title: taskId,
   })
 }
 
-function openDeleteDialog() {
-  sidebarDialog.value = 'delete'
-}
-
-function closeSidebarDialog() {
-  sidebarDialog.value = 'none'
-  renameInput.value = ''
-}
-
-/** 帧率内联编辑 */
-const editingFps = ref(false)
-const fpsInput = ref('')
-
-function startEditFps() {
-  const mat = selectedMaterial.value
-  if (!mat || mat.fps == null) return
-  fpsInput.value = String(mat.fps)
-  editingFps.value = true
-  nextTick(() => {
-    (document.querySelector('.fps-input') as HTMLInputElement)?.select()
-  })
-}
-
-function cancelEditFps() {
-  editingFps.value = false
-  fpsInput.value = ''
-}
-
-async function confirmEditFps() {
-  const mat = selectedMaterial.value
-  if (!mat) return
-  const newFps = parseInt(fpsInput.value, 10)
-  if (!newFps || newFps <= 0 || newFps === mat.fps) {
-    cancelEditFps()
-    return
-  }
-  try {
-    await invoke('rename_sequence_fps', {
-      taskPath: taskFolderPath,
-      baseName: mat.name,
-      oldFps: mat.fps,
-      newFps,
-    })
-    cancelEditFps()
-    await refresh()
-    // refresh 只更新 materials.value，selectedMaterial 需手动同步到新数据
-    const updated = materials.value.find(m => m.name === mat.name)
-    if (updated) {
-      selectedMaterial.value = updated
-      versions.value = await invoke<MaterialVersion[]>('scan_material_versions', {
-        taskPath: taskFolderPath,
-        baseName: updated.name,
-        materialType: updated.material_type,
-      })
-    }
-  } catch (e) {
-    console.error('修改帧率失败:', e)
-  }
-}
-
-/** 打开序列帧工程文件（.tps） */
-async function openTpsFile() {
-  const mat = selectedMaterial.value
-  if (!mat) return
-  const doneVersion = versions.value.find(v => v.stage === '02_done')
-  if (!doneVersion) return
-  const tpsPath = doneVersion.folder_path.replace(/\\/g, '/') + '/' + mat.name + '.tps'
-  try {
-    await invoke('open_file', { path: tpsPath })
-  } catch (e) {
-    console.error('打开工程文件失败:', e)
-  }
-}
-
-async function confirmRename() {
-  const mat = selectedMaterial.value
-  if (!mat || !renameInput.value.trim() || renameInput.value.trim() === mat.name) {
-    closeSidebarDialog()
-    return
-  }
-  try {
-    await invoke('rename_material', {
-      taskPath: taskFolderPath,
-      baseName: mat.name,
-      newBaseName: renameInput.value.trim(),
-      materialType: mat.material_type,
-    })
-    closeSidebarDialog()
-    closeSidebar()
-    await refresh()
-  } catch (e) {
-    console.error('重命名失败:', e)
-  }
-}
-
-async function confirmDelete() {
-  const mat = selectedMaterial.value
-  if (!mat) return
-  try {
-    await invoke('delete_material', {
-      taskPath: taskFolderPath,
-      baseName: mat.name,
-      materialType: mat.material_type,
-    })
-    closeSidebarDialog()
-    closeSidebar()
-    await refresh()
-  } catch (e) {
-    console.error('删除失败:', e)
-  }
-}
-
-/** 子任务状态 */
+// ─── 子任务状态 ────────────────────────────────────────
 const subtaskCompleted = ref(0)   // 分子：用户手动勾选完成的
 const subtaskTotal = ref(0)       // 分母：Tab 1 勾选启用的子任务数
 const enabledSubtasks = ref<string[]>([])   // 启用的子任务 key 列表
@@ -606,10 +460,10 @@ function updateNavigation() {
       },
       { id: 'normalize', label: t('task.normalize'), handler: () => { showNormalizeDialog.value = true }, ...levelFor('normalize', hasNormalizeWork.value) },
       { id: 'scale', label: t('task.scale'), handler: startScaling, ...levelFor('scale', hasScaleWork.value) },
-      { id: 'convert', label: t('task.convert'), handler: () => router.push({ name: 'convert', params: { projectId, taskId }, query: { taskPath: taskFolderPath } }), ...levelFor('convert', hasConvertWork.value) },
+      { id: 'convert', label: t('task.convert'), handler: () => router.push({ name: 'convert', params: { projectId, taskId }, query: { taskPath: taskFolderPathRef.value } }), ...levelFor('convert', hasConvertWork.value) },
     ],
     moreMenuItems: [
-      { id: 'open-nextcloud', label: t('task.openNextcloudFolder'), handler: () => { if (nextcloudPath) openInExplorer(nextcloudPath) } },
+      { id: 'open-nextcloud', label: t('task.openNextcloudFolder'), handler: () => { if (nextcloudPathRef.value) openInExplorer(nextcloudPathRef.value) } },
       { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
     ],
   })
@@ -728,152 +582,8 @@ const groupedMaterials = computed(() => {
   return groups
 })
 
-/** 记录卡片布局变化前的屏幕 Y 坐标，变化后补偿滚动 */
-function preserveCardPosition(cardSelector: string, action: () => void) {
-  const container = scrollRef.value
-  const card = container?.querySelector(cardSelector) as HTMLElement | null
-  const beforeY = card?.getBoundingClientRect().top ?? null
-
-  action()
-
-  nextTick(() => {
-    requestAnimationFrame(() => {
-      if (!container || beforeY === null) return
-      const afterCard = container.querySelector(cardSelector) as HTMLElement | null
-      if (!afterCard) return
-      const afterY = afterCard.getBoundingClientRect().top
-      const delta = afterY - beforeY
-      container.scrollTop += delta
-    })
-  })
-}
-
-async function selectMaterial(material: MaterialInfo) {
-  // 互斥：关闭预览视频侧边栏
-  selectedPreviewVideo.value = null
-  selectedPreviewGroup.value = null
-
-  // 再次点击同一素材则关闭侧边栏
-  if (selectedMaterial.value?.path === material.path) {
-    closeSidebar()
-    return
-  }
-
-  const wasOpen = !!selectedMaterial.value
-
-  preserveCardPosition(
-    wasOpen ? '.material-card.selected' : `.material-card[data-path="${CSS.escape(material.path)}"]`,
-    () => {
-      selectedMaterial.value = material
-      versions.value = []
-    },
-  )
-
-  try {
-    versions.value = await invoke<MaterialVersion[]>('scan_material_versions', {
-      taskPath: taskFolderPath,
-      baseName: material.name,
-      materialType: material.material_type,
-    })
-  } catch (e) {
-    console.error('加载版本失败:', e)
-  }
-}
-
-function closeSidebar() {
-  preserveCardPosition('.material-card.selected', () => {
-    selectedMaterial.value = null
-  })
-}
-
-// 侧边栏笔记同步
-watch(() => selectedMaterial.value, (m: MaterialInfo | null) => {
-  sidebarNoteText.value = m ? (getNote('card:' + m.name.toLowerCase()) ?? '') : ''
-})
-
-async function onSidebarNoteSave() {
-  const m = selectedMaterial.value
-  if (!m) return
-  await saveTaskNote('card:' + m.name.toLowerCase(), sidebarNoteText.value)
-}
-
-function onPreviewVideoMouseDown(e: MouseEvent, group: PreviewVideoGroup) {
-  createDragHandler(
-    () => {
-      // 多选模式：若当前组未选中先勾上，再走统一的混合批量拖拽
-      if (isMultiSelect.value) {
-        const key = previewGroupKey(group)
-        if (!selectedPaths.value.has(key)) {
-          toggleSelection(key)
-        }
-        if (selectedPaths.value.size > 0) {
-          performDrag(selectedMaterials.value, selectedPreviewGroups.value)
-        }
-        return
-      }
-      // 单选模式：保留原"单文件拖拽 + 独立预览视频上传弹窗"
-      const latest = group.versions[group.versions.length - 1]
-      startDrag({ item: [latest.path], icon: '' }, (payload) => {
-        if (payload.result === 'Dropped') {
-          draggedPreviewFile.value = latest
-          showPreviewUploadConfirm.value = true
-        }
-      }).catch(err => {
-        console.error('预览视频拖拽失败:', err)
-      })
-    },
-    (ev) => ev.button !== 0,
-  )(e)
-}
-
-async function confirmPreviewUpload() {
-  showPreviewUploadConfirm.value = false
-  const file = draggedPreviewFile.value
-  if (!file) return
-  try {
-    await invoke('copy_preview_to_nextcloud', {
-      filePath: file.path,
-      nextcloudPreviewPath,
-    })
-    // 刷新状态（重新扫描 03_preview 以更新 uploadStatus）
-    const files = await invoke<PreviewVideoEntry[]>('scan_preview_videos', {
-      taskPath: taskFolderPath,
-      nextcloudPreviewPath,
-    })
-    previewGroups.value = groupPreviewVideos(files)
-    // 检测是否触发子任务完成弹窗
-    checkSubtaskAutoPrompt()
-  } catch (err) {
-    console.error('复制预览视频失败:', err)
-  }
-  draggedPreviewFile.value = null
-}
-
-function cancelPreviewUpload() {
-  showPreviewUploadConfirm.value = false
-  draggedPreviewFile.value = null
-}
-
-function selectPreviewVideo(group: PreviewVideoGroup) {
-  // 多选模式：点击切换勾选态，不打开侧边栏
-  if (isMultiSelect.value) {
-    toggleSelection(previewGroupKey(group))
-    return
-  }
-  const latest = group.versions[group.versions.length - 1]
-  // 再次点击同一组则关闭
-  if (selectedPreviewGroup.value?.baseName === group.baseName) {
-    selectedPreviewVideo.value = null
-    selectedPreviewGroup.value = null
-    return
-  }
-  // 互斥：关闭素材侧边栏
-  if (selectedMaterial.value) {
-    closeSidebar()
-  }
-  selectedPreviewVideo.value = latest
-  selectedPreviewGroup.value = group
-}
+/** 侧边栏共享宽度（两个侧边栏用同一宽度变量，避免跳变） */
+const fileDetailWidthPercent = ref(30)
 
 /** 点击主内容区空白处关闭侧边栏 */
 function onMainContentClick(e: MouseEvent) {
@@ -882,8 +592,7 @@ function onMainContentClick(e: MouseEvent) {
   if (target.closest('.material-card')) return
   if (target.closest('.preview-video-card')) return  // 不关闭预览视频
   closeSidebar()
-  selectedPreviewVideo.value = null
-  selectedPreviewGroup.value = null
+  clearPreviewSelection()
 }
 
 /** 素材类型中文映射 */
@@ -950,23 +659,14 @@ function checkSubtaskAutoPrompt() {
 }
 
 async function refresh() {
-  if (taskFolderPath) {
-    await loadMaterials(taskFolderPath)
+  if (taskFolderPathRef.value) {
+    await loadMaterials(taskFolderPathRef.value)
     // 刷新后清除选中列表（素材列表可能变化）
     selectedPaths.value = new Set()
     // 刷新规范化按钮高亮态（与 materials 解耦，需独立 invoke）
     checkNormalizeWork()
     // 同步刷新预览视频列表
-    try {
-      const files = await invoke<PreviewVideoEntry[]>('scan_preview_videos', {
-        taskPath: taskFolderPath,
-        nextcloudPreviewPath,
-      })
-      previewGroups.value = groupPreviewVideos(files)
-      captureGroupThumbnails(previewGroups.value)
-    } catch (e) {
-      console.error('刷新预览视频失败:', e)
-    }
+    await loadPreviewGroups()
     // 刷新项目数据（获取最新 prompted 标记 + 子任务完成状态），再检测
     await loadProjects()
     const freshProject = projects.value.find(p => p.name === projectId)
@@ -984,27 +684,17 @@ onMounted(async () => {
   await loadSettings()
   const project = projects.value.find(p => p.name === projectId)
   if (project) {
-    taskFolderPath = `${project.path}\\03_Render_VFX\\VFX\\Export\\${taskId}`
-    taskFolderPathRef.value = taskFolderPath
-    nextcloudPath = `${project.path}\\03_Render_VFX\\VFX\\nextcloud\\${taskId}`
-    nextcloudPreviewPath = `${project.path}\\03_Render_VFX\\VFX\\nextcloud\\preview`
+    taskFolderPathRef.value = `${project.path}\\03_Render_VFX\\VFX\\Export\\${taskId}`
+    nextcloudPathRef.value = `${project.path}\\03_Render_VFX\\VFX\\nextcloud\\${taskId}`
+    nextcloudPreviewPathRef.value = `${project.path}\\03_Render_VFX\\VFX\\nextcloud\\preview`
     projectPathRef.value = project.path
-    await loadMaterials(taskFolderPath)
+    await loadMaterials(taskFolderPathRef.value)
     checkNormalizeWork()
     await loadNotes()
     await loadProjectNotes()
 
-    // 加载 03_preview 视频并分组
-    try {
-      const files = await invoke<PreviewVideoEntry[]>('scan_preview_videos', {
-        taskPath: taskFolderPath,
-        nextcloudPreviewPath,
-      })
-      previewGroups.value = groupPreviewVideos(files)
-      captureGroupThumbnails(previewGroups.value)
-    } catch (e) {
-      console.error('加载预览视频失败:', e)
-    }
+    // 加载 03_preview 视频并分组 + 截帧
+    await loadPreviewGroups()
 
     // 加载子任务数据
     currentProjectPath = project.path
@@ -1051,7 +741,7 @@ onUnmounted(() => {
         <button
           class="folder-btn"
           :title="$t('task.openTaskFolder')"
-          @click="openInExplorer(taskFolderPath)"
+          @click="openInExplorer(taskFolderPathRef)"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
@@ -1427,7 +1117,7 @@ onUnmounted(() => {
   <!-- 规范化预览弹窗 -->
   <NormalizationDialog
     :show="showNormalizeDialog"
-    :task-path="taskFolderPath"
+    :task-path="taskFolderPathRef"
     @close="showNormalizeDialog = false"
     @success="refresh"
   />

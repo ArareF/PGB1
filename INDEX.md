@@ -151,8 +151,8 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | `docs/文档组织规范.md` | 文档目录结构、命名、维护规则 |
 | `docs/设计风格.md` | 视觉风格参考 |
 | `docs/code/` | CODE_INDEX 二级详情（components/composables/views/rust-backend/styles-system） |
-| `docs/plans/` | 实施方案草案（2026-04-02 代码优化 ✅ 已执行 / 2026-04-03 SidebarShell 抽取 ✅ 已执行，待归档到 archive） |
-| `docs/archive/plans/` | 已归档的历史方案（37 份 Phase 1~7 + 功能特性方案） |
+| `docs/plans/` | 实施方案草案（进行中的方案放这里；当前暂空） |
+| `docs/archive/plans/` | 已归档的历史方案（39 份：Phase 1~7 + 功能特性 + 2026-04-02 代码优化 + 2026-04-03 SidebarShell 抽取） |
 | `docs/archive/MIGRATION_CHECKLIST.md` | 旧架构迁移检查清单（历史） |
 | `docs/archive/README-v0.6-design-phase.md` | v0.6 设计阶段说明（历史） |
 

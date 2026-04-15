@@ -66,10 +66,14 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
       return
     }
 
-    const wasOpen = !!selectedMaterial.value
+    // 参考点选择：必须用 data-path 精确锁定"同一张卡片"，否则 before/after
+    // 会查到两张不同的卡片导致 delta 变成"卡片间距"而不是"位移"。
+    // - 切换场景：用 旧 卡片作参考（action 后它失去 .selected 但 data-path 还在）
+    // - 首次打开：用 目标 卡片作参考（action 后它获得 .selected，data-path 不变）
+    const referencePath = selectedMaterial.value?.path ?? material.path
 
     preserveCardPosition(
-      wasOpen ? '.material-card.selected' : `.material-card[data-path="${CSS.escape(material.path)}"]`,
+      `.material-card[data-path="${CSS.escape(referencePath)}"]`,
       () => {
         selectedMaterial.value = material
         versions.value = []
@@ -88,9 +92,21 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
   }
 
   function closeSidebar() {
-    preserveCardPosition('.material-card.selected', () => {
+    const prevPath = selectedMaterial.value?.path
+    if (!prevPath) {
       selectedMaterial.value = null
-    })
+      return
+    }
+    // 用 data-path 锁定被关闭的卡片作为参考点：action 后它失去 .selected
+    // 但 data-path 仍在，delta 反映的是"侧边栏消失导致的网格重排位移"。
+    // 原版用 .material-card.selected 会导致 after 查不到任何元素，补偿
+    // 直接被 `if (!afterCard) return` 跳过。
+    preserveCardPosition(
+      `.material-card[data-path="${CSS.escape(prevPath)}"]`,
+      () => {
+        selectedMaterial.value = null
+      },
+    )
   }
 
   // 侧边栏笔记同步：切换选中素材时重新载入该素材的笔记

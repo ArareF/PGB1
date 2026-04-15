@@ -800,6 +800,15 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <!-- 加载状态 overlay：absolute 定位到 main-content 顶部，
+           refresh / 帧率编辑 / 重命名 / 删除 后的刷新都经由这里显示
+           加载反馈，不触发 v-if 卸载 tree-view → scrollTop 保持 -->
+      <Transition name="fade">
+        <div v-if="loading" class="loading-overlay">
+          <p class="loading-text">{{ $t('common.scanning') }}</p>
+        </div>
+      </Transition>
+
       <!-- 可滚动内容区 -->
       <div
         ref="scrollRef"
@@ -807,11 +816,8 @@ onUnmounted(() => {
         @mousedown="onContainerMouseDown"
         @scroll="onContainerScroll"
       >
-        <!-- 加载状态 -->
-        <p v-if="loading" class="loading-text">{{ $t('common.scanning') }}</p>
-
         <!-- 空状态 -->
-        <p v-else-if="materials.length === 0" class="empty-text">
+        <p v-if="!loading && materials.length === 0" class="empty-text">
           {{ $t('task.noMaterials') }}
         </p>
 
@@ -1175,6 +1181,7 @@ onUnmounted(() => {
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  position: relative;  /* 承载 .loading-overlay 的 absolute 定位参考 */
 }
 
 .scroll-content {
@@ -1183,13 +1190,42 @@ onUnmounted(() => {
   padding: var(--spacing-4) var(--spacing-2) var(--spacing-2);
 }
 
+/* 加载浮标：不占 scroll-content 空间，不触发 v-if 卸载，
+   保证 refresh 期间 scrollTop 不被浏览器重置 */
+.loading-overlay {
+  position: absolute;
+  top: var(--spacing-4);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--spacing-2) var(--spacing-5);
+  background: var(--glass-subtle-bg);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--duration-fast);
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 
 /* 小标题栏 */
 /* .sub-title-bar, .sub-title → design-system.css 公共类 */
 /* .view-buttons, .view-btn → design-system.css 公共类 */
 
 /* 状态文字 */
-.loading-text,
+.loading-text {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
 .empty-text {
   font-size: var(--text-lg);
   color: var(--text-tertiary);

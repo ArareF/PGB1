@@ -1,5 +1,6 @@
 ﻿mod commands;
 mod hotkey;
+mod migrations;
 mod models;
 mod scheduler;
 mod conversion;
@@ -132,6 +133,13 @@ pub fn run() {
             commands::fetch_nager_holidays,
         ])
         .setup(|app| {
+            // 清理 v2.8.10 前的中文 productName 旧安装目录（静默，仅 Windows）
+            // 详见 src-tauri/src/migrations.rs
+            #[cfg(target_os = "windows")]
+            tauri::async_runtime::spawn(async {
+                migrations::migrate_legacy_install();
+            });
+
             let window = app.get_webview_window("main").expect("main 窗口必须在 tauri.conf.json 中声明");
 
             // ─── 系统托盘 ────────────────────────────────────────

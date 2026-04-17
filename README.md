@@ -2,7 +2,7 @@
 
 **PGB1** — 2D游戏特效师的文件整理工具
 
-**当前版本**：V2.8.11  
+**当前版本**：V2.8.12  
 **技术栈**：Tauri 2.x（Rust + Vue 3 + TypeScript）  
 **目标平台**：Windows  
 **开发者**：Fuchikami

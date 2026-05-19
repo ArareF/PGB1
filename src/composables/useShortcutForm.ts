@@ -1,4 +1,4 @@
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { useI18n } from 'vue-i18n'
@@ -106,8 +106,19 @@ export function useShortcutForm(onSave: (data: ShortcutSavePayload) => void) {
   }
 
   // ─── 图标预览（抓 exe/favicon）──────────────────────────
+  // 生命周期 token：组件卸载后不再写回 customIconPath（N-23）
+  // Tauri invoke 不支持 AbortSignal（见 FileDetailSidebar 同类注释），用 token 模式
+  let fetchToken = 0
+  let unmounted = false
+
+  onUnmounted(() => {
+    unmounted = true
+    fetchToken++  // 让进行中的 invoke 写回被判为 stale
+  })
+
   async function fetchIconPreview() {
     if (previewLoading.value || !canFetchPreview.value) return
+    const token = ++fetchToken
     const tempId = crypto.randomUUID()
     previewLoading.value = true
     try {
@@ -117,11 +128,12 @@ export function useShortcutForm(onSave: (data: ShortcutSavePayload) => void) {
       } else if (type.value === 'web') {
         result = await invoke<string | null>('fetch_favicon', { url: path.value, iconId: tempId })
       }
+      if (unmounted || token !== fetchToken) return  // 组件已卸载 / 新请求已覆盖
       if (result) customIconPath.value = result
     } catch (e) {
-      console.error('图标获取失败', e)
+      if (!unmounted) console.error('图标获取失败', e)
     } finally {
-      previewLoading.value = false
+      if (!unmounted && token === fetchToken) previewLoading.value = false
     }
   }
 

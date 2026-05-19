@@ -165,6 +165,17 @@ function buildNavActions() {
         })
       },
     },
+    {
+      id: 'time-machine',
+      label: t('project.timeMachine'),
+      handler: () => {
+        router.push({
+          name: 'timeMachine',
+          params: { projectId },
+          query: { projectPath },
+        })
+      },
+    },
   ]
 }
 
@@ -218,7 +229,8 @@ async function scanAepFiles(): Promise<FileEntry[]> {
     return entries
       .filter(e => !e.is_dir && e.name.toLowerCase().endsWith('.aep'))
       .sort((a, b) => a.name.localeCompare(b.name))
-  } catch {
+  } catch (e) {
+    console.warn(`[ProjectPage] 扫描 .aep 文件失败 ${getAeDir()}:`, e)
     return []
   }
 }
@@ -227,7 +239,12 @@ async function openAeProject() {
   if (!projectPath) return
   const files = await scanAepFiles()
   if (files.length === 0) {
-    try { openInExplorer(getAeDir()) } catch { openInExplorer(projectPath) }
+    try {
+      openInExplorer(getAeDir())
+    } catch (e) {
+      console.warn(`[ProjectPage] AE 目录打开失败，回退到项目目录 ${getAeDir()}:`, e)
+      openInExplorer(projectPath)
+    }
     return
   }
   // 有默认打默认，否则打文件名排序最后一个（最新）
@@ -241,7 +258,12 @@ async function openAeProjectPicker(btnRect: DOMRect) {
   if (!projectPath) return
   const files = await scanAepFiles()
   if (files.length === 0) {
-    try { openInExplorer(getAeDir()) } catch { openInExplorer(projectPath) }
+    try {
+      openInExplorer(getAeDir())
+    } catch (e) {
+      console.warn(`[ProjectPage] AE 目录打开失败，回退到项目目录 ${getAeDir()}:`, e)
+      openInExplorer(projectPath)
+    }
     return
   }
   aepFiles.value = files

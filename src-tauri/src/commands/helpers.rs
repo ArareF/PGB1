@@ -14,6 +14,52 @@ pub(crate) fn matches_base_name(file_name: &str, base_name: &str) -> bool {
     stem == base_name || stem.starts_with(&format!("{base_name}-"))
 }
 
+/// Windows 文件名非法字符（Win32 API 限制）
+pub(crate) const WINDOWS_ILLEGAL_CHARS: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+
+/// Windows 保留字（不能用作文件名 stem，不区分大小写）
+pub(crate) const WINDOWS_RESERVED_NAMES: &[&str] = &[
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+/// 校验文件/目录名是否合法（Windows + 跨平台通用）
+///
+/// 检查顺序：
+///   1. 不能为空（trim 后）
+///   2. 不含 Windows 非法字符 `< > : " / \ | ? *`
+///   3. 不含控制字符（\0~\x1F）
+///   4. 不以点或空格结尾
+///   5. stem 不是 Windows 保留字（CON / PRN / AUX / NUL / COM1~9 / LPT1~9）
+///
+/// 返回 trim 后的合法名称，或错误信息
+pub(crate) fn validate_file_name<'a>(name: &'a str, kind: &str) -> Result<&'a str, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{}不能为空", kind));
+    }
+    if trimmed.chars().any(|c| WINDOWS_ILLEGAL_CHARS.contains(&c)) {
+        return Err(format!(
+            "{}包含非法字符，不能使用: {}",
+            kind,
+            WINDOWS_ILLEGAL_CHARS.iter().collect::<String>()
+        ));
+    }
+    if trimmed.chars().any(|c| c.is_control()) {
+        return Err(format!("{}包含控制字符", kind));
+    }
+    if trimmed.ends_with('.') || trimmed.ends_with(' ') {
+        return Err(format!("{}不能以点或空格结尾", kind));
+    }
+    let upper = trimmed.to_uppercase();
+    let stem = upper.split('.').next().unwrap_or(&upper);
+    if WINDOWS_RESERVED_NAMES.contains(&stem) {
+        return Err(format!("{}是 Windows 保留字: {}", kind, trimmed));
+    }
+    Ok(trimmed)
+}
+
 /// Prototype 下固定的 7 个子分类目录
 pub(crate) const PROTOTYPE_SUBCATEGORIES: [&str; 7] = [
     "big_win",
@@ -495,18 +541,34 @@ pub(crate) fn to_title_case(s: &str) -> String {
 }
 
 /// 递归复制目录
+///
+/// Symlink / NTFS junction 防护（N-30）：
+/// Windows NTFS junction 可能形成环（C:\foo -> C:\foo\bar -> C:\foo），会导致无限递归。
+/// 我们用 symlink_metadata 识别 symlink，遇到就跳过并记 warn，不跟随。
 pub(crate) fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
+    // 入口本身是 symlink 直接拒绝（防止调用方误把 junction 当目录传入）
+    if src.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+        return Err(format!("拒绝复制 symlink 目录（可能形成环）: {}", src.display()));
+    }
+
     fs::create_dir_all(dest).map_err(|e| format!("创建目录失败: {}", e))?;
 
     let entries = fs::read_dir(src).map_err(|e| format!("读取目录失败: {}", e))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("读取条目失败: {}", e))?;
+        let entry_path = entry.path();
         let entry_dest = dest.join(entry.file_name());
 
-        if entry.path().is_dir() {
-            copy_dir_recursive(&entry.path(), &entry_dest)?;
+        // 跳过 symlink（不跟随，不拷贝）—— 防 NTFS junction 形成环
+        if entry_path.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+            log::warn!("[copy_dir_recursive] 跳过 symlink/junction: {}", entry_path.display());
+            continue;
+        }
+
+        if entry_path.is_dir() {
+            copy_dir_recursive(&entry_path, &entry_dest)?;
         } else {
-            fs::copy(entry.path(), &entry_dest).map_err(|e| format!("复制失败: {}", e))?;
+            fs::copy(&entry_path, &entry_dest).map_err(|e| format!("复制失败: {}", e))?;
         }
     }
 

@@ -1,6 +1,7 @@
-use super::helpers::{matches_base_name, mutate_project_config};
+use super::helpers::{matches_base_name, move_dir, mutate_project_config, validate_file_name};
+use crate::models::ArchivedMaterialVersion;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// 在系统文件管理器中打开指定路径
 #[tauri::command]
@@ -100,13 +101,37 @@ pub fn rename_material(task_path: String, base_name: String, new_base_name: Stri
                         frame_renames.push((fpath, new_fpath));
                     }
                 }
+                // 两阶段提交：任一帧 rename 失败则回滚已成功的前序帧，
+                // 保证帧集与目录名的一致性（数据完整性 P0，对齐 R9-R）
+                let mut committed: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
                 for (src, dst) in &frame_renames {
-                    fs::rename(src, dst).map_err(|e| {
-                        let fname = src.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                        format!("重命名帧文件 {} 失败: {}", fname, e)
-                    })?;
+                    if let Err(e) = fs::rename(src, dst) {
+                        let fname = src.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                        // 回滚：逆序把已改名的帧恢复到原名
+                        for (orig_src, done_dst) in committed.iter().rev() {
+                            if let Err(re) = fs::rename(done_dst, orig_src) {
+                                log::error!(
+                                    "[rename_material] 回滚帧失败 {} -> {}: {}",
+                                    done_dst.display(), orig_src.display(), re
+                                );
+                            }
+                        }
+                        return Err(format!("重命名帧文件 {} 失败（已回滚前序帧）: {}", fname, e));
+                    }
+                    committed.push((src.clone(), dst.clone()));
                 }
-                fs::rename(&path, &new_path).map_err(|e| format!("重命名目录 {} 失败: {}", file_name, e))?;
+                // 外层目录 rename 失败也需要回滚所有帧，否则目录名与帧名不一致
+                if let Err(e) = fs::rename(&path, &new_path) {
+                    for (orig_src, done_dst) in committed.iter().rev() {
+                        if let Err(re) = fs::rename(done_dst, orig_src) {
+                            log::error!(
+                                "[rename_material] 目录回滚时帧恢复失败 {} -> {}: {}",
+                                done_dst.display(), orig_src.display(), re
+                            );
+                        }
+                    }
+                    return Err(format!("重命名目录 {} 失败（已回滚所有帧）: {}", file_name, e));
+                }
             } else if !path.is_dir() {
                 fs::rename(&path, &new_path).map_err(|e| format!("重命名文件 {} 失败: {}", file_name, e))?;
             }
@@ -115,30 +140,474 @@ pub fn rename_material(task_path: String, base_name: String, new_base_name: Stri
     Ok(())
 }
 
-/// 删除素材的所有工作流版本（包括 nextcloud）
+/// 归档素材的所有工作流版本到 `.archived_materials/<Task>/<BaseName>/timestamp_<TS>/`
+/// 规则（对齐任务归档的三段式：归档 → 60 天 GC → 手动清理）：
+///   - `00_original` / `01_scale/<sub>/` / `02_done/<sub>/` 命中的文件/目录 → move 到归档，保留子目录结构
+///   - `nextcloud/` 命中的副本 → 直接删除（nextcloud 仅作本地上传标记，非云端本体，不进归档）
 #[tauri::command]
 pub fn delete_material(task_path: String, base_name: String, material_type: String) -> Result<(), String> {
     let task_dir = Path::new(&task_path);
     let is_sequence = material_type == "sequence";
-    let mut dirs_to_scan: Vec<std::path::PathBuf> = vec![task_dir.join("00_original")];
-    let scale_dir = task_dir.join("01_scale");
-    if scale_dir.exists() { if let Ok(entries) = fs::read_dir(&scale_dir) { for e in entries.flatten() { if e.path().is_dir() { dirs_to_scan.push(e.path()); } } } }
-    let done_dir = task_dir.join("02_done");
-    if done_dir.exists() { if let Ok(entries) = fs::read_dir(&done_dir) { for e in entries.flatten() { if e.path().is_dir() { dirs_to_scan.push(e.path()); } } } }
-    let nc_dir = task_dir.parent().and_then(|p| p.parent()).map(|vfx| vfx.join("nextcloud").join(task_dir.file_name().unwrap_or_default()));
-    if let Some(ref nc) = nc_dir { if nc.exists() { dirs_to_scan.push(nc.clone()); } }
 
-    for dir in &dirs_to_scan {
-        if !dir.exists() { continue; }
-        let entries = match fs::read_dir(dir) { Ok(e) => e, Err(_) => continue };
+    // 定位项目根：task_path = <project>/03_Render_VFX/VFX/Export/<TaskName>/
+    let vfx_dir = task_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .ok_or_else(|| "无法定位 VFX 目录".to_string())?;
+    let project_dir = vfx_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .ok_or_else(|| "无法定位项目根目录".to_string())?;
+    let task_name = task_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "无法获取任务名".to_string())?
+        .to_string();
+
+    // 归档目录
+    let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M").to_string();
+    let archive_base = project_dir
+        .join(".archived_materials")
+        .join(&task_name)
+        .join(&base_name)
+        .join(format!("timestamp_{}", timestamp));
+
+    // 收集归档源：(stage_label, src_dir)
+    let mut archive_sources: Vec<(String, PathBuf)> = vec![(
+        "00_original".to_string(),
+        task_dir.join("00_original"),
+    )];
+    let scale_dir = task_dir.join("01_scale");
+    if scale_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&scale_dir) {
+            for e in entries.flatten() {
+                if e.path().is_dir() {
+                    let sub = e.file_name().to_string_lossy().to_string();
+                    archive_sources.push((format!("01_scale/{}", sub), e.path()));
+                }
+            }
+        }
+    }
+    let done_dir = task_dir.join("02_done");
+    if done_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&done_dir) {
+            for e in entries.flatten() {
+                if e.path().is_dir() {
+                    let sub = e.file_name().to_string_lossy().to_string();
+                    archive_sources.push((format!("02_done/{}", sub), e.path()));
+                }
+            }
+        }
+    }
+
+    // 归档（move 到 .archived_materials）
+    for (stage, src_dir) in &archive_sources {
+        if !src_dir.exists() { continue; }
+        let entries = match fs::read_dir(src_dir) { Ok(e) => e, Err(_) => continue };
         for entry in entries.flatten() {
             let path = entry.path();
             let file_name = match path.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
             if !matches_base_name(&file_name, base_name.as_str()) { continue; }
+            let dest = archive_base.join(stage).join(&file_name);
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent).map_err(|e| format!("创建归档目录 {} 失败: {}", parent.display(), e))?;
+            }
             if is_sequence && path.is_dir() {
-                fs::remove_dir_all(&path).map_err(|e| format!("删除目录 {} 失败: {}", file_name, e))?;
+                move_dir(&path, &dest)?;
             } else if !path.is_dir() {
-                fs::remove_file(&path).map_err(|e| format!("删除文件 {} 失败: {}", file_name, e))?;
+                fs::rename(&path, &dest).map_err(|e| format!("归档文件 {} 失败: {}", file_name, e))?;
+            }
+        }
+    }
+
+    // nextcloud 副本：本地上传标记，直接删（决策对齐）
+    let nc_dir = vfx_dir.join("nextcloud").join(&task_name);
+    if nc_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&nc_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let file_name = match path.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
+                if !matches_base_name(&file_name, base_name.as_str()) { continue; }
+                if path.is_dir() {
+                    fs::remove_dir_all(&path).map_err(|e| format!("删除 nextcloud 目录 {} 失败: {}", file_name, e))?;
+                } else {
+                    fs::remove_file(&path).map_err(|e| format!("删除 nextcloud 文件 {} 失败: {}", file_name, e))?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// 列出项目下所有素材归档版本（顺带清理超过 60 天的归档，对齐 `list_archived_tasks`）
+#[tauri::command]
+pub fn list_archived_materials(project_path: String) -> Result<Vec<ArchivedMaterialVersion>, String> {
+    let archive_root = Path::new(&project_path).join(".archived_materials");
+    if !archive_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let now = chrono::Local::now();
+    let cutoff = now - chrono::Duration::days(60);
+    let mut versions: Vec<ArchivedMaterialVersion> = Vec::new();
+
+    let task_dirs = fs::read_dir(&archive_root)
+        .map_err(|e| format!("无法读取素材归档目录: {}", e))?;
+    for task_entry in task_dirs.flatten() {
+        let task_path = task_entry.path();
+        if !task_path.is_dir() { continue; }
+        let task_name = task_path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+        if task_name.starts_with('.') { continue; }
+
+        let base_dirs = match fs::read_dir(&task_path) { Ok(d) => d, Err(_) => continue };
+        for base_entry in base_dirs.flatten() {
+            let base_path = base_entry.path();
+            if !base_path.is_dir() { continue; }
+            let base_name = base_path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+
+            let ts_dirs = match fs::read_dir(&base_path) { Ok(d) => d, Err(_) => continue };
+            for ts_entry in ts_dirs.flatten() {
+                let ts_path = ts_entry.path();
+                if !ts_path.is_dir() { continue; }
+                let dir_name = ts_path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                let timestamp = match dir_name.strip_prefix("timestamp_") { Some(s) => s.to_string(), None => continue };
+
+                // 60 天懒 GC
+                if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(&timestamp, "%Y-%m-%d_%H-%M") {
+                    let local_time = parsed
+                        .and_local_timezone(chrono::Local)
+                        .single()
+                        .unwrap_or_else(chrono::Local::now);
+                    if local_time < cutoff {
+                        if let Err(e) = fs::remove_dir_all(&ts_path) {
+                            log::warn!("[archive-gc-material] 清理过期素材归档失败 {}: {}", ts_path.display(), e);
+                        }
+                        continue;
+                    }
+                }
+
+                let display_time = if timestamp.len() >= 16 {
+                    format!("{} {}", &timestamp[..10], &timestamp[11..].replace('-', ":"))
+                } else {
+                    timestamp.clone()
+                };
+
+                let material_type = infer_archived_material_type(&ts_path);
+                let (size_bytes, stages) = scan_archive_content(&ts_path);
+
+                versions.push(ArchivedMaterialVersion {
+                    task_name: task_name.clone(),
+                    base_name: base_name.clone(),
+                    material_type,
+                    timestamp,
+                    display_time,
+                    path: ts_path.to_string_lossy().to_string(),
+                    size_bytes,
+                    stages,
+                });
+            }
+
+            // base_name 目录空了就清掉
+            if fs::read_dir(&base_path).map(|mut d| d.next().is_none()).unwrap_or(false) {
+                if let Err(e) = fs::remove_dir(&base_path) {
+                    log::warn!("[archive-gc-material] 清理空素材归档目录失败 {}: {}", base_path.display(), e);
+                }
+            }
+        }
+
+        // task_name 目录空了就清掉
+        if fs::read_dir(&task_path).map(|mut d| d.next().is_none()).unwrap_or(false) {
+            if let Err(e) = fs::remove_dir(&task_path) {
+                log::warn!("[archive-gc-material] 清理空任务素材归档目录失败 {}: {}", task_path.display(), e);
+            }
+        }
+    }
+
+    // 按 task_name → base_name → timestamp 倒序
+    versions.sort_by(|a, b| {
+        a.task_name
+            .cmp(&b.task_name)
+            .then_with(|| a.base_name.cmp(&b.base_name))
+            .then_with(|| b.timestamp.cmp(&a.timestamp))
+    });
+
+    Ok(versions)
+}
+
+/// 恢复素材归档版本（拒绝式冲突：目标位置有同名文件直接报错，让用户先删再恢复）
+#[tauri::command]
+pub fn restore_archived_material(
+    project_path: String,
+    task_name: String,
+    base_name: String,
+    timestamp: String,
+) -> Result<(), String> {
+    let project_dir = Path::new(&project_path);
+    let archive_path = project_dir
+        .join(".archived_materials")
+        .join(&task_name)
+        .join(&base_name)
+        .join(format!("timestamp_{}", timestamp));
+
+    if !archive_path.exists() {
+        return Err(format!("归档版本不存在: {}", archive_path.display()));
+    }
+
+    let vfx_dir = project_dir.join("03_Render_VFX").join("VFX");
+    let task_dir = vfx_dir.join("Export").join(&task_name);
+
+    if !task_dir.exists() {
+        return Err(format!(
+            "任务目录不存在，请先在「任务归档」中恢复「{}」，再恢复素材",
+            task_name
+        ));
+    }
+
+    // 冲突预检：拒绝式
+    let mut conflicts: Vec<String> = Vec::new();
+    collect_restore_conflicts(&archive_path.join("00_original"), &task_dir.join("00_original"), "00_original", &mut conflicts);
+
+    let archived_scale = archive_path.join("01_scale");
+    if archived_scale.exists() {
+        if let Ok(entries) = fs::read_dir(&archived_scale) {
+            for e in entries.flatten() {
+                if e.path().is_dir() {
+                    let sub = e.file_name().to_string_lossy().to_string();
+                    collect_restore_conflicts(
+                        &archived_scale.join(&sub),
+                        &task_dir.join("01_scale").join(&sub),
+                        &format!("01_scale/{}", sub),
+                        &mut conflicts,
+                    );
+                }
+            }
+        }
+    }
+
+    let archived_done = archive_path.join("02_done");
+    if archived_done.exists() {
+        if let Ok(entries) = fs::read_dir(&archived_done) {
+            for e in entries.flatten() {
+                if e.path().is_dir() {
+                    let sub = e.file_name().to_string_lossy().to_string();
+                    collect_restore_conflicts(
+                        &archived_done.join(&sub),
+                        &task_dir.join("02_done").join(&sub),
+                        &format!("02_done/{}", sub),
+                        &mut conflicts,
+                    );
+                }
+            }
+        }
+    }
+
+    if !conflicts.is_empty() {
+        return Err(format!(
+            "恢复冲突：目标位置已存在同名文件，请先在素材列表中删除对应版本再恢复。\n冲突清单:\n{}",
+            conflicts.join("\n")
+        ));
+    }
+
+    // 执行恢复
+    restore_stage_dir(&archive_path.join("00_original"), &task_dir.join("00_original"))?;
+
+    if archived_scale.exists() {
+        if let Ok(entries) = fs::read_dir(&archived_scale) {
+            for e in entries.flatten() {
+                if e.path().is_dir() {
+                    let sub = e.file_name().to_string_lossy().to_string();
+                    let dest = task_dir.join("01_scale").join(&sub);
+                    restore_stage_dir(&archived_scale.join(&sub), &dest)?;
+                }
+            }
+        }
+    }
+    if archived_done.exists() {
+        if let Ok(entries) = fs::read_dir(&archived_done) {
+            for e in entries.flatten() {
+                if e.path().is_dir() {
+                    let sub = e.file_name().to_string_lossy().to_string();
+                    let dest = task_dir.join("02_done").join(&sub);
+                    restore_stage_dir(&archived_done.join(&sub), &dest)?;
+                }
+            }
+        }
+    }
+
+    // 清理已恢复的归档目录
+    if let Err(e) = fs::remove_dir_all(&archive_path) {
+        log::warn!("[restore-archive-material] 清理已恢复归档失败 {}: {}", archive_path.display(), e);
+    }
+    let base_dir = project_dir.join(".archived_materials").join(&task_name).join(&base_name);
+    if fs::read_dir(&base_dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
+        let _ = fs::remove_dir(&base_dir);
+    }
+    let task_archive_dir = project_dir.join(".archived_materials").join(&task_name);
+    if fs::read_dir(&task_archive_dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
+        let _ = fs::remove_dir(&task_archive_dir);
+    }
+
+    Ok(())
+}
+
+/// 手动删除单个素材归档版本（物理删除，不可恢复）
+#[tauri::command]
+pub fn delete_archived_material_version(
+    project_path: String,
+    task_name: String,
+    base_name: String,
+    timestamp: String,
+) -> Result<(), String> {
+    let project_dir = Path::new(&project_path);
+    let archive_path = project_dir
+        .join(".archived_materials")
+        .join(&task_name)
+        .join(&base_name)
+        .join(format!("timestamp_{}", timestamp));
+
+    if !archive_path.exists() {
+        return Err(format!("归档版本不存在: {}", archive_path.display()));
+    }
+
+    fs::remove_dir_all(&archive_path).map_err(|e| format!("删除归档版本失败: {}", e))?;
+
+    let base_dir = project_dir.join(".archived_materials").join(&task_name).join(&base_name);
+    if fs::read_dir(&base_dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
+        if let Err(e) = fs::remove_dir(&base_dir) {
+            log::warn!("[delete-archive-material] 清理空素材归档目录失败 {}: {}", base_dir.display(), e);
+        }
+    }
+    let task_archive_dir = project_dir.join(".archived_materials").join(&task_name);
+    if fs::read_dir(&task_archive_dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
+        if let Err(e) = fs::remove_dir(&task_archive_dir) {
+            log::warn!("[delete-archive-material] 清理空任务素材归档目录失败 {}: {}", task_archive_dir.display(), e);
+        }
+    }
+
+    Ok(())
+}
+
+// ─── 内部 helpers（仅素材归档使用） ────────────────────────────
+
+/// 从归档目录推断素材类型：看 `00_original` 下的首个条目
+fn infer_archived_material_type(ts_path: &Path) -> String {
+    let original = ts_path.join("00_original");
+    if original.exists() {
+        if let Ok(entries) = fs::read_dir(&original) {
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() { return "sequence".to_string(); }
+                let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                return match ext.as_str() {
+                    "mp4" | "mov" | "webm" | "avi" | "mkv" => "video".to_string(),
+                    "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" => "image".to_string(),
+                    _ => "other".to_string(),
+                };
+            }
+        }
+    }
+    // fallback：看 02_done 子目录命名
+    let done = ts_path.join("02_done");
+    if done.exists() {
+        if let Ok(entries) = fs::read_dir(&done) {
+            for e in entries.flatten() {
+                if e.path().is_dir() {
+                    let name = e.file_name().to_string_lossy().to_lowercase();
+                    if name.starts_with("[an-") { return "sequence".to_string(); }
+                    return "image".to_string();
+                }
+            }
+        }
+    }
+    "other".to_string()
+}
+
+/// 扫描归档目录，返回 (总字节数, 阶段列表)
+fn scan_archive_content(ts_path: &Path) -> (u64, Vec<String>) {
+    let mut total_size: u64 = 0;
+    let mut stages: Vec<String> = Vec::new();
+
+    let original_path = ts_path.join("00_original");
+    if original_path.exists() {
+        if let Ok(entries) = fs::read_dir(&original_path) {
+            let mut has_content = false;
+            for e in entries.flatten() {
+                has_content = true;
+                total_size += compute_path_size(&e.path());
+            }
+            if has_content { stages.push("00_original".to_string()); }
+        }
+    }
+
+    for parent_stage in ["01_scale", "02_done"] {
+        let stage_path = ts_path.join(parent_stage);
+        if !stage_path.exists() { continue; }
+        if let Ok(entries) = fs::read_dir(&stage_path) {
+            for e in entries.flatten() {
+                let sub_path = e.path();
+                if !sub_path.is_dir() { continue; }
+                let sub = e.file_name().to_string_lossy().to_string();
+                if let Ok(inner) = fs::read_dir(&sub_path) {
+                    let mut has = false;
+                    for ie in inner.flatten() {
+                        has = true;
+                        total_size += compute_path_size(&ie.path());
+                    }
+                    if has { stages.push(format!("{}/{}", parent_stage, sub)); }
+                }
+            }
+        }
+    }
+
+    (total_size, stages)
+}
+
+/// 递归计算文件/目录字节数
+fn compute_path_size(p: &Path) -> u64 {
+    if let Ok(meta) = fs::metadata(p) {
+        if meta.is_file() {
+            return meta.len();
+        }
+    }
+    if p.is_dir() {
+        let mut total: u64 = 0;
+        if let Ok(entries) = fs::read_dir(p) {
+            for e in entries.flatten() {
+                total += compute_path_size(&e.path());
+            }
+        }
+        return total;
+    }
+    0
+}
+
+/// 冲突预检：列出目标位置已存在的同名文件/目录，带阶段前缀
+fn collect_restore_conflicts(archive_dir: &Path, target_dir: &Path, stage_label: &str, conflicts: &mut Vec<String>) {
+    if !archive_dir.exists() { return; }
+    let Ok(entries) = fs::read_dir(archive_dir) else { return; };
+    for e in entries.flatten() {
+        let name = e.file_name();
+        let target = target_dir.join(&name);
+        if target.exists() {
+            conflicts.push(format!("{}/{}", stage_label, name.to_string_lossy()));
+        }
+    }
+}
+
+/// 把归档阶段目录的内容 move 回目标目录（目标不存在则创建）
+fn restore_stage_dir(archive_dir: &Path, target_dir: &Path) -> Result<(), String> {
+    if !archive_dir.exists() { return Ok(()); }
+    fs::create_dir_all(target_dir).map_err(|e| format!("创建目标目录 {} 失败: {}", target_dir.display(), e))?;
+    if let Ok(entries) = fs::read_dir(archive_dir) {
+        for e in entries.flatten() {
+            let src = e.path();
+            let name = e.file_name();
+            let dst = target_dir.join(&name);
+            if src.is_dir() {
+                move_dir(&src, &dst)?;
+            } else {
+                fs::rename(&src, &dst).map_err(|e| format!("恢复文件 {} 失败: {}", name.to_string_lossy(), e))?;
             }
         }
     }
@@ -202,10 +671,8 @@ pub fn rename_sequence_fps(task_path: String, base_name: String, old_fps: u32, n
 /// 重命名单个文件
 #[tauri::command]
 pub fn rename_file(path: String, new_name: String) -> Result<(), String> {
-    let trimmed = new_name.trim();
-    if trimmed.is_empty() { return Err("文件名不能为空".to_string()); }
-    const ILLEGAL_CHARS: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
-    if trimmed.chars().any(|c| ILLEGAL_CHARS.contains(&c)) { return Err("文件名包含非法字符".to_string()); }
+    // 统一走 validate_file_name：空 + 非法字符 + 控制字符 + 末尾点空格 + Windows 保留字
+    let trimmed = validate_file_name(&new_name, "文件名")?;
     let file_path = Path::new(&path);
     if !file_path.exists() { return Err(format!("文件不存在: {}", path)); }
     let parent = file_path.parent().ok_or_else(|| "无法获取父目录".to_string())?;

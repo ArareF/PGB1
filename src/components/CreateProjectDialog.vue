@@ -38,6 +38,7 @@ async function handleCreate() {
     })
     emit('created', projectName.value.trim())
   } catch (e) {
+    console.error('[CreateProjectDialog] 创建项目失败:', e)
     errorMsg.value = String(e)
   } finally {
     creating.value = false

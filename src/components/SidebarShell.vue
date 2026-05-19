@@ -138,6 +138,25 @@ defineExpose({ isFullscreen, toggleFullscreen })
 </template>
 
 <style>
+/*
+ * ─── 样式隔离决策（对齐 Claude N-07）───────────────────────────────
+ *
+ * 本文件刻意不使用 <style scoped>。原因：
+ * 1. SidebarShell 作为容器，消费方（TaskPage / SettingsPage / FileDetailSidebar 等
+ *    9 个文件）通过 <template #default> slot 注入内容，这些内容需要继承
+ *    .info-row / .section-title / .version-card 等通用展示样式。
+ * 2. Vue scoped 的 :slotted() 穿透方案会强制所有通用类都改成 :deep()，
+ *    进而让 9 个消费方都必须改模板类名，ROI 极低。
+ *
+ * 命名空间约定（保证不污染全局）：
+ * - 所有容器自有样式用 BEM 子元素前缀：`.sidebar-shell__xxx`
+ * - 所有 slot 共享样式必须用祖先选择器限制：`.sidebar-shell .xxx`
+ *   这使得 `.section-title` 等通用类名只在 SidebarShell 内部生效。
+ *
+ * 未来若新增类，请遵守该约定，或改为提取到独立公共样式文件。
+ * 严禁写不带 `.sidebar-shell` 前缀的裸类选择器。
+ */
+
 /* ─── 容器 ─── */
 .sidebar-shell {
   position: relative;

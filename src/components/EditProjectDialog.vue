@@ -59,6 +59,7 @@ async function handleConfirm() {
       emit('deleted', props.project.path)
     }
   } catch (e) {
+    console.error('[EditProjectDialog] 保存/删除项目失败:', e)
     errorMsg.value = String(e)
   } finally {
     loading.value = false

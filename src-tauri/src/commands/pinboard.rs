@@ -106,7 +106,9 @@ fn write_pinboard_file(dir: &Path, data: &PinboardData) -> Result<(), String> {
         .collect();
     if non_empty.is_empty() {
         if path.exists() {
-            let _ = fs::remove_file(&path);
+            if let Err(e) = fs::remove_file(&path) {
+                log::warn!("[pinboard] 清理空贴图板文件失败 {}: {}", path.display(), e);
+            }
         }
     } else {
         let json = serde_json::to_string_pretty(&non_empty)

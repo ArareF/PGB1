@@ -90,6 +90,8 @@ const {
   sidebarNoteText,
   editingFps,
   fpsInput,
+  sidebarDialogError,
+  sidebarDialogBusy,
   selectMaterial,
   closeSidebar,
   onSidebarNoteSave,
@@ -1074,21 +1076,24 @@ onUnmounted(() => {
             v-model="renameInput"
             class="sidebar-dialog-input"
             :placeholder="$t('task.inputNewName')"
+            :disabled="sidebarDialogBusy"
             @keydown.enter="confirmRename"
             @keydown.escape="closeSidebarDialog"
           />
+          <p v-if="sidebarDialogError" class="sidebar-dialog-error">{{ sidebarDialogError }}</p>
           <div class="sidebar-dialog-actions">
-            <button class="sidebar-dialog-btn" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
-            <button class="sidebar-dialog-btn primary" @click="confirmRename">{{ $t('common.confirm') }}</button>
+            <button class="sidebar-dialog-btn" :disabled="sidebarDialogBusy" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
+            <button class="sidebar-dialog-btn primary" :disabled="sidebarDialogBusy" @click="confirmRename">{{ $t('common.confirm') }}</button>
           </div>
         </div>
         <!-- 删除确认弹窗 -->
         <div v-if="sidebarDialog === 'delete'" class="sidebar-dialog">
           <p class="sidebar-dialog-title">{{ $t('task.deleteMaterial') }}</p>
           <p class="sidebar-dialog-desc">{{ $t('task.deleteMaterialDesc', { name: selectedMaterial?.name }) }}</p>
+          <p v-if="sidebarDialogError" class="sidebar-dialog-error">{{ sidebarDialogError }}</p>
           <div class="sidebar-dialog-actions">
-            <button class="sidebar-dialog-btn" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
-            <button class="sidebar-dialog-btn danger" @click="confirmDelete">{{ $t('task.confirmDelete') }}</button>
+            <button class="sidebar-dialog-btn" :disabled="sidebarDialogBusy" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
+            <button class="sidebar-dialog-btn danger" :disabled="sidebarDialogBusy" @click="confirmDelete">{{ $t('task.confirmDelete') }}</button>
           </div>
         </div>
       </div>

@@ -329,7 +329,7 @@ pub struct AttendanceRecord {
     pub actual_clock_out_time: Option<String>,
 }
 
-/// 归档版本信息（时光机用）
+/// 归档版本信息（时光机-任务归档）
 #[derive(Debug, Serialize, Clone)]
 pub struct ArchivedVersion {
     /// 任务名称（目录名），如 "Ambient"
@@ -340,6 +340,27 @@ pub struct ArchivedVersion {
     pub display_time: String,
     /// 归档版本完整路径
     pub path: String,
+}
+
+/// 素材归档版本信息（时光机-素材归档）
+#[derive(Debug, Serialize, Clone)]
+pub struct ArchivedMaterialVersion {
+    /// 所属任务名（目录名）
+    pub task_name: String,
+    /// 素材基础名
+    pub base_name: String,
+    /// 素材类型（"image" / "sequence" / "video" / "other"）
+    pub material_type: String,
+    /// 时间戳原始值，如 "2026-04-17_15-30"
+    pub timestamp: String,
+    /// 前端展示用时间，如 "2026-04-17 15:30"
+    pub display_time: String,
+    /// 归档版本完整路径
+    pub path: String,
+    /// 归档内容总字节数
+    pub size_bytes: u64,
+    /// 归档覆盖的工作流阶段（如 ["00_original", "01_scale/70", "02_done/[an-0-24]"]）
+    pub stages: Vec<String>,
 }
 
 // ─── 规范化功能 ─────────────────────────────────────────────

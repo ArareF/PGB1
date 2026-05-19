@@ -24,7 +24,9 @@ pub fn set_note(dir_path: String, key: String, note: Option<String>) -> Result<(
     if map.is_empty() {
         // Map 为空时删除文件（避免留空文件）
         if notes_path.exists() {
-            let _ = fs::remove_file(&notes_path);
+            if let Err(e) = fs::remove_file(&notes_path) {
+                log::warn!("[notes] 清理空笔记文件失败 {}: {}", notes_path.display(), e);
+            }
         }
     } else {
         let json = serde_json::to_string_pretty(&map)

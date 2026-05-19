@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicBool;
 use std::path::{Path, PathBuf};
 use std::fs;
 use tauri::{AppHandle, Emitter, Runtime};
@@ -21,6 +22,10 @@ pub struct ConversionSession {
     /// TP 预设参数
     pub tp_scale: f64,
     pub tp_webp_quality: u32,
+    /// 取消令牌：stop_conversion 置 true，序列帧循环每帧前检查
+    pub cancel_flag: Arc<AtomicBool>,
+    /// 当前正在跑的 TP 子进程 pid（CLI 或 GUI），用于取消时 taskkill
+    pub tp_child_pid: Arc<Mutex<Option<u32>>>,
 }
 
 pub type ConversionState = Arc<Mutex<Option<ConversionSession>>>;
@@ -109,7 +114,10 @@ pub fn handle_file_event<R: Runtime>(
             // 文件已不存在：同一文件触发了多次事件，前一次已处理，静默忽略
             if !source.exists() { return; }
             if !target_dir.exists() {
-                let _ = fs::create_dir_all(&target_dir);
+                if let Err(e) = fs::create_dir_all(&target_dir) {
+                    log::warn!("自动整理创建目录失败 {}: {}", target_dir.display(), e);
+                    return;  // 目录建不出来，后续 rename 必然失败
+                }
             }
             if let Err(e) = fs::rename(&source, &dest) {
                 log::warn!("自动整理失败 ({}): {}", stem, e);

@@ -513,6 +513,37 @@
 
   /* Canvas 背景色（序列帧预览等） */
   --canvas-bg:            #0C0D10;
+
+  /* =============================================================================
+     命名兼容别名（Sprint 4-A A.7 收口 GPT P1-01）
+     历史代码里出现的 token 命名漂移，统一在此提供语义别名，
+     避免浏览器静默丢弃样式。新代码请直接用被别名引用的主定义。
+     ============================================================================= */
+
+  /* 过渡时长（旧命名 → --duration-*） */
+  --transition-fast:      var(--duration-fast);
+  --transition-normal:    var(--duration-normal);
+
+  /* 字重（旧命名 → --font-*） */
+  --font-weight-bold:     var(--font-bold);
+  --font-weight-heading:  var(--font-semibold);
+
+  /* 字号（旧命名 → --text-*） */
+  --font-size-sm:         var(--text-sm);
+
+  /* 按钮高度（旧命名 → --button-{sm,md}-height） */
+  --button-height:        var(--button-md-height);
+  --button-height-sm:     var(--button-sm-height);
+
+  /* 功能色数字阶梯（旧命名 → --color-{info,danger}） */
+  --color-blue-500:       var(--color-info);
+  --color-red-500:        var(--color-danger);
+
+  /* Glass 边框别名（旧命名 → --glass-medium-border） */
+  --glass-border:         var(--glass-medium-border);
+
+  /* Z-index 别名 */
+  --z-overlay:            var(--z-modal-backdrop);
 }
 
 /* =============================================================================
@@ -531,6 +562,7 @@
   --bg-primary:           rgba(255, 255, 255, 0.9);
   --bg-secondary:         rgba(255, 255, 255, 0.6);
   --bg-tertiary:          rgba(255, 255, 255, 0.3);
+  --bg-elevated:          rgba(255, 255, 255, 0.7);  /* 输入框/悬浮内容层 — 介于 primary 和 secondary */
 
   /* 悬停/激活状态 */
   --bg-hover:             rgba(74, 158, 245, 0.08);
@@ -541,6 +573,7 @@
   --text-primary:         rgba(0, 0, 0, 0.87);
   --text-secondary:       rgba(0, 0, 0, 0.60);
   --text-tertiary:        rgba(0, 0, 0, 0.38);
+  --text-quaternary:      rgba(0, 0, 0, 0.26);  /* 最弱文字层 — 占位符/禁用文字 */
   --text-inverse:         rgba(255, 255, 255, 0.95);
   --text-link:            var(--color-primary-600);
   --text-link-hover:      var(--color-primary-700);
@@ -549,6 +582,7 @@
   --border-light:         rgba(0, 0, 0, 0.10);
   --border-medium:        rgba(0, 0, 0, 0.15);
   --border-heavy:         rgba(0, 0, 0, 0.22);
+  --border-subtle:        rgba(0, 0, 0, 0.06);  /* 极浅边框 — 卡片底部分隔线 */
   --border-focus:         var(--color-primary-500);
   --border-error:         var(--color-danger);
 
@@ -650,6 +684,7 @@
   --bg-primary:           rgba(22, 23, 28, 0.85);
   --bg-secondary:         rgba(22, 23, 28, 0.55);
   --bg-tertiary:          rgba(22, 23, 28, 0.30);
+  --bg-elevated:          rgba(22, 23, 28, 0.70);  /* 输入框/悬浮内容层 — 介于 primary 和 secondary */
 
   /* 悬停/激活状态 — 蓝色 wash（仅小面积交互反馈） */
   --bg-hover:             rgba(74, 158, 245, 0.10);
@@ -660,6 +695,7 @@
   --text-primary:         #E2E4E8;
   --text-secondary:       #8A8D96;
   --text-tertiary:        #6B6E77;
+  --text-quaternary:       #4C4F55;  /* 最弱文字层 — 占位符/禁用文字 */
   --text-inverse:         #0C0D10;
   --text-link:            var(--color-primary-300);
   --text-link-hover:      #8ECFFF;
@@ -668,6 +704,7 @@
   --border-light:         rgba(100, 180, 255, 0.10);
   --border-medium:        rgba(100, 180, 255, 0.14);
   --border-heavy:         rgba(100, 180, 255, 0.22);
+  --border-subtle:        rgba(100, 180, 255, 0.06);  /* 极浅边框 — 卡片底部分隔线 */
   --border-focus:         #6BB8FF;
   --border-error:         var(--color-danger);
 
@@ -948,13 +985,23 @@ html {
   line-height: 1.6;
 }
 
+.sidebar-dialog-error {
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+  line-height: 1.5;
+  padding: var(--spacing-2) var(--spacing-3);
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--color-danger);
+}
+
 .sidebar-dialog-input {
   width: 100%;
   height: var(--button-height);
   padding: 0 var(--spacing-3);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-medium);
-  background: var(--glass-bg-subtle);
+  background: var(--glass-subtle-bg);
   color: var(--text-primary);
   font-size: var(--text-base);
   font-family: inherit;

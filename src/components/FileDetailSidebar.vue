@@ -82,8 +82,16 @@ const psdThumbLoading = ref(false)
 // 侧边栏进场动画时长，与 --duration-normal 保持一致
 const SIDEBAR_ENTER_MS = 300
 
+// ─── Race condition 防护（对齐 Y-8 / N-11）────────────────────
 // 快速切换文件时，慢速 invoke 可能在新文件已选中后才返回，覆盖当前状态。
-// loadToken 每次切换递增，异步回调只在 token 未变时写入结果
+//
+// 为什么不用 AbortController？
+// Tauri 2 的 invoke() 不接受 AbortSignal——IPC 调用一旦发出，后端会跑完整个
+// 命令处理器，前端无法取消。任何尝试用 AbortController 包装 invoke 都是假动作。
+//
+// 正确方案（Tauri 架构下的标准写法）：loadToken 每次切换递增，
+// 异步回调在写回 UI 状态前检查 token 是否已过期，过期就丢弃结果。
+// 成本：stale 请求的 IPC 工作不可取消（已调用），但 UI 状态不会被污染。
 let loadToken = 0
 
 watch(() => props.file, async (file, prevFile) => {
@@ -111,18 +119,25 @@ watch(() => props.file, async (file, prevFile) => {
   if (fileType.value === 'psd') {
     psdThumbLoading.value = true
 
-    // 侧边栏刚打开时（prevFile 为 null）正在播放进场动画，等动画结束再加载
-    if (!prevFile) {
-      await new Promise(resolve => setTimeout(resolve, SIDEBAR_ENTER_MS))
-      if (token !== loadToken) return
-    }
+    try {
+      // 侧边栏刚打开时（prevFile 为 null）正在播放进场动画，等动画结束再加载
+      if (!prevFile) {
+        await new Promise(resolve => setTimeout(resolve, SIDEBAR_ENTER_MS))
+        if (token !== loadToken) return
+      }
 
-    // 800px 不走 JS 缓存（侧边栏需要感知文件修改，freshness > perf）
-    invalidatePsdCache(file.path, 800)
-    const thumb = await getPsdThumbnail(file.path, 800)
-    if (token !== loadToken) return
-    psdThumbnail.value = thumb
-    psdThumbLoading.value = false
+      // 800px 不走 JS 缓存（侧边栏需要感知文件修改，freshness > perf）
+      invalidatePsdCache(file.path, 800)
+      const thumb = await getPsdThumbnail(file.path, 800)
+      if (token !== loadToken) return
+      psdThumbnail.value = thumb
+    } catch (e) {
+      if (token !== loadToken) return
+      console.error('加载 PSD 缩略图失败:', e)
+    } finally {
+      // 只在 token 未过期时重置 loading（与 text 路径对齐，防 stale 结果残留 true）
+      if (token === loadToken) psdThumbLoading.value = false
+    }
   }
 })
 

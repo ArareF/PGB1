@@ -52,12 +52,9 @@ const pomodoroLeftSeconds = ref<number>(0)   // 剩余秒数（每秒更新）
 let pomodoroTimer: ReturnType<typeof setInterval> | null = null
 
 async function sendPomodoroNotification(title: string, body: string) {
+  // N-22：权限已在 onMounted 预请求，这里只查不再请求，避免在番茄钟结束时弹权限框
   try {
-    let granted = await isPermissionGranted()
-    if (!granted) {
-      const permission = await requestPermission()
-      granted = permission === 'granted'
-    }
+    const granted = await isPermissionGranted()
     if (granted) {
       sendNotification({ title, body })
     }
@@ -305,6 +302,17 @@ export function useStatusBar() {
       loadAttendanceRecord()
       loadHoliday(now.value)
       startTimer()
+      // 番茄钟通知权限预请求（N-22）：避免在番茄钟结束的敏感时刻弹权限框打断用户节奏
+      // 权限获取幂等：用户已拒绝过不会再弹，首次启动会在安静时段询问
+      isPermissionGranted().then(granted => {
+        if (!granted) {
+          requestPermission().catch(e => {
+            console.warn('[statusBar] 番茄钟通知权限预请求失败:', e)
+          })
+        }
+      }).catch(e => {
+        console.warn('[statusBar] 通知权限检查失败:', e)
+      })
     }
     refCount++
   })

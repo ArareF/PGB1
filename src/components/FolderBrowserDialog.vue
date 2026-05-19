@@ -41,7 +41,8 @@ async function loadCurrentDir() {
   loading.value = true
   try {
     files.value = await invoke<FileEntry[]>('scan_directory', { dirPath: dir })
-  } catch {
+  } catch (e) {
+    console.warn(`[FolderBrowserDialog] 扫描目录失败 ${dir}:`, e)
     files.value = []
   } finally {
     loading.value = false

@@ -21,14 +21,6 @@ pub const FLOATING_ACRYLIC: (u8, u8, u8, u8) = (0, 0, 0, 1);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // 初始化 logger：dev 构建走 stderr，release 构建通过 RUST_LOG 环境变量控制。
-    // 不做 pretty format / file rollover — 那是后续 Sprint 引入 tauri-plugin-log 的事，
-    // 这里只保证 log::error!/warn!/info! 不再被默默丢弃。
-    let _ = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("warn"),
-    )
-    .try_init();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // 已有实例在运行：把主窗口带到前台
@@ -37,6 +29,23 @@ pub fn run() {
                 let _ = win.set_focus();
             }
         }))
+        // tauri-plugin-log：同时输出到 stdout（dev）和 app_config_dir/logs/（release）
+        // 取代 env_logger：R-4 终态方案，对齐 Claude N-20
+        // - LogDir 目标：用户无感，用户报 bug 时 dev 可以直接要 log 文件
+        // - Webview 目标：前端 console 也能看到 Rust 日志（dev 调试友好）
+        // - 默认 level = Info，关键错误靠 log::error! 主动打到最高优先级
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+                ])
+                .max_file_size(2_000_000)  // 2MB per file
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
+                .build(),
+        )
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_drag::init())
@@ -102,6 +111,9 @@ pub fn run() {
             commands::copy_icon_to_cache,
             commands::rename_material,
             commands::delete_material,
+            commands::list_archived_materials,
+            commands::restore_archived_material,
+            commands::delete_archived_material_version,
             commands::read_text_file,
             commands::find_game_exe,
             commands::open_file,
@@ -308,9 +320,11 @@ pub fn run() {
                             if let Ok(s) = serde_json::from_str::<models::AppSettings>(&content) {
                                 let autolaunch = app.autolaunch();
                                 if s.general.auto_start {
-                                    let _ = autolaunch.enable();
-                                } else {
-                                    let _ = autolaunch.disable();
+                                    if let Err(e) = autolaunch.enable() {
+                                        log::error!("[autolaunch] enable 失败（注册表权限 / 杀软拦截可能）: {}", e);
+                                    }
+                                } else if let Err(e) = autolaunch.disable() {
+                                    log::error!("[autolaunch] disable 失败: {}", e);
                                 }
                             }
                         }

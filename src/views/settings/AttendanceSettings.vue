@@ -35,6 +35,9 @@ const clockTestMessage = ref('')
 const clockTestResult = ref<'success' | 'error' | ''>('')
 let unlistenTest: UnlistenFn | null = null
 
+// 保存成功的 "✓" 提示 2 秒后清除的 timer（卸载时必须 clear，对齐 Y-3 模式）
+let savedResetTimer: ReturnType<typeof setTimeout> | null = null
+
 async function init() {
   try {
     const config = await invoke<{
@@ -85,6 +88,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (unlistenTest) unlistenTest()
+  if (savedResetTimer) {
+    clearTimeout(savedResetTimer)
+    savedResetTimer = null
+  }
 })
 
 // 监听出勤字段变化标记为脏
@@ -103,6 +110,7 @@ async function handleTestClock() {
   try {
     await invoke('test_clock_action')
   } catch (e) {
+    console.error('[AttendanceSettings] 测试打卡失败:', e)
     clockTestMessage.value = String(e)
     clockTestResult.value = 'error'
     clockTesting.value = false
@@ -114,6 +122,7 @@ async function handleTestDailyReminder() {
   try {
     await invoke('test_reminder', { reminderType: 'daily-report' })
   } catch (e) {
+    console.error('[AttendanceSettings] 测试日报提醒失败:', e)
     attendanceError.value = String(e)
   }
 }
@@ -164,8 +173,14 @@ async function save() {
     initialUsername = attendanceUsername.value
     attendanceDirty.value = false
     attendanceSaved.value = true
-    setTimeout(() => { attendanceSaved.value = false }, 2000)
+    // 用前先清旧的，防止短时间内多次保存累积 timer
+    if (savedResetTimer) clearTimeout(savedResetTimer)
+    savedResetTimer = setTimeout(() => {
+      attendanceSaved.value = false
+      savedResetTimer = null
+    }, 2000)
   } catch (e) {
+    console.error('[AttendanceSettings] 保存打卡配置失败:', e)
     attendanceError.value = String(e)
   } finally {
     attendanceSaving.value = false

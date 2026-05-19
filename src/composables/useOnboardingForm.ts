@@ -43,6 +43,10 @@ export function useOnboardingForm(
   const tpCliAutoDetected = ref(false)
   const tpGuiAutoDetected = ref(false)
 
+  // 保存状态（防止失败后静默 onComplete 导致引导弹窗二次出现 + 覆盖已修改设置）
+  const isSaving = ref(false)
+  const saveError = ref<string | null>(null)
+
   // ─── 初始化：扫描系统已装应用补齐未填路径 ──────────────────
   onMounted(async () => {
     // 1. 先读已有设置（老用户重置 onboarded 场景）
@@ -179,6 +183,9 @@ export function useOnboardingForm(
 
   // ─── 完成引导：合并表单 → 保存设置 + 打卡配置 → emit complete ──
   async function finish() {
+    if (isSaving.value) return
+    isSaving.value = true
+    saveError.value = null
     try {
       const current = await invoke<AppSettings>('load_settings')
 
@@ -198,9 +205,10 @@ export function useOnboardingForm(
         current.workflow.texturePackerGuiPath = formTpGuiPath.value
       }
 
+      // 关键：设置写入必须成功，否则 onboarded=true 不会持久化，引导弹窗会二次出现
       await invoke('save_settings', { settings: current })
 
-      // 保存打卡模式
+      // 保存打卡模式（非关键路径：失败不阻断引导完成，但要告知用户）
       if (formAttendanceMode.value !== 'off') {
         try {
           const config = await invoke<Record<string, unknown>>('load_attendance_config')
@@ -208,13 +216,18 @@ export function useOnboardingForm(
           await invoke('save_attendance_config', { config })
         } catch (e) {
           console.error('保存打卡配置失败:', e)
+          // 打卡配置失败不阻断整体流程，但把错误浮出来让用户知情
+          saveError.value = t('onboarding.saveAttendanceFailed', { error: String(e) })
         }
       }
 
       onComplete(formAttendanceMode.value)
     } catch (e) {
       console.error('保存引导设置失败:', e)
-      onComplete(formAttendanceMode.value)
+      // 关键路径失败：不 onComplete，让弹窗保持打开，用户可重试
+      saveError.value = t('onboarding.saveFailed', { error: String(e) })
+    } finally {
+      isSaving.value = false
     }
   }
 
@@ -244,7 +257,9 @@ export function useOnboardingForm(
     selectImaginePath,
     selectTpCliPath,
     selectTpGuiPath,
-    // 完成
+    // 完成 + 保存状态
     finish,
+    isSaving,
+    saveError,
   }
 }

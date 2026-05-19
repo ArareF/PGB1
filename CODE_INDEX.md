@@ -2,7 +2,7 @@
 
 > 全量源代码文件职责目录视图。新会话快速了解代码现状用。
 > 详细信息（Props / 状态 / 防火手记 / 架构决策）见 [`docs/code/*.md`](docs/code/)。
-> 最后更新: 2026-04-15
+> 最后更新: 2026-04-17
 
 ---
 
@@ -11,8 +11,8 @@
 | 目录 | 文件数 | 总行数 | 说明 |
 |------|--------|--------|------|
 | `src/components/` | 31 | 9893 | Vue UI 组件 |
-| `src/composables/` | 22 | 2914 | 组合式函数（逻辑复用） |
-| `src/views/` | 18 | 8703 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
+| `src/composables/` | 23 | 2959 | 组合式函数（逻辑复用） |
+| `src/views/` | 19 | 8975 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
 | `src/styles/` | 4 | 1789 | CSS 设计系统 |
 | `src/layouts/` | 1 | 321 | 主布局 |
 | `src/types/` | 2 | 46 | TypeScript 类型定义 |
@@ -20,8 +20,8 @@
 | `src/config/` | 3 | 99 | 配置 SSOT（app/onboarding/fileTypes） |
 | `src/i18n/` + `src/locales/` | 3 | 1318 | 国际化（vue-i18n + zh-CN + en） |
 | `src/router/` + 入口 | 5 | 167 | 路由 + main/App/vite-env |
-| `src-tauri/src/` | 22 | 9056 | Rust 后端 |
-| **合计** | **111** | **34329** | |
+| `src-tauri/src/` | 22 | 9544 | Rust 后端 |
+| **合计** | **113** | **35696** | |
 
 ---
 
@@ -141,6 +141,7 @@
 | `useShortcutForm.ts` | 217 | 快捷方式表单（type 切换 + 图标预览） |
 | `usePreviewVideos.ts` | 180 | 预览视频分组 / 截帧 / 上传 |
 | `useMaterialSidebar.ts` | 262 | 素材侧边栏（选中 / 重命名 / 删除 / preserveCardPosition） |
+| `useArchivedMaterials.ts` | 45 | 素材归档时光机数据源（list / restore / delete） |
 | `useUpdater.ts` | 127 | 自动更新检查 / 下载 / 安装 |
 
 ---
@@ -151,7 +152,8 @@
 |------|------|------|
 | `HomePage.vue` | 448 | 项目列表 + 新建 + 三档排序 + 加班按钮 |
 | `ProjectPage.vue` | 528 | 任务列表 + 快捷功能（游戏介绍/项目素材/AE/任务列表）+ 两档排序 |
-| `TaskListPage.vue` | 874 | 任务管理页面（启用 / 模板 / 时光机 三 Tab） |
+| `TaskListPage.vue` | 600 | 任务管理页面（启用 / 模板 双 Tab；时光机已抽为独立页面） |
+| `TimeMachinePage.vue` | 545 | 时光机独立页面（任务归档 / 素材归档 双 Tab） |
 | `TaskPage.vue` | 1472 | 素材浏览主页面（树形/名称双视图 + Phase 5a–5d + 预览视频） |
 | `ScalePage.vue` | 406 | 素材缩放执行页面（Phase 5c + 进度反馈） |
 | `ConvertPage.vue` | 737 | 格式转换执行页面（Phase 5d + TP 预设折叠面板） |
@@ -219,7 +221,7 @@
 | `commands/translation/pdf_reflow.rs` | 450 | PDF 内容流提取 + 流式排版 |
 | `commands/translation/pdf_font.rs` | 212 | CJK 字体处理（微软雅黑 Type0） |
 | `commands/translation/pdf_cmds.rs` | 194 | PDF 命令整合（`build_translated_pdf`） |
-| `commands/files.rs` | 234 | 文件操作（重命名 / 删除 / 回收站） |
+| `commands/files.rs` | 701 | 文件操作（重命名 / 删除 / 回收站）+ 素材归档（archive/list/restore/delete 四命令 + 60 天 GC） |
 | `commands/pinboard.rs` | 182 | 贴图板 CRUD（RGBA→PNG） |
 | `commands/holiday.rs` | 148 | 外部 API 代理（IP 检测 / 节假日） |
 | `commands/settings.rs` | 69 | 设置 CRUD |

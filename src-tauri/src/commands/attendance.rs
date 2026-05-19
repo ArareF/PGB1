@@ -2,7 +2,20 @@ use crate::models::{AttendanceConfig, AttendanceRecord};
 use crate::scheduler::SchedulerState;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 use tauri::Emitter;
+
+// ─── WebView 自动化等待时长常量（N-28）──────────────────────
+// 这些是日报/打卡 WebView 操作的实测经验值，把"魔法数字"钉死成命名常量
+// 便于未来统一调整节奏（比如换网站、网络变化）
+/// 页面跳转后等待首屏加载完成（重导航用）
+const WEBVIEW_PAGE_LOAD_WAIT: Duration = Duration::from_secs(3);
+/// 打开新 WebView 后等待初始化（默认场景）
+const WEBVIEW_INIT_WAIT: Duration = Duration::from_secs(1);
+/// 填表/点击后等待 UI 响应
+const WEBVIEW_FILL_DELAY: Duration = Duration::from_millis(500);
+/// 轮询按钮可用状态的检查间隔
+const WEBVIEW_BUTTON_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 // ─── 日报打卡命令 ─────────────────────────────────────────────
 
@@ -165,7 +178,7 @@ async fn webview_login_flow(
     // 1. 创建 WebView 窗口（关闭已有同名窗口）
     if let Some(existing) = app_handle.get_webview_window(label) {
         let _ = existing.close();
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(WEBVIEW_FILL_DELAY).await;
     }
 
     let url = config.attendance.url.clone();
@@ -185,7 +198,7 @@ async fn webview_login_flow(
         .map_err(|e| format!("创建打卡 WebView 失败: {}", e))?;
 
     // 2. 等待页面加载
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    tokio::time::sleep(WEBVIEW_PAGE_LOAD_WAIT).await;
 
     // 如果已在打刻页（可能 URL 直指打刻页或已登录），跳过登录
     let current_url = get_webview_url(&webview_window);
@@ -217,7 +230,7 @@ async fn webview_login_flow(
     );
     webview_window.eval(&fill_password_js).map_err(|e| format!("WebView 密码填写失败: {e}"))?;
 
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(WEBVIEW_FILL_DELAY).await;
 
     // 5. 点击登录按钮（模拟完整鼠标事件链）
     let login_js = r#"(function() {
@@ -244,7 +257,7 @@ async fn webview_login_flow(
     // 6. 轮询等待登录跳转（URL 离开 login 页即成功，最多 10 秒）
     let mut login_ok = false;
     for _ in 0..20 {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(WEBVIEW_FILL_DELAY).await;
         let u = get_webview_url(&webview_window);
         if !u.is_empty() && !u.contains("login") {
             login_ok = true;
@@ -354,13 +367,16 @@ async fn execute_clock_action_inner(
             url.as_str()
         };
         let register_url = format!("{}/record/register.html", origin);
-        let nav_js = format!(r#"window.location.href = '{}'"#, register_url);
+        // 用 serde_json 把 URL 序列化为安全的 JS 字符串字面量（防注入：origin 源自用户配置）
+        let register_url_js = serde_json::to_string(&register_url)
+            .unwrap_or_else(|_| "\"\"".to_string());
+        let nav_js = format!("window.location.href = {};", register_url_js);
         let _ = webview_window.eval(&nav_js);
 
         // 轮询等待打刻页加载（最多 10 秒）
         let mut reached = false;
         for _ in 0..20 {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            tokio::time::sleep(WEBVIEW_FILL_DELAY).await;
             if get_webview_url(&webview_window).contains("record/register") {
                 reached = true;
                 break;
@@ -376,7 +392,7 @@ async fn execute_clock_action_inner(
     }
 
     // 打刻页已就绪，等待页面 JS 初始化完成
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(WEBVIEW_INIT_WAIT).await;
 
     emit_progress(&app_handle, "finding-button", "正在查找打卡按钮...");
 
@@ -405,7 +421,7 @@ async fn execute_clock_action_inner(
             button_text
         );
         let _ = webview_window.eval(&hash_js);
-        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        tokio::time::sleep(WEBVIEW_BUTTON_POLL_INTERVAL).await;
 
         let state = read_webview_hash_state(&webview_window);
         if !state.is_empty() {
@@ -496,7 +512,7 @@ async fn execute_clock_action_inner(
     // 11. 轮询验证：等待按钮变为 disabled（服务端确认打卡成功）
     let mut confirmed = false;
     for _ in 0..20 {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(WEBVIEW_FILL_DELAY).await;
 
         let verify_js = format!(
             r#"(function() {{
@@ -611,7 +627,7 @@ async fn test_clock_action_inner(app_handle: tauri::AppHandle) -> Result<(), Str
     // 轮询等待（最多 10 秒）
     let mut reached = false;
     for _ in 0..20 {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(WEBVIEW_FILL_DELAY).await;
         let u = get_webview_url(&webview_window);
         if u.contains("record/register") {
             reached = true;
@@ -636,7 +652,7 @@ async fn test_clock_action_inner(app_handle: tauri::AppHandle) -> Result<(), Str
     );
 
     // 等待页面 JS 初始化
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(WEBVIEW_INIT_WAIT).await;
 
     // 9. 轮询查找「出勤」按钮（用 URL hash 通信）
     let mut button_state = String::from("not_found");
@@ -660,7 +676,7 @@ async fn test_clock_action_inner(app_handle: tauri::AppHandle) -> Result<(), Str
             try { history.replaceState(null, '', location.pathname + location.search + '#__pgb1_not_found'); } catch(e) {}
         })()"#;
         let _ = webview_window.eval(hash_js);
-        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        tokio::time::sleep(WEBVIEW_BUTTON_POLL_INTERVAL).await;
 
         let state = read_webview_hash_state(&webview_window);
         if !state.is_empty() {
@@ -799,7 +815,7 @@ fn spawn_daily_report_scroll(window: tauri::WebviewWindow, force_immediate: bool
             // 无超时：Google Docs 加载时间不可预测，退出条件仅 #pgb-ready 或窗口关闭
             loop {
                 iteration += 1;
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                tokio::time::sleep(WEBVIEW_FILL_DELAY).await;
 
                 match window.url() {
                     Err(e) => {
@@ -1058,7 +1074,7 @@ pub fn show_overtime_dialog(app_handle: tauri::AppHandle) -> Result<(), String> 
         #[cfg(target_os = "windows")]
         {
             use window_vibrancy::apply_acrylic;
-            let _ = apply_acrylic(&window, Some((0, 0, 0, 1)));
+            let _ = apply_acrylic(&window, Some(crate::FLOATING_ACRYLIC));
         }
     });
     Ok(())

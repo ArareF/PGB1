@@ -168,6 +168,7 @@ async function handleAction(action: string) {
         break
     }
   } catch (e) {
+    console.error('[ReminderPage] 处理提醒操作失败:', e)
     errorMsg.value = String(e)
     loading.value = false
   }

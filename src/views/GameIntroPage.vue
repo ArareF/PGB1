@@ -169,7 +169,8 @@ async function scanGameExe() {
   try {
     const exePath = await invoke<string | null>('find_game_exe', { rootDir: dirPath })
     gameExePath.value = exePath ?? null
-  } catch {
+  } catch (e) {
+    console.warn(`[GameIntroPage] 扫描游戏原型启动程序失败 ${dirPath}:`, e)
     gameExePath.value = null
   }
 }

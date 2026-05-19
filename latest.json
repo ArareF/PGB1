@@ -1,11 +1,11 @@
 {
-  "version": "2.8.12",
-  "notes": "修复从 v2.8.9 及更早版本升级后，重启仍进入旧版本的问题（静默清理老安装目录与快捷方式）",
-  "pub_date": "2026-04-17T01:14:13Z",
+  "version": "2.8.13",
+  "notes": "修复 TexturePacker 升级后序列帧转换启动失败（自动接受 license）；取消转换按钮真正生效（终止 CLI/GUI 子进程并清理残留三件套）；新增独立时光机页面，素材删除改为可恢复归档。",
+  "pub_date": "2026-05-19T08:47:00Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.12/PGB1_2.8.12_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNks2ZHZaMVJ2ZlFDekJ3L2F5Ui9lYmdodVd2Y25YU2k0RkRSdzFHako5c3NaZXNBMWdtb1p2Q1pXcnk3NDRGdGNPSXA1V0Y4eStpbklNeXROc28xTUFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc2Mzg4NDM5CWZpbGU6UEdCMV8yLjguMTJfeDY0LXNldHVwLmV4ZQp0MjIweFU3N1dydkxQWTFiWjFzdkN0ZndXL2F3blhYY3F4Z0JCNkh0UVM5c01DVmlZWTF4MkJqNUxYTTZCcE0wWXhuWXkwZTNsaHpqVU93aisvZlNBdz09Cg=="
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.13/PGB1_2.8.13_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNlA4WjJrU0dRZmorWEtjbzZ4bjFhelFpYmdZSC9zbFJTN29iT0VuYXJTNTRTZ0RycFB3cWhMN1Ryc2pYL3FIaXpOZ0NqSnd4d0tXWEJNQnJZemFycndVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5MTgwNDQ2CWZpbGU6UEdCMV8yLjguMTNfeDY0LXNldHVwLmV4ZQprbnZVU3lDVVkzc09ZTXYwZENDZWxKaDByZEpmZ0NwLy84YWhlN3RWUFpVZWRpL3NsT2J4V3dPeGoxOUFVeUhGdWpzcjNIRkFqNjA2VWZ4TVNGTytBZz09Cg=="
     }
   }
 }

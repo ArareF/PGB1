@@ -242,8 +242,9 @@ async function refreshAll() {
       } else {
         result.push({ label: config.label, dirPath, files })
       }
-    } catch {
-      // 目录不存在（如深层子目录），仍渲染为空分组——拖入时 import_files 会自动创建
+    } catch (e) {
+      // 目录不存在（如深层子目录）是合法场景，debug 级记录即可——拖入时 import_files 会自动创建
+      console.debug(`[MaterialsPage] 分组目录扫描失败（可能尚未创建） ${dirPath}:`, e)
       result.push({ label: config.label, dirPath, files: [] })
     }
   }
@@ -256,12 +257,18 @@ async function refreshAll() {
   for (const g of result) {
     try {
       notesMap[g.dirPath] = await invoke<Record<string, string>>('get_notes', { dirPath: g.dirPath })
-    } catch { notesMap[g.dirPath] = {} }
+    } catch (e) {
+      console.warn(`[MaterialsPage] 读取分组笔记失败 ${g.dirPath}:`, e)
+      notesMap[g.dirPath] = {}
+    }
     if (g.subGroups) {
       for (const sg of g.subGroups) {
         try {
           notesMap[sg.dirPath] = await invoke<Record<string, string>>('get_notes', { dirPath: sg.dirPath })
-        } catch { notesMap[sg.dirPath] = {} }
+        } catch (e) {
+          console.warn(`[MaterialsPage] 读取子分组笔记失败 ${sg.dirPath}:`, e)
+          notesMap[sg.dirPath] = {}
+        }
       }
     }
   }

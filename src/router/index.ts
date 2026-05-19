@@ -44,6 +44,11 @@ const router = createRouter({
       component: () => import('../views/MaterialsPage.vue'),
     },
     {
+      path: '/project/:projectId/time-machine',
+      name: 'timeMachine',
+      component: () => import('../views/TimeMachinePage.vue'),
+    },
+    {
       path: '/reminder/:type',
       name: 'reminder',
       component: () => import('../views/ReminderPage.vue'),

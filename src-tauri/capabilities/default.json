@@ -22,6 +22,7 @@
     "clipboard-manager:allow-read-image",
     "notification:default",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "log:default"
   ]
 }

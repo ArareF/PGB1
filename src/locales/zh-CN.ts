@@ -63,6 +63,7 @@ export default {
     projectMaterials: '项目素材',
     openAE: '打开AE',
     taskList: '任务列表',
+    timeMachine: '时光机',
     openProjectFolder: '打开项目文件夹',
     selectAeFile: '选择 AE 工程文件',
     clickToSetDefault: '点击设为默认并打开',
@@ -107,7 +108,7 @@ export default {
     renameTitle: '重命名',
     inputNewName: '输入新名称',
     deleteMaterial: '删除素材',
-    deleteMaterialDesc: '将删除「{name}」的所有版本文件（含 nextcloud），操作不可撤销。',
+    deleteMaterialDesc: '将归档「{name}」的所有工作流版本，60 天内可从时光机恢复。',
     confirmDelete: '确认删除',
     // 导航按钮
     subtasks: '子任务',
@@ -163,6 +164,18 @@ export default {
     subtaskNamePlaceholder: '子任务名称',
     addSubtaskPlaceholder: '添加子任务...',
     addTaskPlaceholder: '添加新任务...',
+  },
+
+  timeMachine: {
+    title: '时光机',
+    taskTab: '任务归档',
+    materialTab: '素材归档',
+    retentionHint: '归档保留 60 天，过期自动清理',
+    noArchivedMaterials: '暂无归档素材',
+    restoreMaterialFailed: '恢复失败',
+    deleteMaterialArchive: '删除素材归档',
+    confirmDeleteMaterialArchive: '确定删除素材「{baseName}」的归档版本 {version}？此操作不可撤销。',
+    stagesCount: '{n} 个阶段',
   },
 
   convert: {
@@ -555,8 +568,12 @@ export default {
     prev: '上一步',
     skip: '跳过',
     startUsing: '开始使用',
+    saving: '保存中...',
     selectDir: '选择目录',
     notSetYet: '尚未设置',
+    // 保存失败提示
+    saveFailed: '保存设置失败：{error}。请检查磁盘权限后重试。',
+    saveAttendanceFailed: '设置已保存，但打卡配置写入失败：{error}。可在设置页重新配置。',
   },
 
   pageGuide: {
@@ -569,7 +586,7 @@ export default {
     homeMoreMenu: '更多菜单：打开文件夹、程序设置',
     // 项目页
     projectTaskList: '任务卡片：点击进入任务详情',
-    projectShortcuts: '快捷功能：游戏介绍、素材、AE、任务列表',
+    projectShortcuts: '快捷功能：游戏介绍、素材、AE、任务列表、时光机',
     projectMoreMenu: '更多菜单',
     // 任务页
     taskViewSwitch: '视图切换：树形视图 / 名称视图',
@@ -577,7 +594,7 @@ export default {
     taskSidebar: '侧边栏：素材详情、重命名、删除，\n点击卡片后展开' ,
     taskWorkflow: '工作流按钮：子任务、规范化、缩放、转换',
     // 任务列表
-    taskListEnable: '任务启用：勾选要在项目中使用的任务\n模板编辑：管理任务和子任务模板\n时光机：恢复已归档的任务',
+    taskListEnable: '任务启用：勾选要在项目中使用的任务\n模板编辑：管理任务和子任务模板',
     // 游戏介绍
     gameIntroFiles: '文件列表：预览图片、视频、PDF 等',
     gameIntroPrototype: '启动原型：如检测到游戏构建（Unity / Godot）可直接启动',

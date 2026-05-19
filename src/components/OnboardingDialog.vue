@@ -31,6 +31,8 @@ const {
   selectTpCliPath,
   selectTpGuiPath,
   finish,
+  isSaving,
+  saveError,
 } = useOnboardingForm((mode) => emit('complete', mode))
 </script>
 
@@ -151,6 +153,8 @@ const {
 
           <!-- 底部：圆点指示器 + 按钮 -->
           <div class="step-footer">
+            <!-- 保存失败提示（关键路径失败时保持弹窗打开，让用户可重试） -->
+            <p v-if="saveError" class="save-error">{{ saveError }}</p>
             <div class="step-dots">
               <span
                 v-for="i in STEPS.length"
@@ -163,6 +167,7 @@ const {
               <button
                 v-if="currentStepIndex > 0"
                 class="action-btn secondary"
+                :disabled="isSaving"
                 @click="goPrev"
               >
                 {{ t('onboarding.prev') }}
@@ -180,9 +185,10 @@ const {
               <button
                 v-if="isLastStep"
                 class="action-btn primary"
+                :disabled="isSaving"
                 @click="finish"
               >
-                {{ t('onboarding.startUsing') }}
+                {{ isSaving ? t('onboarding.saving') : t('onboarding.startUsing') }}
               </button>
             </div>
           </div>
@@ -383,6 +389,14 @@ const {
   align-items: center;
   gap: var(--spacing-4);
   padding: var(--spacing-4) var(--spacing-8) var(--spacing-6);
+}
+
+.save-error {
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+  text-align: center;
+  max-width: 420px;
+  line-height: 1.5;
 }
 
 .step-dots {

@@ -14,6 +14,20 @@ pub(super) fn obj_to_f32(obj: &lopdf::Object) -> f32 {
     }
 }
 
+/// 判断字符是否属于 CJK 全宽范畴（N-15：精确判定，避免粗糙的 `ch > '\u{2E7F}'` 误判）
+///
+/// 原版用 `ch > '\u{2E7F}'` 作为门槛，会把拉丁扩展 IPA / 变音符 / 希腊 / 西里尔 / 阿拉伯 /
+/// 泰文 / 天城文等全部误判为全宽，导致排版偏窄。
+/// 这里精准框定 CJK + 谚文 + CJK 兼容 + 全角标点 4 个 Unicode block。
+#[inline]
+fn is_cjk(ch: char) -> bool {
+    let c = ch as u32;
+    (0x3000..=0x9FFF).contains(&c)   // CJK 符号/汉字 + 假名
+        || (0xAC00..=0xD7AF).contains(&c)  // 谚文（韩文）音节
+        || (0xF900..=0xFAFF).contains(&c)  // CJK 兼容汉字
+        || (0xFF00..=0xFFEF).contains(&c)  // 全角/半角 ASCII + 半角片假名
+}
+
 /// 将文字编码为 Identity-H CID hex（使用 ttf-parser 查找实际 GlyphID）
 /// Identity-H 下 CID 直接作为 GlyphID 使用，必须用真实值否则乱码
 fn encode_chars_to_cid_hex(text: &str, font_data: &[u8]) -> String {
@@ -251,7 +265,7 @@ fn wrap_text_lines(text: &str, avail_width: f32, fs: f32) -> Vec<String> {
         let mut start = 0;
         let mut w = 0.0f32;
         for (i, &ch) in chars.iter().enumerate() {
-            let cw = if ch > '\u{2E7F}' { fs * 0.95 } else { fs * 0.55 };
+            let cw = if is_cjk(ch) { fs * 0.95 } else { fs * 0.55 };
             if w + cw > avail_width && i > start {
                 lines.push(chars[start..i].iter().collect());
                 start = i;

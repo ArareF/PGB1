@@ -48,13 +48,29 @@
 
 **笔记系统**：NoteDialog 编辑任务卡片笔记（`card:{task_name}` key）；sub-title-bar 旁 `.note-btn` 打开项目卡片笔记（`card:{projectId}` key，与 HomePage 共用）。双 `useNotes`。
 
-### TaskListPage.vue（874 行）
+### TaskListPage.vue（600 行）
 
 **职责**：任务管理页面（路由版替代弹窗）。
 
 **路由参数**：`route.params.projectId` + `route.query.projectPath` + `route.query.enabledTasks`
 
-**三 Tab**：任务启用 / 模板编辑 / 时光机（归档管理）。确定/取消均返回 ProjectPage。
+**双 Tab**：任务启用 / 模板编辑。确定/取消均返回 ProjectPage。
+
+**v2.8.13 重构**：时光机 Tab 抽离为独立 `TimeMachinePage.vue`，此页面瘦身 -274 行（含 state / logic / template / 样式 + 内嵌 confirm/alert 弹窗）。
+
+### TimeMachinePage.vue（545 行）
+
+**职责**：时光机独立页面（v2.8.13 新增）。
+
+**路由参数**：`route.params.projectId` + `route.query.projectPath`
+
+**双 Tab**：
+- 任务归档：复用原 TaskListPage Tab 3 的 `list_archived_tasks` / `restore_archived_task` / `delete_archived_version`
+- 素材归档：新接入 `useArchivedMaterials`（list / restore / remove 封装），按 `task_name → base_name → timestamp` 三级分组展示，显示 size + stages 提示
+
+**冲突恢复策略**：后端拒绝式。`restore_archived_material` 遇到目标位置已存在同名文件时返回错误 + 冲突清单，前端用 alert 弹窗展示，用户需先删冲突版本再恢复。
+
+**内嵌 confirm/alert 弹窗**：Teleport to body + glass-strong，`white-space: pre-wrap` 支持后端返回的多行冲突清单。
 
 ### TaskPage.vue（1472 行）—— 最大页面
 

@@ -6,6 +6,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { usePinboard } from '../composables/usePinboard'
 import PinboardCanvas from '../components/PinboardCanvas.vue'
 import type { PinInfo, PinAnnotation, PinboardViewport } from '../composables/usePinboard'
+import { PINBOARD_PEN_COLOR_HEXES } from '../config/pinboard'
 
 const { t } = useI18n()
 
@@ -95,7 +96,7 @@ const {
 // ─── 工具 & 颜色 & 尺寸 ─────────────────────────────────
 type ToolType = 'select' | 'pen' | 'arrow' | 'rect' | 'ellipse' | 'text' | 'eraser'
 const activeTool = ref<ToolType>('select')
-const COLORS = ['#FF3B30', '#007AFF', '#34C759', '#FF9500', '#FFFFFF'] as const
+const COLORS = PINBOARD_PEN_COLOR_HEXES
 const activeColor = ref<string>(COLORS[0])
 const selectedPinId = ref<string | null>(null)
 

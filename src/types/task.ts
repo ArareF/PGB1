@@ -25,3 +25,14 @@ export interface ArchivedVersion {
   display_time: string
   path: string
 }
+
+export interface ArchivedMaterialVersion {
+  task_name: string
+  base_name: string
+  material_type: string
+  timestamp: string
+  display_time: string
+  path: string
+  size_bytes: number
+  stages: string[]
+}

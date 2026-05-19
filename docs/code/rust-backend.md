@@ -14,7 +14,7 @@
 ### lib.rs（351 行）
 
 **Tauri 初始化**：
-- 命令注册（约 75 个）
+- 命令注册（约 78 个）
 - 插件注册：`opener` / `drag` / `dialog` / `clipboard` / `notification` / `autostart`
 - Windows Acrylic 毛玻璃
 - 调度器初始化 + 补打检测
@@ -195,7 +195,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 
 **决策理由**：把前端 fetch 迁到 Rust `reqwest`，避免 IP 泄漏 + 收敛 CSP `connect-src`。
 
-### commands/files.rs（234 行）
+### commands/files.rs（701 行）
 
 **文件操作命令**：
 - `open_file`（`ShellExecuteW "open"`）
@@ -205,6 +205,19 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 - `rename_material` / `delete_material`
 - `rename_sequence_fps`
 - `set_default_ae_file`（Sprint 3·Y-19 改用 `mutate_project_config`）
+
+**素材归档命令（v2.8.13 新增，对齐任务归档三段式）**：
+- `delete_material` 行为重写：`00_original` / `01_scale/<sub>/` / `02_done/<sub>/` 命中项 move 到 `<project>/.archived_materials/<Task>/<BaseName>/timestamp_YYYY-MM-DD_HH-MM/<stage>/`；`nextcloud` 命中副本直接 `fs::remove_*`（nextcloud 仅作本地上传标记，非云端本体，不进归档）
+- `list_archived_materials(project_path)` — 返回 `Vec<ArchivedMaterialVersion>`，含 60 天懒 GC（调用时顺带 `remove_dir_all` 过期归档 + 清理空 base/task 目录）
+- `restore_archived_material(project_path, task_name, base_name, timestamp)` — **拒绝式冲突**：预检目标位置已存在的同名文件，列出冲突清单并报错；无冲突则 move 归档内容回原位并清理归档目录
+- `delete_archived_material_version(project_path, task_name, base_name, timestamp)` — 手动物理删除单个归档版本
+
+**内部 helpers**（非 `#[tauri::command]`）：
+- `infer_archived_material_type(ts_path)` — 看 `00_original` 首个条目推断 image/sequence/video/other
+- `scan_archive_content(ts_path)` — 返回 (总字节数, stages 列表)
+- `compute_path_size(path)` — 递归计算文件/目录字节数
+- `collect_restore_conflicts(archive_dir, target_dir, stage_label, &mut conflicts)` — 冲突预检
+- `restore_stage_dir(archive_dir, target_dir)` — move 归档阶段目录内容回原位
 
 **rename_material 帧文件下划线兼容**：序列帧帧文件命名为 `{base_name}_{帧号}.png`（下划线分隔），`matches_base_name` 只认连字符，故 sequence 分支内对帧文件单独放宽判定为 `stem == base_name || stem.starts_with("{base_name}_") || stem.starts_with("{base_name}-")`，外层目录判定保持严格。
 
@@ -278,7 +291,8 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 | `load_shortcuts` / `save_shortcuts` / `launch_shortcut` | ... | ... | 快捷方式 CRUD + 启动 |
 | `extract_exe_icon` | `app_handle, exe_path, icon_id` | `String` | exe 图标 → PNG（JUMBO 256px） |
 | `fetch_favicon` | `app_handle, url, icon_id` | `Option<String>` | 网页 favicon |
-| `rename_material` / `delete_material` | ... | ... | 素材全版本重命名/删除 |
+| `rename_material` / `delete_material` | ... | ... | 素材全版本重命名 / 删除（v2.8.13 起 delete 改走归档） |
+| `list_archived_materials` / `restore_archived_material` / `delete_archived_material_version` | ... | ... | 素材归档时光机：60 天 GC + 拒绝式冲突恢复（v2.8.13 新增） |
 | `rename_file` / `delete_file` | ... | ... | 单文件重命名/回收站 |
 | `read_text_file` | `path` | `String` | TXT 预览 |
 | `find_game_exe` | `root_dir` | `Option<String>` | Unity/Godot 原型检测 |

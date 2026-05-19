@@ -17,6 +17,11 @@ interface RetryInfo {
   error: string
 }
 
+/** 后端 emit 的 payload 类型（含 filePath 用于多文件并发路由） */
+interface RetryPayload extends RetryInfo {
+  filePath: string
+}
+
 interface PdfTranslateSession {
   state: Ref<PdfTranslateState>
   progress: Ref<{ current: number; total: number }>
@@ -31,20 +36,23 @@ interface PdfTranslateSession {
 /** 以原始 PDF 路径为 key 管理翻译会话 */
 const sessions = new Map<string, PdfTranslateSession>()
 
-/** 当前正在翻译的文件路径（用于路由重试事件） */
-let activeFilePath = ''
-
 // 模块级事件监听（只注册一次）
 let retryListenerReady = false
 
+/**
+ * 重试事件按 payload.filePath 路由到对应 session，支持多文件并发翻译（GPT P2-03）。
+ * 历史版本用 activeFilePath 单活动文件模型，已移除——那个模型违反了 sessions Map 的
+ * "多文件 session 可并存" 架构承诺。
+ */
 function ensureRetryListener() {
   if (retryListenerReady) return
   retryListenerReady = true
-  listen<RetryInfo>('pdf-translate-retry', (event) => {
-    if (!activeFilePath) return
-    const session = sessions.get(activeFilePath)
+  listen<RetryPayload>('pdf-translate-retry', (event) => {
+    const { filePath, ...retry } = event.payload
+    if (!filePath) return
+    const session = sessions.get(filePath)
     if (session) {
-      session.retryInfo.value = event.payload
+      session.retryInfo.value = retry
     }
   })
 }
@@ -110,7 +118,6 @@ async function startTranslation(
     return
   }
 
-  activeFilePath = filePath
   ensureRetryListener()
 
   try {
@@ -139,6 +146,7 @@ async function startTranslation(
         model,
         text: pages[i],
         pageIndex: i,
+        filePath,  // 让后端 emit 携带 filePath，前端按文件路由重试事件
       })
       translations.push(translated)
     }
@@ -164,10 +172,6 @@ async function startTranslation(
       session.error.value = `${t('fileDetail.translatePdfError')}: ${msg}`
     }
     console.error('PDF 翻译失败:', e)
-  } finally {
-    if (activeFilePath === filePath) {
-      activeFilePath = ''
-    }
   }
 }
 

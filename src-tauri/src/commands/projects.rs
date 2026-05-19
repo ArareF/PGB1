@@ -5,7 +5,7 @@ use crate::models::{
 use super::helpers::{
     default_global_tasks, find_app_icon,
     load_or_create_config, move_dir, mutate_project_config, scan_task_names, to_title_case,
-    PROTOTYPE_SUBCATEGORIES, PSD_SUBCATEGORIES,
+    validate_file_name, PROTOTYPE_SUBCATEGORIES, PSD_SUBCATEGORIES,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -239,7 +239,10 @@ pub fn list_archived_tasks(project_path: String) -> Result<Vec<ArchivedVersion>,
                         chrono::Local::now() // 回退：不删除
                     });
                 if local_time < cutoff {
-                    let _ = fs::remove_dir_all(&ts_path);
+                    // 60 天过期自动清理（GPT N-10）：失败会导致归档堆积，磁盘持续膨胀
+                    if let Err(e) = fs::remove_dir_all(&ts_path) {
+                        log::warn!("[archive-gc] 清理过期归档失败 {}: {}", ts_path.display(), e);
+                    }
                     continue;
                 }
             }
@@ -264,7 +267,9 @@ pub fn list_archived_tasks(project_path: String) -> Result<Vec<ArchivedVersion>,
             .map(|mut d| d.next().is_none())
             .unwrap_or(false)
         {
-            let _ = fs::remove_dir(&task_path);
+            if let Err(e) = fs::remove_dir(&task_path) {
+                log::warn!("[archive-gc] 清理空任务归档目录失败 {}: {}", task_path.display(), e);
+            }
         }
     }
 
@@ -329,8 +334,10 @@ pub fn restore_archived_task(
         move_dir(&archived_nc, &dest)?;
     }
 
-    // 删除该归档版本目录
-    let _ = fs::remove_dir_all(&archive_path);
+    // 删除该归档版本目录（恢复后不保留该版本）
+    if let Err(e) = fs::remove_dir_all(&archive_path) {
+        log::warn!("[restore-archive] 清理已恢复的归档版本目录失败 {}: {}", archive_path.display(), e);
+    }
 
     // 如果任务名目录已空，清理
     let task_archive_dir = project_dir.join(".archived_tasks").join(&task_name);
@@ -338,7 +345,9 @@ pub fn restore_archived_task(
         .map(|mut d| d.next().is_none())
         .unwrap_or(false)
     {
-        let _ = fs::remove_dir(&task_archive_dir);
+        if let Err(e) = fs::remove_dir(&task_archive_dir) {
+            log::warn!("[restore-archive] 清理空任务归档目录失败 {}: {}", task_archive_dir.display(), e);
+        }
     }
 
     // 更新 enabled_tasks
@@ -375,7 +384,9 @@ pub fn delete_archived_version(
         .map(|mut d| d.next().is_none())
         .unwrap_or(false)
     {
-        let _ = fs::remove_dir(&task_archive_dir);
+        if let Err(e) = fs::remove_dir(&task_archive_dir) {
+            log::warn!("[delete-archive] 清理空任务归档目录失败 {}: {}", task_archive_dir.display(), e);
+        }
     }
 
     Ok(())
@@ -388,20 +399,8 @@ pub fn create_project(
     project_name: String,
     deadline: Option<String>,
 ) -> Result<ProjectInfo, String> {
-    // 校验项目名不为空
-    let trimmed_name = project_name.trim();
-    if trimmed_name.is_empty() {
-        return Err("项目名称不能为空".to_string());
-    }
-
-    // 校验项目名不含非法字符（Windows 文件名限制）
-    const ILLEGAL_CHARS: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
-    if trimmed_name.chars().any(|c| ILLEGAL_CHARS.contains(&c)) {
-        return Err(format!(
-            "项目名称包含非法字符，不能使用: {}",
-            ILLEGAL_CHARS.iter().collect::<String>()
-        ));
-    }
+    // 校验项目名（非空 + Windows 非法字符 + 控制字符 + 末尾点/空格 + 保留字）
+    let trimmed_name = validate_file_name(&project_name, "项目名称")?;
 
     let root = Path::new(&root_dir);
     if !root.exists() {
@@ -619,19 +618,8 @@ pub fn delete_project(app_handle: tauri::AppHandle, project_path: String) -> Res
 /// 重命名项目（改目录名 + 更新 config 中的 project_name）
 #[tauri::command]
 pub fn rename_project(project_path: String, new_name: String) -> Result<ProjectInfo, String> {
-    let trimmed = new_name.trim();
-    if trimmed.is_empty() {
-        return Err("项目名称不能为空".to_string());
-    }
-
-    // 校验非法字符（与 create_project 一致）
-    const ILLEGAL_CHARS: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
-    if trimmed.chars().any(|c| ILLEGAL_CHARS.contains(&c)) {
-        return Err(format!(
-            "项目名称包含非法字符，不能使用: {}",
-            ILLEGAL_CHARS.iter().collect::<String>()
-        ));
-    }
+    // 校验新项目名（与 create_project 一致的 Windows 完整校验）
+    let trimmed = validate_file_name(&new_name, "项目名称")?;
 
     let old_path = Path::new(&project_path);
     if !old_path.exists() {

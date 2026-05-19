@@ -47,3 +47,6 @@ psd_debug.pdb
 
 # 站点目录（独立部署，不入仓库）
 website/
+
+# Codex review 工具产物
+.codex-review-dist/

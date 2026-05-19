@@ -35,6 +35,9 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
   /** 帧率内联编辑状态 */
   const editingFps = ref(false)
   const fpsInput = ref('')
+  /** 弹窗操作错误提示（重命名/删除失败后展示给用户，N-12） */
+  const sidebarDialogError = ref<string | null>(null)
+  const sidebarDialogBusy = ref(false)
 
   /** 记录卡片布局变化前的屏幕 Y 坐标，变化后补偿滚动避免视觉跳变 */
   function preserveCardPosition(cardSelector: string, action: () => void) {
@@ -123,18 +126,24 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
   function openRenameDialog() {
     renameInput.value = selectedMaterial.value?.name ?? ''
     sidebarDialog.value = 'rename'
+    sidebarDialogError.value = null
     nextTick(() => {
-      (document.querySelector('.sidebar-dialog-input') as HTMLInputElement)?.focus()
+      // N-13：限定在当前 overlay 内查，避免未来多个同名输入并存时误命中
+      const overlay = document.querySelector('.sidebar-dialog-overlay')
+      ;(overlay?.querySelector('.sidebar-dialog-input') as HTMLInputElement | null)?.focus()
     })
   }
 
   function openDeleteDialog() {
     sidebarDialog.value = 'delete'
+    sidebarDialogError.value = null
   }
 
   function closeSidebarDialog() {
     sidebarDialog.value = 'none'
     renameInput.value = ''
+    sidebarDialogError.value = null
+    sidebarDialogBusy.value = false
   }
 
   async function confirmRename() {
@@ -143,6 +152,8 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
       closeSidebarDialog()
       return
     }
+    sidebarDialogBusy.value = true
+    sidebarDialogError.value = null
     try {
       await invoke('rename_material', {
         taskPath: opts.taskFolderPathRef.value,
@@ -154,13 +165,19 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
       closeSidebar()
       await opts.refresh()
     } catch (e) {
-      console.error('重命名失败:', e)
+      // N-12：不再静默关闭弹窗，让用户看到错误原因并可重试
+      console.error('[useMaterialSidebar] 重命名失败:', e)
+      sidebarDialogError.value = String(e)
+    } finally {
+      sidebarDialogBusy.value = false
     }
   }
 
   async function confirmDelete() {
     const mat = selectedMaterial.value
     if (!mat) return
+    sidebarDialogBusy.value = true
+    sidebarDialogError.value = null
     try {
       await invoke('delete_material', {
         taskPath: opts.taskFolderPathRef.value,
@@ -171,7 +188,11 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
       closeSidebar()
       await opts.refresh()
     } catch (e) {
-      console.error('删除失败:', e)
+      // N-12：不再静默关闭弹窗，让用户看到错误原因并可重试
+      console.error('[useMaterialSidebar] 删除失败:', e)
+      sidebarDialogError.value = String(e)
+    } finally {
+      sidebarDialogBusy.value = false
     }
   }
 
@@ -181,7 +202,9 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     fpsInput.value = String(mat.fps)
     editingFps.value = true
     nextTick(() => {
-      (document.querySelector('.fps-input') as HTMLInputElement)?.select()
+      // N-13：限定在 sidebar-shell 容器内查（fps-input 属于侧边栏详情区）
+      const shell = document.querySelector('.sidebar-shell')
+      ;(shell?.querySelector('.fps-input') as HTMLInputElement | null)?.select()
     })
   }
 
@@ -245,6 +268,8 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     sidebarNoteText,
     editingFps,
     fpsInput,
+    sidebarDialogError,
+    sidebarDialogBusy,
     // Functions
     selectMaterial,
     closeSidebar,

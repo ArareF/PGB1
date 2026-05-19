@@ -171,10 +171,15 @@ fn build_translated_pdf_inner(
     }
 
     let input_path = std::path::Path::new(path);
-    let stem = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("translated");
+    // N-14：空 stem / 非 UTF-8 路径显式报错，不 fallback 到 "translated" 覆盖其他同名文件
+    let stem = input_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| format!("PDF 路径无有效文件名（或含非 UTF-8 字符）: {}", path))?;
     let output_path = input_path
         .with_file_name(format!("{}_zh.pdf", stem))
-        .to_str().ok_or("输出路径生成失败")?.to_string();
+        .to_str().ok_or("输出路径生成失败（非 UTF-8 路径）")?.to_string();
 
     doc.save(&output_path).map_err(|e| format!("保存 PDF 失败: {}", e))?;
     Ok(output_path)

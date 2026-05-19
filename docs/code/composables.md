@@ -258,3 +258,15 @@
 - **参考点用 `data-path` 精确锁定**（原版用 `.material-card.selected`，在 wasOpen 切换时会查到两张不同卡片导致 scrollTop 被拉飞，closeSidebar 时 `.selected` 消失导致补偿被跳过）
 
 **跨 composable 互斥**：通过 `onPreviewSelectionCleared` 回调闭包延迟求值。
+
+### useArchivedMaterials.ts（45 行，v2.8.13 新增）
+
+**签名**：`useArchivedMaterials(projectPath: () => string)`
+
+**职责**：时光机素材归档数据源，封装后端三命令。
+
+**导出**：
+- state：`versions: Ref<ArchivedMaterialVersion[]>` / `loading: Ref<boolean>`
+- 方法：`load()` 调 `list_archived_materials`（含后端 60 天懒 GC）、`restore(version)` 调 `restore_archived_material`（拒绝式冲突）、`remove(version)` 调 `delete_archived_material_version`
+
+**调用方**：`TimeMachinePage.vue`

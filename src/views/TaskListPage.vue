@@ -8,11 +8,11 @@ import { useSettings } from '../composables/useSettings'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 
-import type { GlobalTask, GlobalTaskConfig, ApplyTaskResult, ArchivedVersion } from '../types/task'
+import type { GlobalTask, GlobalTaskConfig, ApplyTaskResult } from '../types/task'
 
 const { t } = useI18n()
 
-type TabType = 'enable' | 'edit' | 'archive'
+type TabType = 'enable' | 'edit'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,42 +50,6 @@ const editedTasks = ref<GlobalTask[]>([])
 const newTaskName = ref('')
 const newChildNames = ref<Record<number, string>>({})
 
-// ─── Tab 3: 时光机状态 ───
-const archivedVersions = ref<ArchivedVersion[]>([])
-const archiveLoading = ref(false)
-
-// ─── 内部确认/提示弹窗 ───
-const innerDialog = ref<{
-  visible: boolean
-  title: string
-  message: string
-  type: 'confirm' | 'alert'
-  onConfirm: (() => void) | null
-}>({
-  visible: false,
-  title: '',
-  message: '',
-  type: 'confirm',
-  onConfirm: null,
-})
-
-function showConfirm(title: string, message: string, onConfirm: () => void) {
-  innerDialog.value = { visible: true, title, message, type: 'confirm', onConfirm }
-}
-
-function showAlert(title: string, message: string) {
-  innerDialog.value = { visible: true, title, message, type: 'alert', onConfirm: null }
-}
-
-function handleInnerConfirm() {
-  innerDialog.value.onConfirm?.()
-  innerDialog.value.visible = false
-}
-
-function handleInnerCancel() {
-  innerDialog.value.visible = false
-}
-
 /** Tab 1 是否有变更 */
 const hasEnableChanges = computed(() => {
   const oldSet = new Set(initialEnabledTasks)
@@ -117,8 +81,6 @@ watch(activeTab, (tab) => {
     editedTasks.value = JSON.parse(JSON.stringify(globalTasks.value))
     newTaskName.value = ''
     newChildNames.value = {}
-  } else if (tab === 'archive') {
-    loadArchivedTasks()
   }
 })
 
@@ -195,74 +157,9 @@ function addChild(taskIndex: number) {
   newChildNames.value[taskIndex] = ''
 }
 
-// ─── Tab 3 操作 ───
-
-const groupedArchives = computed(() => {
-  const groups: { taskName: string; versions: ArchivedVersion[] }[] = []
-  let currentGroup: { taskName: string; versions: ArchivedVersion[] } | null = null
-  for (const v of archivedVersions.value) {
-    if (!currentGroup || currentGroup.taskName !== v.task_name) {
-      currentGroup = { taskName: v.task_name, versions: [] }
-      groups.push(currentGroup)
-    }
-    currentGroup.versions.push(v)
-  }
-  return groups
-})
-
-async function loadArchivedTasks() {
-  archiveLoading.value = true
-  try {
-    archivedVersions.value = await invoke<ArchivedVersion[]>('list_archived_tasks', {
-      projectPath,
-    })
-  } catch (e) {
-    console.error('加载归档列表失败:', e)
-  } finally {
-    archiveLoading.value = false
-  }
-}
-
-async function restoreArchive(version: ArchivedVersion) {
-  try {
-    await invoke('restore_archived_task', {
-      projectPath,
-      taskName: version.task_name,
-      timestamp: version.timestamp,
-    })
-    await loadArchivedTasks()
-  } catch (e: any) {
-    showAlert(t('taskList.restoreFailed'), typeof e === 'string' ? e : e.message || t('taskList.restoreFailed'))
-  }
-}
-
-function deleteArchive(version: ArchivedVersion) {
-  showConfirm(
-    t('taskList.deleteArchive'),
-    t('taskList.confirmDeleteArchive', { taskName: version.task_name, version: version.display_time }),
-    async () => {
-      try {
-        await invoke('delete_archived_version', {
-          projectPath,
-          taskName: version.task_name,
-          timestamp: version.timestamp,
-        })
-        await loadArchivedTasks()
-      } catch (e) {
-        console.error('删除归档版本失败:', e)
-      }
-    },
-  )
-}
-
 // ─── 确定 / 取消 ───
 
 async function handleConfirm() {
-  if (activeTab.value === 'archive') {
-    router.push({ name: 'project', params: { projectId } })
-    return
-  }
-
   if (activeTab.value === 'enable') {
     if (!hasEnableChanges.value) {
       router.push({ name: 'project', params: { projectId } })
@@ -328,13 +225,6 @@ function handleCancel() {
           @click="activeTab = 'edit'"
         >
           {{ $t('taskList.templateTab') }}
-        </button>
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'archive' }"
-          @click="activeTab = 'archive'"
-        >
-          {{ $t('taskList.timeMachine') }}
         </button>
       </div>
     </div>
@@ -408,59 +298,16 @@ function handleCancel() {
       </div>
     </div>
 
-    <!-- Tab 3: 时光机 -->
-    <div v-show="!loading && activeTab === 'archive'" class="page-body">
-      <div v-if="archiveLoading" class="hint-text">{{ $t('common.loading') }}</div>
-      <div v-else-if="groupedArchives.length === 0" class="hint-text">{{ $t('taskList.noArchived') }}</div>
-      <template v-else>
-        <div v-for="group in groupedArchives" :key="group.taskName" class="archive-group">
-          <p class="archive-task-name">{{ group.taskName }}</p>
-          <div
-            v-for="ver in group.versions"
-            :key="ver.timestamp"
-            class="archive-version-row"
-          >
-            <span class="archive-time">{{ ver.display_time }}</span>
-            <div class="archive-actions">
-              <button class="archive-btn archive-restore-btn" @click="restoreArchive(ver)">{{ $t('taskList.restore') }}</button>
-              <button class="archive-btn archive-delete-btn" @click="deleteArchive(ver)">{{ $t('common.delete') }}</button>
-            </div>
-          </div>
-        </div>
-      </template>
-    </div>
-
     <!-- 底部操作栏 -->
     <div class="page-footer">
       <button class="action-btn action-btn-primary" :disabled="saving" @click="handleConfirm">
-        {{ saving ? $t('common.processing') : activeTab === 'archive' ? $t('common.close') : $t('common.ok') }}
+        {{ saving ? $t('common.processing') : $t('common.ok') }}
       </button>
       <button class="action-btn action-btn-secondary" :disabled="saving" @click="handleCancel">
         {{ $t('common.cancel') }}
       </button>
     </div>
 
-    <!-- 内部确认/提示弹窗 -->
-    <Teleport to="body">
-      <div v-if="innerDialog.visible" class="inner-dialog-overlay">
-        <div class="inner-dialog glass-strong">
-          <p class="inner-dialog-title">{{ innerDialog.title }}</p>
-          <p class="inner-dialog-message">{{ innerDialog.message }}</p>
-          <div class="inner-dialog-actions">
-            <button
-              v-if="innerDialog.type === 'confirm'"
-              class="action-btn action-btn-primary"
-              @click="handleInnerConfirm"
-            >
-              {{ $t('common.ok') }}
-            </button>
-            <button class="action-btn action-btn-secondary" @click="handleInnerCancel">
-              {{ innerDialog.type === 'alert' ? $t('common.gotIt') : $t('common.cancel') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
     <PageGuideOverlay :show="showGuide" :annotations="PAGE_GUIDE_ANNOTATIONS.taskList" @close="showGuide = false" />
   </div>
 </template>
@@ -698,85 +545,6 @@ function handleCancel() {
   border-top: 1px solid var(--border-subtle);
 }
 
-/* ─── Tab 3: 时光机 ─── */
-
-.archive-group {
-  margin-bottom: var(--spacing-3);
-}
-
-.archive-group:last-child {
-  margin-bottom: 0;
-}
-
-.archive-task-name {
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-heading);
-  color: var(--text-primary);
-  padding: var(--spacing-1) var(--spacing-3);
-  margin: 0;
-}
-
-.archive-version-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-2) var(--spacing-3);
-  padding-left: var(--spacing-8);
-  border-radius: var(--radius-md);
-  transition: background var(--transition-fast);
-}
-
-.archive-version-row:hover {
-  background: var(--bg-hover);
-}
-
-.archive-time {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-.archive-actions {
-  display: flex;
-  gap: var(--spacing-2);
-}
-
-.archive-btn {
-  display: inline-flex;
-  align-items: center;
-  height: 26px;
-  padding: 0 var(--spacing-3);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-heading);
-  font-family: inherit;
-  border-radius: var(--radius-sm);
-  border: none;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.archive-restore-btn {
-  color: var(--color-blue-500);
-  background: transparent;
-  border: 1px solid var(--color-blue-500);
-}
-
-.archive-restore-btn:hover {
-  background: color-mix(in srgb, var(--color-primary-500) 15%, transparent);
-}
-
-.archive-delete-btn {
-  color: var(--text-tertiary);
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-}
-
-.archive-delete-btn:hover {
-  color: var(--color-red-500);
-  border-color: var(--color-red-500);
-  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-}
-
 /* ─── 底部操作栏 ─── */
 
 .page-footer {
@@ -829,46 +597,4 @@ function handleCancel() {
   color: var(--text-primary);
 }
 
-/* ─── 内部确认/提示弹窗 ─── */
-
-.inner-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: calc(var(--z-modal-backdrop) + 10);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--overlay-backdrop);
-  backdrop-filter: blur(var(--glass-light-blur));
-}
-
-.inner-dialog {
-  min-width: 300px;
-  max-width: 300px;
-  border-radius: var(--floating-navbar-radius);
-  padding: var(--spacing-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
-}
-
-.inner-dialog-title {
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-heading);
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.inner-dialog-message {
-  font-size: var(--text-base);
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin: 0;
-}
-
-.inner-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-3);
-}
 </style>

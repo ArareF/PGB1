@@ -7,7 +7,11 @@ use crate::conversion::{ConversionState, ConversionSession, handle_file_event, b
 use super::helpers::{split_prototype_name, copy_dir_recursive, matches_base_name, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Runtime, State};
 use notify::{Watcher, RecursiveMode, Event};
 
@@ -103,6 +107,8 @@ pub fn start_conversion<R: Runtime>(
         texture_packer_gui: PathBuf::from(request.texture_packer_gui_path),
         tp_scale: request.tp_scale,
         tp_webp_quality: request.tp_webp_quality,
+        cancel_flag: Arc::new(AtomicBool::new(false)),
+        tp_child_pid: Arc::new(std::sync::Mutex::new(None)),
     });
 
     Ok(())
@@ -115,7 +121,7 @@ pub async fn execute_sequence_conversion<R: Runtime>(
     state: State<'_, ConversionState>,
     sequences: Vec<ConversionSequenceRequest>,
 ) -> Result<(), String> {
-    let (done_path, cli_path, gui_path, fps_map, tp_scale, tp_webp_quality) = {
+    let (done_path, cli_path, gui_path, fps_map, tp_scale, tp_webp_quality, cancel_flag, tp_child_pid) = {
         let state_lock = state.lock().map_err(|e| e.to_string())?;
         let session = state_lock.as_ref().ok_or("未启动转换会话")?;
         (
@@ -125,13 +131,25 @@ pub async fn execute_sequence_conversion<R: Runtime>(
             session.sequence_fps_map.clone(),
             session.tp_scale,
             session.tp_webp_quality,
+            session.cancel_flag.clone(),
+            session.tp_child_pid.clone(),
         )
     };
+
+    // 入口预清理：删除 done_path 根目录下匹配 sequences 名字的残留三件套
+    // 防止上次中断遗留的 .tps/.webp/.plist 锁住新 CLI 写入（multipack 会产出 name-1/2/...）
+    cleanup_residual_artifacts(&done_path, &sequences);
 
     let task_dir = done_path.parent().ok_or("无效的 done 路径")?;
     let original_dir = task_dir.join("00_original");
 
     for seq in sequences {
+        // 取消检查点：每帧迭代前
+        if cancel_flag.load(Ordering::SeqCst) {
+            log::info!("[conversion] 用户取消，序列帧循环提前退出");
+            return Ok(());
+        }
+
         let name = &seq.name;
         let fps = fps_map.get(name).cloned().unwrap_or(24);
 
@@ -160,27 +178,57 @@ pub async fn execute_sequence_conversion<R: Runtime>(
             .arg("--multipack")
             .arg("--save").arg(&tps_path);
 
-        let output = cli_cmd.output().map_err(|e| format!("CLI 启动失败: {}", e))?;
+        // 改 spawn + wait_with_output：spawn 后立即记录 pid，等 stop_conversion 能 taskkill
+        // stdin piped + 写 "agree\n"：TP CLI 首次启动会要求接受 license，不喂 agree 会卡死或非零退出
+        // 非首次时 CLI 不读 stdin，关闭无害
+        let mut cli_child = cli_cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("CLI 启动失败: {}", e))?;
+
+        if let Some(mut stdin) = cli_child.stdin.take() {
+            let _ = stdin.write_all(b"agree\n");
+            // stdin 在作用域结束 drop → CLI 看到 EOF，不会再等输入
+        }
+
+        let cli_pid = cli_child.id();
+        if let Ok(mut g) = tp_child_pid.lock() { *g = Some(cli_pid); }
+
+        let output = cli_child.wait_with_output().map_err(|e| format!("CLI 执行失败: {}", e))?;
+        if let Ok(mut g) = tp_child_pid.lock() { *g = None; }
+
         if !output.status.success() {
+            // 取消导致的 CLI 被 taskkill：友好退出，不报错
+            if cancel_flag.load(Ordering::SeqCst) {
+                log::info!("[conversion] CLI 被取消，序列帧循环退出");
+                return Ok(());
+            }
             return Err(format!("CLI 执行失败: {}", String::from_utf8_lossy(&output.stderr)));
         }
 
         // 2.5 将 .tps 中 globalSpriteSettings.scale 从默认 1 改为 0.5
-        if let Ok(content) = fs::read_to_string(&tps_path) {
-            let marker = "<key>globalSpriteSettings</key>";
-            let patched = if let Some(pos) = content.find(marker) {
-                let (before, after) = content.split_at(pos + marker.len());
-                let after_patched = after.replacen("<double>1</double>", &format!("<double>{}</double>", tp_scale), 1);
-                format!("{}{}", before, after_patched)
-            } else {
-                content
-            };
-            let _ = fs::write(&tps_path, patched);
-        }
+        // 关键状态写回：读/写失败必须立即返回错误，否则 GUI 会打开未打补丁的 .tps，
+        // 导致"配置值 / GUI 实际值 / 整理目录名"三者不一致（GPT P2-04）。
+        let content = fs::read_to_string(&tps_path)
+            .map_err(|e| format!("读取 .tps 预设失败 ({}): {}", tps_path.display(), e))?;
+        let marker = "<key>globalSpriteSettings</key>";
+        let patched = if let Some(pos) = content.find(marker) {
+            let (before, after) = content.split_at(pos + marker.len());
+            let after_patched = after.replacen("<double>1</double>", &format!("<double>{}</double>", tp_scale), 1);
+            format!("{}{}", before, after_patched)
+        } else {
+            log::warn!("[tp] .tps 未找到 globalSpriteSettings 标记，跳过 scale 补丁: {}", tps_path.display());
+            content
+        };
+        fs::write(&tps_path, patched)
+            .map_err(|e| format!("写回 .tps 预设失败 ({}): {}", tps_path.display(), e))?;
 
         // 3. 启动 GUI 并置前
         if let Ok(mut child) = std::process::Command::new(&gui_path).arg(&tps_path).spawn() {
             let pid = child.id();
+            if let Ok(mut g) = tp_child_pid.lock() { *g = Some(pid); }
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                 bring_window_to_front(pid);
@@ -188,8 +236,21 @@ pub async fn execute_sequence_conversion<R: Runtime>(
 
             // 4. 等待 GUI 退出 (阻塞循环)
             let _ = child.wait();
+            if let Ok(mut g) = tp_child_pid.lock() { *g = None; }
         } else {
             return Err(format!("无法启动 TexturePacker GUI: {}", gui_path.display()));
+        }
+
+        // 4.1 GUI 退出后追加取消检查点（用户在 GUI 阶段点取消会先 kill GUI，本帧不再整理）
+        if cancel_flag.load(Ordering::SeqCst) {
+            log::info!("[conversion] GUI 退出后检测到取消，跳过本帧整理");
+            // 清理本帧未发布的 .tps，避免成为下次会话的残留
+            if tps_path.exists() {
+                if let Err(e) = fs::remove_file(&tps_path) {
+                    log::warn!("[conversion] 取消清理 .tps 失败 {}: {}", tps_path.display(), e);
+                }
+            }
+            return Ok(());
         }
 
         // 4.5 检测 .webp 是否生成（用户可能直接关闭 GUI 未点发布）
@@ -206,7 +267,9 @@ pub async fn execute_sequence_conversion<R: Runtime>(
 
         if !webp_exists {
             if tps_path.exists() {
-                let _ = fs::remove_file(&tps_path);
+                if let Err(e) = fs::remove_file(&tps_path) {
+                    log::warn!("[conversion] 清理失败的 .tps 预设失败 {}: {}", tps_path.display(), e);
+                }
             }
             let _ = app_handle.emit("sequence-conversion-failed", name.clone());
             continue;
@@ -248,6 +311,49 @@ pub async fn execute_sequence_conversion<R: Runtime>(
     Ok(())
 }
 
+/// 入口预清理：删除 done_path 根目录下匹配 sequences 名字的残留 .tps/.webp/.plist
+///
+/// 上次中断会留下未整理的三件套；TP CLI 用 `--save` 写 .tps 时如果文件被占用或损坏会失败。
+/// 颗粒度：只删根目录下"name.ext"和"name-N.ext"（multipack 产物），不递归子目录（[an-X-Y]/ 是历史成果，保留）。
+fn cleanup_residual_artifacts(done_path: &Path, sequences: &[ConversionSequenceRequest]) {
+    let entries = match fs::read_dir(done_path) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    let target_names: Vec<&str> = sequences.iter().map(|s| s.name.as_str()).collect();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() { continue; }
+
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        if !matches!(ext.as_str(), "tps" | "webp" | "plist") { continue; }
+
+        let stem = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // 判定残留：stem == name 或 stem == "{name}-{N}"（N 为纯数字，multipack 产物）
+        let belongs = target_names.iter().any(|name| {
+            if stem == *name { return true; }
+            if let Some(suffix) = stem.strip_prefix(&format!("{}-", name)) {
+                return !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit());
+            }
+            false
+        });
+
+        if belongs {
+            if let Err(e) = fs::remove_file(&path) {
+                log::warn!("[conversion] 入口预清理失败 {}: {}", path.display(), e);
+            } else {
+                log::info!("[conversion] 入口预清理: {}", path.display());
+            }
+        }
+    }
+}
+
 /// 解析 .tps 获取最终 scale 百分比
 fn parse_tps_scale(tps_path: &Path) -> Result<u32, String> {
     let content = fs::read_to_string(tps_path).map_err(|e| e.to_string())?;
@@ -271,12 +377,34 @@ fn parse_tps_scale(tps_path: &Path) -> Result<u32, String> {
 }
 
 /// 停止转换会话
+///
+/// 闭环动作（顺序敏感）：
+/// 1. 置取消令牌（Arc 副本已 clone 到 execute_sequence_conversion 中，跨 take 仍有效）
+/// 2. taskkill 当前 TP 子进程（CLI 或 GUI）→ 解除 wait 阻塞，循环回到取消检查点
+/// 3. kill Imagine（原有逻辑）
+/// 4. take session → drop watcher 停止监控
 #[tauri::command]
 pub fn stop_conversion(
     state: State<'_, ConversionState>,
 ) -> Result<(), String> {
     let mut state_lock = state.lock().map_err(|e| e.to_string())?;
     if let Some(session) = state_lock.take() {
+        // 1. 置取消令牌
+        session.cancel_flag.store(true, Ordering::SeqCst);
+
+        // 2. taskkill 当前 TP 子进程，让循环里的 wait 立即解除
+        if let Ok(g) = session.tp_child_pid.lock() {
+            if let Some(pid) = *g {
+                #[cfg(windows)]
+                {
+                    let _ = std::process::Command::new("taskkill")
+                        .args(&["/F", "/PID", &pid.to_string()])
+                        .spawn();
+                }
+            }
+        }
+
+        // 3. kill Imagine（原有逻辑）
         if let Some(pid) = session.imagine_pid {
             #[cfg(windows)]
             {
@@ -899,7 +1027,10 @@ pub fn copy_preview_to_nextcloud(
             if existing_name.eq_ignore_ascii_case(name) { continue; }
             let existing_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
             if regex_strip_version(&existing_stem) == new_base {
-                let _ = fs::remove_file(&path);
+                // latest-only 清理：失败会导致 nextcloud 同组残留旧版本（GPT P3-05）
+                if let Err(e) = fs::remove_file(&path) {
+                    log::warn!("[preview-upload] 清理旧版本失败 {}: {}", path.display(), e);
+                }
             }
         }
     }

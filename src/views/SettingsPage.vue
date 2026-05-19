@@ -227,7 +227,7 @@ async function handleAttendanceSave() {
 
 .tab-btn.active {
   background: var(--color-primary-500);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .sidebar-footer {
@@ -241,7 +241,7 @@ async function handleAttendanceSave() {
   border-radius: var(--radius-md);
   border: none;
   background: var(--color-success);
-  color: white;
+  color: var(--text-inverse);
   font-weight: var(--font-bold);
   cursor: pointer;
   transition: all var(--duration-fast);
@@ -393,7 +393,7 @@ async function handleAttendanceSave() {
 :deep(.lang-pair-row) {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--spacing-2);
 }
 :deep(.lang-select) {
   flex: 1;
@@ -514,7 +514,7 @@ async function handleAttendanceSave() {
 
 :deep(.test-clock-btn:hover:not(:disabled)) {
   background: var(--color-primary-500);
-  color: white;
+  color: var(--text-inverse);
 }
 
 :deep(.test-clock-btn:disabled) {

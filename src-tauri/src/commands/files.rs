@@ -140,12 +140,16 @@ pub fn rename_material(task_path: String, base_name: String, new_base_name: Stri
     Ok(())
 }
 
-/// 归档素材的所有工作流版本到 `.archived_materials/<Task>/<BaseName>/timestamp_<TS>/`
-/// 规则（对齐任务归档的三段式：归档 → 60 天 GC → 手动清理）：
-///   - `00_original` / `01_scale/<sub>/` / `02_done/<sub>/` 命中的文件/目录 → move 到归档，保留子目录结构
-///   - `nextcloud/` 命中的副本 → 直接删除（nextcloud 仅作本地上传标记，非云端本体，不进归档）
-#[tauri::command]
-pub fn delete_material(task_path: String, base_name: String, material_type: String) -> Result<(), String> {
+/// 归档素材的工作流版本到 `.archived_materials/<Task>/<BaseName>/timestamp_<TS>/`（move 保留子目录结构），
+/// nextcloud 副本（含 original/ 子目录）直接删除（仅本地上传标记，非云端本体，不进归档）。
+///   - `include_original = true`：连 `00_original` 一起归档 → 删除素材
+///   - `include_original = false`：保留 `00_original`，只清派生版本（01_scale/02_done/nextcloud）→ 「更新」重做
+fn archive_material_internal(
+    task_path: String,
+    base_name: String,
+    material_type: String,
+    include_original: bool,
+) -> Result<(), String> {
     let task_dir = Path::new(&task_path);
     let is_sequence = material_type == "sequence";
 
@@ -172,11 +176,11 @@ pub fn delete_material(task_path: String, base_name: String, material_type: Stri
         .join(&base_name)
         .join(format!("timestamp_{}", timestamp));
 
-    // 收集归档源：(stage_label, src_dir)
-    let mut archive_sources: Vec<(String, PathBuf)> = vec![(
-        "00_original".to_string(),
-        task_dir.join("00_original"),
-    )];
+    // 收集归档源：(stage_label, src_dir)。include_original 决定是否归档 00_original。
+    let mut archive_sources: Vec<(String, PathBuf)> = Vec::new();
+    if include_original {
+        archive_sources.push(("00_original".to_string(), task_dir.join("00_original")));
+    }
     let scale_dir = task_dir.join("01_scale");
     if scale_dir.exists() {
         if let Ok(entries) = fs::read_dir(&scale_dir) {
@@ -235,9 +239,33 @@ pub fn delete_material(task_path: String, base_name: String, material_type: Stri
                 }
             }
         }
+        // original/ 子目录（原件直传副本）：删除匹配文件，避免遗留孤儿（方案 B 配套）
+        let nc_original = nc_dir.join("original");
+        if nc_original.exists() {
+            if let Ok(entries) = fs::read_dir(&nc_original) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let file_name = match path.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
+                    if path.is_dir() || !matches_base_name(&file_name, base_name.as_str()) { continue; }
+                    fs::remove_file(&path).map_err(|e| format!("删除 nextcloud/original 文件 {} 失败: {}", file_name, e))?;
+                }
+            }
+        }
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn delete_material(task_path: String, base_name: String, material_type: String) -> Result<(), String> {
+    archive_material_internal(task_path, base_name, material_type, true)
+}
+
+/// 「更新」：清除素材的派生版本（01_scale + 02_done 归档时光机，nextcloud 标记直删），保留 00_original，
+/// 便于替换原件后重新制作。制作参数（scale/帧率）由前端记入笔记。
+#[tauri::command]
+pub fn reset_material_versions(task_path: String, base_name: String, material_type: String) -> Result<(), String> {
+    archive_material_internal(task_path, base_name, material_type, false)
 }
 
 /// 列出项目下所有素材归档版本（顺带清理超过 60 天的归档，对齐 `list_archived_tasks`）

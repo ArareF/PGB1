@@ -81,7 +81,20 @@ const {
   onAfterUpload: () => checkSubtaskAutoPrompt(),
 })
 
-// ─── 素材侧边栏 composable（选中 / 版本 / 重命名 / 删除 / 帧率 / TPS） ──
+/** 「更新」清派生版本前，把制作参数（scale/帧率）拼成笔记块，便于日后重做对照 */
+function buildResetNote(mat: MaterialInfo): string {
+  const date = new Date().toISOString().slice(0, 10)
+  const lines = [t('task.resetNoteHeader', { date })]
+  if (mat.scales.length > 0) {
+    lines.push('· ' + t('task.resetNoteScale', { scales: mat.scales.map(s => `${s}%`).join(' / ') }))
+  }
+  if (mat.fps != null) {
+    lines.push('· ' + t('task.resetNoteFps', { fps: mat.fps }))
+  }
+  return lines.join('\n')
+}
+
+// ─── 素材侧边栏 composable（选中 / 版本 / 重命名 / 删除 / 更新 / 帧率 / TPS） ──
 const {
   selectedMaterial,
   versions,
@@ -97,9 +110,11 @@ const {
   onSidebarNoteSave,
   openRenameDialog,
   openDeleteDialog,
+  openResetDialog,
   closeSidebarDialog,
   confirmRename,
   confirmDelete,
+  confirmReset,
   startEditFps,
   cancelEditFps,
   confirmEditFps,
@@ -112,6 +127,7 @@ const {
   saveNote: saveTaskNote,
   refresh: () => refresh(),
   onPreviewSelectionCleared: () => clearPreviewSelection(),
+  formatResetNote: buildResetNote,
 })
 
 // ─── 多选（allPaths 合并 materials + previewGroups；onEnter 互斥关闭两个侧边栏） ──
@@ -351,6 +367,31 @@ function cancelUpload() {
   showUploadConfirm.value = false
   draggedMaterials.value = []
   draggedPreviewGroupsForUpload.value = []
+}
+
+/** 原件直传：把"仅原件静帧"直接标记已上传（00_original 原件 → nextcloud，复用 copy_to_nextcloud 兜底）。
+ *  失败处理与 confirmUpload 对齐：console.error 留痕 + 保持侧边栏打开，按钮仍在可重试。 */
+const markBusy = ref(false)
+async function markOriginalUploaded() {
+  const mat = selectedMaterial.value
+  if (!mat || mat.material_type !== 'image' || mat.progress !== 'original' || markBusy.value) return
+  markBusy.value = true
+  try {
+    const result = await invoke<{ copied_count: number; errors: string[] }>('copy_to_nextcloud', {
+      taskPath: taskFolderPathRef.value,
+      materialNames: [{ name: mat.name, material_type: mat.material_type }],
+    })
+    if (result.errors.length > 0 || result.copied_count === 0) {
+      console.error('标记原件已上传失败:', result.errors)
+      return
+    }
+    closeSidebar()
+    await refresh()
+  } catch (err) {
+    console.error('标记原件已上传失败:', err)
+  } finally {
+    markBusy.value = false
+  }
 }
 
 /** 规范化弹窗状态 */
@@ -1059,10 +1100,21 @@ onUnmounted(() => {
 
     <template #actions>
       <button
+        v-if="selectedMaterial?.material_type === 'image' && selectedMaterial?.progress === 'original'"
+        class="sidebar-action-btn"
+        :disabled="markBusy"
+        @click="markOriginalUploaded"
+      >{{ $t('task.markUploadedOriginal') }}</button>
+      <button
         v-if="selectedMaterial?.material_type === 'sequence' && versions.some(v => v.stage === '02_done')"
         class="sidebar-action-btn"
         @click="openTpsFile"
       >{{ $t('task.modify') }}</button>
+      <button
+        v-if="(selectedMaterial?.material_type === 'image' || selectedMaterial?.material_type === 'sequence') && selectedMaterial?.progress !== 'original' && selectedMaterial?.progress !== 'none'"
+        class="sidebar-action-btn"
+        @click="openResetDialog"
+      >{{ $t('task.updateMaterial') }}</button>
       <button class="sidebar-action-btn" @click="openRenameDialog">{{ $t('common.rename') }}</button>
       <button class="sidebar-action-btn danger" @click="openDeleteDialog">{{ $t('common.delete') }}</button>
     </template>
@@ -1094,6 +1146,16 @@ onUnmounted(() => {
           <div class="sidebar-dialog-actions">
             <button class="sidebar-dialog-btn" :disabled="sidebarDialogBusy" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
             <button class="sidebar-dialog-btn danger" :disabled="sidebarDialogBusy" @click="confirmDelete">{{ $t('task.confirmDelete') }}</button>
+          </div>
+        </div>
+        <!-- 更新（清派生版本）确认弹窗 -->
+        <div v-if="sidebarDialog === 'reset'" class="sidebar-dialog">
+          <p class="sidebar-dialog-title">{{ $t('task.updateMaterialTitle') }}</p>
+          <p class="sidebar-dialog-desc">{{ $t('task.updateMaterialDesc', { name: selectedMaterial?.name }) }}</p>
+          <p v-if="sidebarDialogError" class="sidebar-dialog-error">{{ sidebarDialogError }}</p>
+          <div class="sidebar-dialog-actions">
+            <button class="sidebar-dialog-btn" :disabled="sidebarDialogBusy" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
+            <button class="sidebar-dialog-btn primary" :disabled="sidebarDialogBusy" @click="confirmReset">{{ $t('task.confirmUpdate') }}</button>
           </div>
         </div>
       </div>

@@ -1,11 +1,11 @@
 {
-  "version": "2.8.13",
-  "notes": "修复 TexturePacker 升级后序列帧转换启动失败（自动接受 license）；取消转换按钮真正生效（终止 CLI/GUI 子进程并清理残留三件套）；新增独立时光机页面，素材删除改为可恢复归档。",
-  "pub_date": "2026-05-19T08:47:00Z",
+  "version": "2.8.14",
+  "notes": "新增「原件直传」：仅有原件的静帧可不经缩放/转换直接标记已上传（存入 nextcloud/original/），帮助子任务正常达成已完成；新增侧边栏「更新」按钮：静帧/序列帧一键清除派生版本、保留原件便于替换重做，清除前自动把缩放档位与帧率记入笔记；修复删除素材时未清理 nextcloud/original 原件副本导致遗留孤儿的问题。",
+  "pub_date": "2026-05-27T09:59:44Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.13/PGB1_2.8.13_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNlA4WjJrU0dRZmorWEtjbzZ4bjFhelFpYmdZSC9zbFJTN29iT0VuYXJTNTRTZ0RycFB3cWhMN1Ryc2pYL3FIaXpOZ0NqSnd4d0tXWEJNQnJZemFycndVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5MTgwNDQ2CWZpbGU6UEdCMV8yLjguMTNfeDY0LXNldHVwLmV4ZQprbnZVU3lDVVkzc09ZTXYwZENDZWxKaDByZEpmZ0NwLy84YWhlN3RWUFpVZWRpL3NsT2J4V3dPeGoxOUFVeUhGdWpzcjNIRkFqNjA2VWZ4TVNGTytBZz09Cg=="
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.14/PGB1_2.8.14_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkZONmNiczJnRnljY1A5Q3BqOGNyeldTQzZRUWttd1Y5MVlVNEhxNXhxSkZDMlB1RWlwVjVFU1F0VTFmN1lkMjkyM0ZBWFYvR2RkenBNZnZZS3hIN2dBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5ODc1OTAwCWZpbGU6UEdCMV8yLjguMTRfeDY0LXNldHVwLmV4ZQp5SlpaQThQYlhXOGphWmpaSkxORFRvK0FaSkw0SFplSFRyZTV3SU1jYzc1L0VJK2RPbFQ1Zjk5R0VmQU9xN0Zxd0Z1Rmo2YzE1YktkYUM0Z3ZWQnRCQT09Cg=="
     }
   }
 }

@@ -111,6 +111,7 @@ pub fn run() {
             commands::copy_icon_to_cache,
             commands::rename_material,
             commands::delete_material,
+            commands::reset_material_versions,
             commands::list_archived_materials,
             commands::restore_archived_material,
             commands::delete_archived_material_version,

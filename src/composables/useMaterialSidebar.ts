@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { MaterialInfo } from './useMaterials'
 import type { MaterialVersion } from '../types/material'
 
-export type SidebarDialog = 'none' | 'rename' | 'delete'
+export type SidebarDialog = 'none' | 'rename' | 'delete' | 'reset'
 
 export interface UseMaterialSidebarOptions {
   /** 当前任务目录（Export/<taskId>） */
@@ -20,6 +20,8 @@ export interface UseMaterialSidebarOptions {
   refresh: () => Promise<void>
   /** 选中素材时需关闭预览视频侧边栏（由 usePreviewVideos 提供 clearSelection） */
   onPreviewSelectionCleared: () => void
+  /** 「更新」时生成写入笔记的制作参数块（由 TaskPage 提供，带 i18n） */
+  formatResetNote: (material: MaterialInfo) => string
 }
 
 export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
@@ -139,6 +141,11 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     sidebarDialogError.value = null
   }
 
+  function openResetDialog() {
+    sidebarDialog.value = 'reset'
+    sidebarDialogError.value = null
+  }
+
   function closeSidebarDialog() {
     sidebarDialog.value = 'none'
     renameInput.value = ''
@@ -190,6 +197,36 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     } catch (e) {
       // N-12：不再静默关闭弹窗，让用户看到错误原因并可重试
       console.error('[useMaterialSidebar] 删除失败:', e)
+      sidebarDialogError.value = String(e)
+    } finally {
+      sidebarDialogBusy.value = false
+    }
+  }
+
+  /** 「更新」：把制作参数记入笔记后，清除派生版本（保留 00_original） */
+  async function confirmReset() {
+    const mat = selectedMaterial.value
+    if (!mat) return
+    sidebarDialogBusy.value = true
+    sidebarDialogError.value = null
+    try {
+      // 先把制作参数追加进笔记——清派生版本后 scale/帧率 这些信息就没了
+      const key = 'card:' + mat.name.toLowerCase()
+      const existing = opts.getNote(key) ?? ''
+      const block = opts.formatResetNote(mat)
+      await opts.saveNote(key, existing ? `${existing}\n\n${block}` : block)
+      // 清派生版本（01_scale + 02_done 归档时光机，nextcloud 标记直删，保留 00_original）
+      await invoke('reset_material_versions', {
+        taskPath: opts.taskFolderPathRef.value,
+        baseName: mat.name,
+        materialType: mat.material_type,
+      })
+      closeSidebarDialog()
+      closeSidebar()
+      await opts.refresh()
+    } catch (e) {
+      // N-12 同款：不静默，展示错误让用户可重试
+      console.error('[useMaterialSidebar] 更新(清派生版本)失败:', e)
       sidebarDialogError.value = String(e)
     } finally {
       sidebarDialogBusy.value = false
@@ -276,9 +313,11 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     onSidebarNoteSave,
     openRenameDialog,
     openDeleteDialog,
+    openResetDialog,
     closeSidebarDialog,
     confirmRename,
     confirmDelete,
+    confirmReset,
     startEditFps,
     cancelEditFps,
     confirmEditFps,

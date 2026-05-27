@@ -872,6 +872,7 @@ pub fn copy_to_nextcloud(
     let task_name = task_dir.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
     let done_dir = task_dir.join("02_done");
     let scale_dir = task_dir.join("01_scale");
+    let original_dir = task_dir.join("00_original");
 
     let nextcloud_dir = task_dir
         .parent().and_then(|p| p.parent())
@@ -888,9 +889,9 @@ pub fn copy_to_nextcloud(
     for mat in &material_names {
         let result = if is_prototype {
             let (sub_name, base_name) = split_prototype_name(&mat.name);
-            copy_material_prototype(&base_name, &mat.material_type, &sub_name, &done_dir, &scale_dir, &nextcloud_dir)
+            copy_material_prototype(&base_name, &mat.material_type, &sub_name, &done_dir, &scale_dir, &original_dir, &nextcloud_dir)
         } else {
-            copy_material_normal(&mat.name, &mat.material_type, &done_dir, &nextcloud_dir)
+            copy_material_normal(&mat.name, &mat.material_type, &done_dir, &original_dir, &nextcloud_dir)
         };
 
         match result {
@@ -902,26 +903,49 @@ pub fn copy_to_nextcloud(
     Ok(CopyResult { copied_count, errors })
 }
 
-fn copy_material_normal(base_name: &str, material_type: &str, done_dir: &Path, nextcloud_dir: &Path) -> Result<u32, String> {
+fn copy_material_normal(base_name: &str, material_type: &str, done_dir: &Path, original_dir: &Path, nextcloud_dir: &Path) -> Result<u32, String> {
     let prefix = if material_type == "sequence" { "an" } else { "img" };
-    let source_files = collect_matching_files_in_subdirs(done_dir, base_name, prefix);
-    if source_files.is_empty() {
-        return Err("02_done 中未找到对应文件".to_string());
+
+    // 正常交付物（02_done 产物）→ nextcloud 根目录
+    let done_files = collect_matching_files_in_subdirs(done_dir, base_name, prefix);
+    if !done_files.is_empty() {
+        let mut count = 0u32;
+        for src_path_str in &done_files {
+            let src_path = Path::new(src_path_str);
+            let file_name = src_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let dest = nextcloud_dir.join(file_name);
+            fs::copy(src_path, &dest).map_err(|e| format!("复制失败 {}: {}", file_name, e))?;
+            count += 1;
+        }
+        return Ok(count);
     }
-    let mut count = 0u32;
-    for src_path_str in &source_files {
-        let src_path = Path::new(src_path_str);
-        let file_name = src_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        let dest = nextcloud_dir.join(file_name);
-        fs::copy(src_path, &dest).map_err(|e| format!("复制失败 {}: {}", file_name, e))?;
-        count += 1;
+
+    // 原件直传兜底（仅静帧）：02_done 无产物时，把 00_original 原件复制到
+    // nextcloud/<任务>/original/（方案 B：与 webp 交付物隔离，避免混淆与污染）。
+    // 序列帧原件是整个帧序列文件夹，不作为可交付原件直传。
+    if material_type == "image" {
+        let original_files = collect_matching_files_flat(original_dir, base_name);
+        if !original_files.is_empty() {
+            let original_dest_dir = nextcloud_dir.join("original");
+            fs::create_dir_all(&original_dest_dir).map_err(|e| format!("创建 original 目录失败: {}", e))?;
+            let mut count = 0u32;
+            for src_path_str in &original_files {
+                let src_path = Path::new(src_path_str);
+                let file_name = src_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                let dest = original_dest_dir.join(file_name);
+                fs::copy(src_path, &dest).map_err(|e| format!("复制原件失败 {}: {}", file_name, e))?;
+                count += 1;
+            }
+            return Ok(count);
+        }
     }
-    Ok(count)
+
+    Err("02_done 与 00_original 中均未找到对应文件".to_string())
 }
 
 fn copy_material_prototype(
     base_name: &str, material_type: &str, sub_name: &str,
-    done_dir: &Path, scale_dir: &Path, nextcloud_dir: &Path,
+    done_dir: &Path, scale_dir: &Path, original_dir: &Path, nextcloud_dir: &Path,
 ) -> Result<u32, String> {
     let sub_dir = nextcloud_dir.join(sub_name);
     let original_sub_dir = sub_dir.join("_original");
@@ -946,6 +970,25 @@ fn copy_material_prototype(
         let dest = original_sub_dir.join(file_name);
         fs::copy(src_path, &dest).map_err(|e| format!("复制 _original 文件失败 {}: {}", file_name, e))?;
         count += 1;
+    }
+
+    // 原件直传兜底（仅静帧）：done + scale 均无产物（仅原件场景）时，
+    // 从 00_original/<sub>/ 复制原件到 nextcloud/<sub>/original/（方案 B：与交付物隔离，
+    // determine_progress_prototype_img 会识别该 original/ 子目录判为已上传）。
+    if count == 0 && material_type == "image" {
+        let original_sub = original_dir.join(sub_name);
+        let original_files = collect_matching_files_flat(&original_sub, base_name);
+        if !original_files.is_empty() {
+            let original_dest_dir = sub_dir.join("original");
+            fs::create_dir_all(&original_dest_dir).map_err(|e| format!("创建 original 目录失败: {}", e))?;
+            for src_path_str in original_files {
+                let src_path = Path::new(&src_path_str);
+                let file_name = src_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                let dest = original_dest_dir.join(file_name);
+                fs::copy(src_path, &dest).map_err(|e| format!("复制原件失败 {}: {}", file_name, e))?;
+                count += 1;
+            }
+        }
     }
 
     Ok(count)

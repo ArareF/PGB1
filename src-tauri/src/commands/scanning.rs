@@ -321,14 +321,18 @@ impl DirSnapshot {
         Self { subdirs }
     }
 
-    /// 读取一个平面目录（如 nextcloud/TaskName/）的文件列表
-    fn from_flat_dir(dir: &Path) -> Self {
+    /// 读取 nextcloud 任务目录：根层文件（"." 键）+ original/ 子目录文件（"original" 键）。
+    /// 根层 = 正常交付物（webp）；original/ = 原件直传落点（与交付物隔离，方案 B）。
+    fn from_nextcloud_dir(dir: &Path) -> Self {
         let mut subdirs = std::collections::HashMap::new();
         if !dir.exists() {
             return Self { subdirs };
         }
-        let children = Self::read_children(dir);
-        subdirs.insert(".".to_string(), children);
+        subdirs.insert(".".to_string(), Self::read_children(dir));
+        let original_dir = dir.join("original");
+        if original_dir.exists() {
+            subdirs.insert("original".to_string(), Self::read_children(&original_dir));
+        }
         Self { subdirs }
     }
 
@@ -349,6 +353,13 @@ impl DirSnapshot {
     /// 在根目录（"."键）中查找以 base_name 开头的文件
     fn has_file_in_root(&self, base_name: &str) -> bool {
         self.subdirs.get(".")
+            .map(|files| files.iter().any(|(n, _, _)| matches_base_name(n, base_name)))
+            .unwrap_or(false)
+    }
+
+    /// 在 original/ 子目录（原件直传落点，方案 B）中查找以 base_name 开头的文件
+    fn has_file_in_original(&self, base_name: &str) -> bool {
+        self.subdirs.get("original")
             .map(|files| files.iter().any(|(n, _, _)| matches_base_name(n, base_name)))
             .unwrap_or(false)
     }
@@ -512,7 +523,7 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
     let scale_cache = DirSnapshot::from_dir(&scale_dir);
     let done_cache = DirSnapshot::from_dir(&done_dir);
     let nc_cache = nextcloud_dir.as_ref()
-        .map(|nc| DirSnapshot::from_flat_dir(nc))
+        .map(|nc| DirSnapshot::from_nextcloud_dir(nc))
         .unwrap_or_else(|| DirSnapshot { subdirs: std::collections::HashMap::new() });
 
     let mut materials = Vec::new();
@@ -858,6 +869,11 @@ fn determine_progress_prototype_img(
         if nc_sub.exists() && find_file_in_dir(&nc_sub, base_name) {
             return MaterialProgress::Uploaded;
         }
+        // 原件直传：original/ 子目录（方案 B）
+        let nc_original = nc_sub.join("original");
+        if nc_original.exists() && find_file_in_dir(&nc_original, base_name) {
+            return MaterialProgress::Uploaded;
+        }
     }
     if done_dir.exists() && find_file_in_subdirs(done_dir, base_name, "img", Some(sub_name)) {
         return MaterialProgress::Done;
@@ -1017,7 +1033,8 @@ fn determine_progress_image_cached(
     done_cache: &DirSnapshot,
     nc_cache: &DirSnapshot,
 ) -> MaterialProgress {
-    if nc_cache.has_file_in_root(base_name) {
+    // 根层（正常交付）或 original/ 子目录（原件直传，方案 B）任一命中即已上传
+    if nc_cache.has_file_in_root(base_name) || nc_cache.has_file_in_original(base_name) {
         return MaterialProgress::Uploaded;
     }
     if done_cache.has_file_in_subdirs(base_name, "img") {

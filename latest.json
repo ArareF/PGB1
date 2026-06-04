@@ -1,11 +1,11 @@
 {
-  "version": "2.8.14",
-  "notes": "新增「原件直传」：仅有原件的静帧可不经缩放/转换直接标记已上传（存入 nextcloud/original/），帮助子任务正常达成已完成；新增侧边栏「更新」按钮：静帧/序列帧一键清除派生版本、保留原件便于替换重做，清除前自动把缩放档位与帧率记入笔记；修复删除素材时未清理 nextcloud/original 原件副本导致遗留孤儿的问题。",
-  "pub_date": "2026-05-27T09:59:44Z",
+  "version": "2.8.15",
+  "notes": "规范化升级为独立页面：序列帧合并显示、默认列出全部素材；新增 PNG 静帧「自适应画布」（裁切多余透明区域）与「添加黑底」（add/screen 合成纯黑底）；原件自动备份并支持一键恢复；修复静帧预览未显示最新阶段、原地改动后不刷新的问题。",
+  "pub_date": "2026-06-04T04:49:42Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.14/PGB1_2.8.14_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkZONmNiczJnRnljY1A5Q3BqOGNyeldTQzZRUWttd1Y5MVlVNEhxNXhxSkZDMlB1RWlwVjVFU1F0VTFmN1lkMjkyM0ZBWFYvR2RkenBNZnZZS3hIN2dBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5ODc1OTAwCWZpbGU6UEdCMV8yLjguMTRfeDY0LXNldHVwLmV4ZQp5SlpaQThQYlhXOGphWmpaSkxORFRvK0FaSkw0SFplSFRyZTV3SU1jYzc1L0VJK2RPbFQ1Zjk5R0VmQU9xN0Zxd0Z1Rmo2YzE1YktkYUM0Z3ZWQnRCQT09Cg=="
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.15/PGB1_2.8.15_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNklFYzFWODJZQUpLOUIzK0UwY1YvZGJoZVpqR01HOTBrVkRrRDB1WldyK0VNTTdjMUtrZWIxYlBoUDEzTHFYaFFRd24yaGdURm5zSHhGajFBN2hJRHdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNTQ4NTUyCWZpbGU6UEdCMV8yLjguMTVfeDY0LXNldHVwLmV4ZQo0MmRvZExJZ21CUDZ4RDhUZXBLdGVuU2FFUHdHQjFVUGlaR1FhMFNKdFhhUXFzbDZWSVh0L0RqbUpmd3MxOGFMam50YXh1eUpoREE2dmpnZVhwd3REdz09Cg=="
     }
   }
 }

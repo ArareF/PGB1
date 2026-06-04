@@ -19,6 +19,11 @@ const router = createRouter({
       component: () => import('../views/TaskPage.vue'),
     },
     {
+      path: '/project/:projectId/task/:taskId/normalize',
+      name: 'normalize',
+      component: () => import('../views/NormalizePage.vue'),
+    },
+    {
       path: '/project/:projectId/task/:taskId/scale',
       name: 'scale',
       component: () => import('../views/ScalePage.vue'),

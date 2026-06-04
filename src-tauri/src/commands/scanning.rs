@@ -489,6 +489,40 @@ impl DirSnapshot {
         }
         if found { Some(total) } else { None }
     }
+
+    /// 找到 [img-*] 子目录中匹配 base_name 的首个文件，返回 (子目录名, 文件名)。
+    /// 用于把静帧预览图升级到最新阶段（02_done 成品）。
+    fn find_img_done_file(&self, base_name: &str) -> Option<(String, String)> {
+        for (dir_name, files) in &self.subdirs {
+            if !dir_name.starts_with("[img-") {
+                continue;
+            }
+            for (name, _, is_file) in files {
+                if *is_file && matches_base_name(name, base_name) {
+                    return Some((dir_name.clone(), name.clone()));
+                }
+            }
+        }
+        None
+    }
+}
+
+/// 读取文件修改时间（Unix 秒）。失败回退 0。用作前端预览缓存破坏版本号。
+fn file_mtime_secs(path: &Path) -> u64 {
+    path.metadata()
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// 取预览文件的缓存破坏版本号（Option<路径> → mtime 秒）
+fn preview_mtime(preview: &Option<String>) -> u64 {
+    preview
+        .as_ref()
+        .map(|p| file_mtime_secs(Path::new(p)))
+        .unwrap_or(0)
 }
 
 /// 扫描任务的素材列表（从 00_original 读取，关联各目录判定进度）
@@ -606,6 +640,7 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
             size_bytes,
             frame_count,
             extension: "seq".to_string(),
+            preview_version: preview_mtime(&first_frame),
             preview_path: first_frame,
             scales,
             fps,
@@ -644,6 +679,7 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
                 size_bytes,
                 frame_count,
                 extension: "seq".to_string(),
+                preview_version: preview_mtime(&first_frame),
                 preview_path: first_frame,
                 scales,
                 fps,
@@ -700,6 +736,17 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
             path.metadata().map(|m| m.len()).unwrap_or(0)
         };
 
+        // 静帧预览升级到最新阶段：优先 02_done 成品（webp），回退 00_original
+        let preview_path = if material_type == MaterialType::Image {
+            done_cache
+                .find_img_done_file(&base_name)
+                .map(|(sub, fname)| done_dir.join(sub).join(fname).to_string_lossy().to_string())
+                .or_else(|| Some(path.to_string_lossy().to_string()))
+        } else {
+            Some(path.to_string_lossy().to_string())
+        };
+        let preview_version = preview_mtime(&preview_path);
+
         materials.push(MaterialInfo {
             name: base_name,
             file_name,
@@ -709,7 +756,8 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
             size_bytes,
             frame_count: 0,
             extension: ext,
-            preview_path: Some(path.to_string_lossy().to_string()),
+            preview_version,
+            preview_path,
             scales,
             fps: None,
         });
@@ -794,6 +842,7 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
                     size_bytes,
                     frame_count,
                     extension: "seq".to_string(),
+                    preview_version: preview_mtime(&first_frame),
                     preview_path: first_frame,
                     scales,
                     fps,
@@ -845,6 +894,7 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
                     size_bytes,
                     frame_count: 0,
                     extension: ext,
+                    preview_version: file_mtime_secs(&path),
                     preview_path: Some(path.to_string_lossy().to_string()),
                     scales,
                     fps: None,

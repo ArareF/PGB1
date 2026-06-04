@@ -10,9 +10,9 @@
 
 | 目录 | 文件数 | 总行数 | 说明 |
 |------|--------|--------|------|
-| `src/components/` | 31 | 9893 | Vue UI 组件 |
+| `src/components/` | 30 | 9438 | Vue UI 组件 |
 | `src/composables/` | 23 | 2959 | 组合式函数（逻辑复用） |
-| `src/views/` | 19 | 8975 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
+| `src/views/` | 20 | 9468 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
 | `src/styles/` | 4 | 1789 | CSS 设计系统 |
 | `src/layouts/` | 1 | 321 | 主布局 |
 | `src/types/` | 2 | 46 | TypeScript 类型定义 |
@@ -78,7 +78,7 @@
 
 ---
 
-## 3. 组件（31）
+## 3. 组件（30）
 
 | 文件 | 行数 | 一句话职责 |
 |------|------|-----------|
@@ -102,7 +102,6 @@
 | `EditProjectDialog.vue` | 168 | 项目管理弹窗（mode 复用：重命名 / 截止 / 删除） |
 | `OnboardingDialog.vue` | 481 | 首次引导 4 步向导（表单走 `useOnboardingForm`） |
 | `PageGuideOverlay.vue` | 125 | 通用页面指引遮罩（批注气泡） |
-| `NormalizationDialog.vue` | 455 | 规范化预览弹窗（Phase 5b） |
 | `ConversionDialog.vue` | 389 | 格式转换选择弹窗（Phase 5d） |
 | `SubtaskDialog.vue` | 251 | 子任务管理弹窗（从 TaskPage 抽取） |
 | `NoteTooltip.vue` | 148 | 笔记悬停预览气泡（可交互 checkbox） |
@@ -146,7 +145,7 @@
 
 ---
 
-## 5. 页面（18）
+## 5. 页面（19）
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
@@ -155,6 +154,7 @@
 | `TaskListPage.vue` | 600 | 任务管理页面（启用 / 模板 双 Tab；时光机已抽为独立页面） |
 | `TimeMachinePage.vue` | 545 | 时光机独立页面（任务归档 / 素材归档 双 Tab） |
 | `TaskPage.vue` | 1472 | 素材浏览主页面（树形/名称双视图 + Phase 5a–5d + 预览视频） |
+| `NormalizePage.vue` | 601 | 规范化执行页面（全量盘点 + 命名/自适应画布/加黑底 三操作 + 列对齐预览 + 备份恢复） |
 | `ScalePage.vue` | 406 | 素材缩放执行页面（Phase 5c + 进度反馈） |
 | `ConvertPage.vue` | 737 | 格式转换执行页面（Phase 5d + TP 预设折叠面板） |
 | `GameIntroPage.vue` | 448 | 00_Game 浏览 + 游戏原型启动按钮 |
@@ -213,7 +213,7 @@
 | `commands/mod.rs` | 24 | 子模块 `pub use` 重导出 |
 | `commands/scanning.rs` | 1681 | 扫描命令（`scan_projects`/`scan_tasks`/`scan_materials` 等 + DirSnapshot 缓存） |
 | `commands/attendance.rs` | 1183 | 考勤命令（打卡 / 日报 / 提醒 / Credential Manager） |
-| `commands/conversion.rs` | 911 | 转换 / 缩放命令（Phase 5b/c/d） |
+| `commands/conversion.rs` | 1318 | 转换 / 缩放 / 规范化命令（Phase 5b+/c/d） |
 | `commands/projects.rs` | 717 | 项目管理命令（`mutate_project_config` 原子 helper 统一读改写） |
 | `commands/shortcuts.rs` | 591 | 快捷方式命令（图标提取 / favicon / find_game_exe） |
 | `commands/helpers.rs` | 521 | 公共辅助（DirSnapshot / PSD 缩略图 / mutate_project_config） |

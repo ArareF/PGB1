@@ -1,7 +1,7 @@
 use crate::models::{
     ConversionSequenceRequest, CopyMaterialRequest, CopyResult,
-    DragMaterialRequest, ImportResult, NormalizeActionType, NormalizePreviewItem,
-    ScaleRequest, StartConversionRequest,
+    DragMaterialRequest, ImportResult, NormalizeItem,
+    NormalizeRequest, ScaleRequest, StartConversionRequest,
 };
 use crate::conversion::{ConversionState, ConversionSession, handle_file_event, bring_window_to_front};
 use super::helpers::{split_prototype_name, copy_dir_recursive, matches_base_name, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
@@ -419,82 +419,6 @@ pub fn stop_conversion(
 
 // ─── Phase 5b: 规范化 (Normalization) ───────────────────────────────────
 
-/// 预览规范化操作
-#[tauri::command]
-pub fn preview_normalize(task_path: String) -> Result<Vec<NormalizePreviewItem>, String> {
-    let task_dir = Path::new(&task_path);
-    let original_dir = task_dir.join("00_original");
-
-    if !original_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let is_prototype = task_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(|n| n.to_lowercase() == "prototype")
-        .unwrap_or(false);
-
-    let mut preview_items = Vec::new();
-
-    if is_prototype {
-        for cat in &PROTOTYPE_SUBCATEGORIES {
-            let sub_dir = original_dir.join(cat);
-            if sub_dir.is_dir() {
-                scan_and_group_files(&sub_dir, &mut preview_items)?;
-            }
-        }
-    } else {
-        scan_and_group_files(&original_dir, &mut preview_items)?;
-    }
-
-    preview_items.sort_by(|a, b| a.original_name.cmp(&b.original_name));
-
-    Ok(preview_items)
-}
-
-/// 执行规范化操作
-#[tauri::command]
-pub fn execute_normalize(items: Vec<NormalizePreviewItem>) -> Result<(), String> {
-    for item in items {
-        let old_path = Path::new(&item.original_path);
-        if !old_path.exists() {
-            continue;
-        }
-
-        match item.action_type {
-            NormalizeActionType::Rename => {
-                let new_path = old_path
-                    .parent()
-                    .ok_or_else(|| format!("无法获取父目录: {}", item.original_path))?
-                    .join(&item.target_name);
-                fs::rename(old_path, new_path)
-                    .map_err(|e| format!("重命名失败 ({} -> {}): {}", item.original_name, item.target_name, e))?;
-            }
-            NormalizeActionType::MoveToFolder => {
-                let parent = old_path
-                    .parent()
-                    .ok_or_else(|| format!("无法获取父目录: {}", item.original_path))?;
-                let target_dir = parent.join(&item.target_name);
-
-                if !target_dir.exists() {
-                    fs::create_dir_all(&target_dir)
-                        .map_err(|e| format!("创建目标目录 {} 失败: {}", item.target_name, e))?;
-                }
-
-                let dest_path = target_dir.join(
-                    old_path
-                        .file_name()
-                        .ok_or_else(|| format!("无法获取文件名: {}", item.original_path))?,
-                );
-                fs::rename(old_path, dest_path)
-                    .map_err(|e| format!("移动文件 {} 到 {} 失败: {}", item.original_name, item.target_name, e))?;
-            }
-        }
-    }
-    Ok(())
-}
-
 /// 执行缩放操作
 #[tauri::command]
 pub fn execute_scaling(app_handle: AppHandle, requests: Vec<ScaleRequest>) -> Result<(), String> {
@@ -577,69 +501,381 @@ pub fn execute_scaling(app_handle: AppHandle, requests: Vec<ScaleRequest>) -> Re
     Ok(())
 }
 
-/// 扫描目录并按基础名分组文件，生成预览项
-fn scan_and_group_files(
-    dir: &Path,
-    preview_items: &mut Vec<NormalizePreviewItem>,
+// ─── Phase 5b+: 规范化独立页面（全量盘点 + 多操作执行）──────────────
+
+/// 规范化原件备份目录名（隐藏目录，盘点时按 '.' 前缀跳过）
+const NORMALIZE_BACKUP_DIR: &str = ".normalize_backup";
+
+/// 盘点 00_original 全部素材（含已命名的），供规范化独立页面使用。
+/// 与 preview_normalize 的区别：序列帧合并成一项，且已规范素材也会列出。
+#[tauri::command]
+pub fn scan_normalize_items(task_path: String) -> Result<Vec<NormalizeItem>, String> {
+    let task_dir = Path::new(&task_path);
+    let original_dir = task_dir.join("00_original");
+
+    if !original_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let is_prototype = task_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.to_lowercase() == "prototype")
+        .unwrap_or(false);
+
+    let mut items = Vec::new();
+
+    if is_prototype {
+        for cat in &PROTOTYPE_SUBCATEGORIES {
+            let sub_dir = original_dir.join(cat);
+            if sub_dir.is_dir() {
+                inventory_dir(&sub_dir, &mut items)?;
+            }
+        }
+    } else {
+        inventory_dir(&original_dir, &mut items)?;
+    }
+
+    items.sort_by(|a, b| a.base_name.cmp(&b.base_name));
+    Ok(items)
+}
+
+/// 执行规范化（多操作版）。每个素材按"内容操作（裁切→黑底）→ 命名操作"的固定顺序处理。
+/// `backup=true` 时，内容操作前把原件复制到同目录 `.normalize_backup/`（不覆盖已有备份）。
+#[tauri::command]
+pub fn execute_normalize_v2(
+    app_handle: AppHandle,
+    requests: Vec<NormalizeRequest>,
+    backup: bool,
 ) -> Result<(), String> {
-    let mut seq_groups: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    let total = requests.len();
+
+    for (index, req) in requests.into_iter().enumerate() {
+        // ── 1. 内容操作：仅静帧 PNG，且勾选了裁切或黑底 ──
+        if req.material_type == "static" && (req.do_trim || req.do_black_bg) {
+            if let Some(p) = req.paths.first() {
+                let path = Path::new(p);
+                if path.exists() {
+                    if backup {
+                        // 按规范后名做备份 key：跨"去后缀改名"稳定，二次处理永不覆盖纯净原件
+                        backup_original(path, &req.target_name)?;
+                    }
+                    apply_png_ops(path, req.do_trim, req.do_black_bg)?;
+                }
+            }
+        }
+
+        // ── 2. 命名操作 ──
+        if req.do_rename {
+            match req.material_type.as_str() {
+                "static" => {
+                    if let Some(p) = req.paths.first() {
+                        let old = Path::new(p);
+                        if old.exists() {
+                            let new_path = old
+                                .parent()
+                                .ok_or_else(|| format!("无法获取父目录: {}", p))?
+                                .join(&req.target_name);
+                            if new_path != old {
+                                fs::rename(old, &new_path).map_err(|e| {
+                                    format!("重命名失败 ({} -> {}): {}", p, req.target_name, e)
+                                })?;
+                            }
+                        }
+                    }
+                }
+                "sequence" => {
+                    let first = req
+                        .paths
+                        .first()
+                        .ok_or_else(|| "序列帧路径为空".to_string())?;
+                    let first_path = Path::new(first);
+                    let parent = first_path
+                        .parent()
+                        .ok_or_else(|| format!("无法获取父目录: {}", first))?;
+
+                    // 已在目标文件夹内（已规范序列帧）则跳过，避免 base/base 嵌套
+                    let already_in_folder = parent
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| n == req.target_name)
+                        .unwrap_or(false);
+
+                    if !already_in_folder {
+                        let target_dir = parent.join(&req.target_name);
+                        if !target_dir.exists() {
+                            fs::create_dir_all(&target_dir).map_err(|e| {
+                                format!("创建序列帧目录 {} 失败: {}", req.target_name, e)
+                            })?;
+                        }
+                        for p in &req.paths {
+                            let src = Path::new(p);
+                            if !src.exists() {
+                                continue;
+                            }
+                            let dest = target_dir.join(
+                                src.file_name()
+                                    .ok_or_else(|| format!("无法获取文件名: {}", p))?,
+                            );
+                            fs::rename(src, dest)
+                                .map_err(|e| format!("移动帧 {} 失败: {}", p, e))?;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let _ = app_handle.emit("normalize-progress", serde_json::json!({
+            "current": index + 1,
+            "total": total,
+            "name": req.target_name,
+        }));
+    }
+
+    Ok(())
+}
+
+/// 盘点单个目录：子目录视为已规范序列帧夹；松散文件按基础名分组。
+fn inventory_dir(dir: &Path, items: &mut Vec<NormalizeItem>) -> Result<(), String> {
+    // 松散文件分组：base -> (paths, 是否带数字帧号后缀)
+    let mut loose: HashMap<String, (Vec<PathBuf>, bool)> = HashMap::new();
 
     let entries = fs::read_dir(dir).map_err(|e| format!("读取目录失败: {}", e))?;
-
     for entry in entries.flatten() {
         let path = entry.path();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name.starts_with('.') {
+            continue; // 跳过隐藏项（含 .normalize_backup）
+        }
+
+        // 已规范的序列帧文件夹
+        if path.is_dir() {
+            let frames = collect_frame_files(&path);
+            if frames.is_empty() {
+                continue;
+            }
+            let ext = frames[0]
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            items.push(NormalizeItem {
+                base_name: name.to_string(),
+                material_type: "sequence".to_string(),
+                ext,
+                frame_count: frames.len() as u32,
+                needs_rename: false,
+                is_png: false,        // 两项新操作仅静帧，序列帧一律不可选
+                is_add_or_screen: false,
+                thumbnail_path: frames[0].to_string_lossy().to_string(),
+                paths: frames.iter().map(|p| p.to_string_lossy().to_string()).collect(),
+                target_name: name.to_string(),
+                has_backup: false, // 序列帧不做内容操作，无备份
+            });
+            continue;
+        }
+
         if !path.is_file() {
             continue;
         }
 
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if name.starts_with('.') {
-            continue;
-        }
-
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        if let Some(pos) = stem.rfind('_') {
-            let suffix = &stem[pos + 1..];
-            if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
-                let base = stem[..pos].to_string();
-                seq_groups.entry(base).or_default().push(path);
-            }
+        let (base, had_suffix) = split_base_suffix(stem);
+        let entry = loose.entry(base).or_insert_with(|| (Vec::new(), false));
+        entry.0.push(path);
+        if had_suffix {
+            entry.1 = true;
         }
     }
 
-    for (base_name, mut files) in seq_groups {
-        if files.len() == 1 {
-            let path = &files[0];
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-
-            if stem.ends_with("_01") {
-                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                let target_name = format!("{}.{}", base_name, ext);
-                preview_items.push(NormalizePreviewItem {
-                    original_path: path.to_string_lossy().to_string(),
-                    original_name: name.to_string(),
-                    target_name,
-                    action_type: NormalizeActionType::Rename,
-                    is_sequence: false,
-                });
-            }
+    for (base, (mut files, had_suffix)) in loose {
+        files.sort();
+        if files.len() > 1 {
+            // 多文件同基础名 → 未规范序列帧（待移入文件夹）
+            let ext = files[0]
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            items.push(NormalizeItem {
+                base_name: base.clone(),
+                material_type: "sequence".to_string(),
+                ext,
+                frame_count: files.len() as u32,
+                needs_rename: true,
+                is_png: false,
+                is_add_or_screen: false,
+                thumbnail_path: files[0].to_string_lossy().to_string(),
+                paths: files.iter().map(|p| p.to_string_lossy().to_string()).collect(),
+                target_name: base,
+                has_backup: false, // 序列帧不做内容操作，无备份
+            });
         } else {
-            files.sort();
-            for path in files {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                preview_items.push(NormalizePreviewItem {
-                    original_path: path.to_string_lossy().to_string(),
-                    original_name: name.to_string(),
-                    target_name: base_name.clone(),
-                    action_type: NormalizeActionType::MoveToFolder,
-                    is_sequence: true,
-                });
-            }
+            // 单文件 → 静帧
+            let path = &files[0];
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let is_png = ext == "png";
+            let target_name = format!("{}.{}", base, ext);
+            // 备份按规范后名做 key（跨"去后缀改名"稳定，二次处理不会覆盖纯净原件）
+            let has_backup = dir.join(NORMALIZE_BACKUP_DIR).join(&target_name).exists();
+            items.push(NormalizeItem {
+                base_name: base.clone(),
+                material_type: "static".to_string(),
+                ext: ext.clone(),
+                frame_count: 1,
+                needs_rename: had_suffix, // 带 _NN 后缀才需去后缀
+                is_png,
+                is_add_or_screen: is_png && base_is_add_or_screen(&base),
+                thumbnail_path: path.to_string_lossy().to_string(),
+                paths: vec![path.to_string_lossy().to_string()],
+                target_name,
+                has_backup,
+            });
         }
     }
 
     Ok(())
+}
+
+/// 拆出基础名与"是否带纯数字帧号后缀"。`main_a_01` -> ("main_a", true)；`main_a` -> ("main_a", false)
+fn split_base_suffix(stem: &str) -> (String, bool) {
+    if let Some(pos) = stem.rfind('_') {
+        let suffix = &stem[pos + 1..];
+        if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+            return (stem[..pos].to_string(), true);
+        }
+    }
+    (stem.to_string(), false)
+}
+
+/// base 按 '_' 切分后，任一段等于 add 或 screen（区分 address/screenshot 等误伤）
+fn base_is_add_or_screen(base: &str) -> bool {
+    base.split('_').any(|seg| seg == "add" || seg == "screen")
+}
+
+/// 收集序列帧文件夹内的帧文件（非隐藏、是文件），按名排序
+fn collect_frame_files(dir: &Path) -> Vec<PathBuf> {
+    let mut frames: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.starts_with('.') || !p.is_file() {
+                continue;
+            }
+            frames.push(p);
+        }
+    }
+    frames.sort();
+    frames
+}
+
+/// 执行前把原件复制到同目录 `.normalize_backup/{backup_name}`。
+/// 以规范后名（target_name）为 key，且已存在备份则不覆盖——保证永远保留最早的纯净原件，
+/// 即使同一素材后续多次处理（先裁切、再加黑底）也不会把中间态当原件。
+fn backup_original(path: &Path, backup_name: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("无法获取父目录: {}", path.display()))?;
+    let backup_dir = parent.join(NORMALIZE_BACKUP_DIR);
+    if !backup_dir.exists() {
+        fs::create_dir_all(&backup_dir)
+            .map_err(|e| format!("创建备份目录失败: {}", e))?;
+    }
+    let dest = backup_dir.join(backup_name);
+    if !dest.exists() {
+        fs::copy(path, &dest)
+            .map_err(|e| format!("备份 {} 失败: {}", path.display(), e))?;
+    }
+    Ok(())
+}
+
+/// 从备份恢复纯净原件。`current_path` 为当前文件路径（可能已改名/已处理），
+/// `backup_name` 为规范后名（备份文件 key）。恢复后原文件被纯净原件覆盖。
+#[tauri::command]
+pub fn restore_normalize_backup(current_path: String, backup_name: String) -> Result<(), String> {
+    let current = Path::new(&current_path);
+    let parent = current
+        .parent()
+        .ok_or_else(|| format!("无法获取父目录: {}", current_path))?;
+    let backup = parent.join(NORMALIZE_BACKUP_DIR).join(&backup_name);
+    if !backup.exists() {
+        return Err(format!("备份不存在: {}", backup.display()));
+    }
+    fs::copy(&backup, current)
+        .map_err(|e| format!("恢复 {} 失败: {}", backup_name, e))?;
+    // 恢复后删除备份：备份已完成使命，盘点时 has_backup 转 false，「恢复」按钮随之消失
+    fs::remove_file(&backup)
+        .map_err(|e| format!("删除备份 {} 失败: {}", backup_name, e))?;
+    Ok(())
+}
+
+/// 对静帧 PNG 应用裁切 / 加黑底，结果原地写回
+fn apply_png_ops(path: &Path, do_trim: bool, do_black_bg: bool) -> Result<(), String> {
+    let img = image::open(path)
+        .map_err(|e| format!("无法打开 PNG {}: {}", path.display(), e))?;
+    let mut rgba = img.to_rgba8();
+
+    if do_trim {
+        if let Some(cropped) = trim_transparent(&rgba) {
+            rgba = cropped;
+        }
+    }
+    if do_black_bg {
+        rgba = composite_on_black(&rgba);
+    }
+
+    rgba.save(path)
+        .map_err(|e| format!("保存 PNG {} 失败: {}", path.display(), e))?;
+    Ok(())
+}
+
+/// 裁掉四周完全透明的区域，返回裁切后的图。全透明或无可裁时返回 None（不改动）。
+fn trim_transparent(img: &image::RgbaImage) -> Option<image::RgbaImage> {
+    let (w, h) = img.dimensions();
+    let (mut min_x, mut min_y, mut max_x, mut max_y) = (w, h, 0u32, 0u32);
+    let mut found = false;
+
+    for y in 0..h {
+        for x in 0..w {
+            if img.get_pixel(x, y)[3] != 0 {
+                found = true;
+                if x < min_x { min_x = x; }
+                if y < min_y { min_y = y; }
+                if x > max_x { max_x = x; }
+                if y > max_y { max_y = y; }
+            }
+        }
+    }
+
+    if !found {
+        return None; // 全透明，保持原样
+    }
+    let cw = max_x - min_x + 1;
+    let ch = max_y - min_y + 1;
+    if cw == w && ch == h {
+        return None; // 没有可裁的透明边
+    }
+    Some(image::imageops::crop_imm(img, min_x, min_y, cw, ch).to_image())
+}
+
+/// 把图合成到纯黑底上（add/screen 混合模式下黑色不贡献）。out_rgb = src_rgb × src_alpha，alpha 置 255。
+fn composite_on_black(img: &image::RgbaImage) -> image::RgbaImage {
+    let (w, h) = img.dimensions();
+    let mut out = image::RgbaImage::new(w, h);
+    for (x, y, px) in img.enumerate_pixels() {
+        let a = px[3] as u32;
+        let r = (px[0] as u32 * a / 255) as u8;
+        let g = (px[1] as u32 * a / 255) as u8;
+        let b = (px[2] as u32 * a / 255) as u8;
+        out.put_pixel(x, y, image::Rgba([r, g, b, 255]));
+    }
+    out
 }
 
 // ─── 拖拽上传 ─────────────────────────────────────────────

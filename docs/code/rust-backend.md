@@ -105,10 +105,10 @@
 - `spawn_daily_report_scroll` 轮询就绪后 JS focus + HWND 置顶 + `send_ctrl_end()` 跳到文档末尾
 - `send_ctrl_end()` / `scroll_to_bottom_via_wheel`（Win32 API 物理滚动）
 
-### commands/conversion.rs（911 行）
+### commands/conversion.rs（1318 行）
 
 **转换/缩放命令**：
-- `preview_normalize` / `execute_normalize`（Phase 5b）
+- `scan_normalize_items` / `execute_normalize_v2` / `restore_normalize_backup`（Phase 5b+ 规范化独立页面：全量盘点 + 命名/自适应画布/加黑底三操作 + `.normalize_backup` 备份/恢复 + `normalize-progress` 事件；备份按规范后名做 key 保留最早纯净原件；图像辅助 `trim_transparent` / `composite_on_black`）
 - `execute_scaling`（Phase 5c，Lanczos3 + `scaling-progress` 事件）
 - `start_conversion` / `stop_conversion`（Phase 5d 静帧 webp 监控）
 - `execute_sequence_conversion`（序列帧 TexturePacker）
@@ -263,7 +263,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 | `load_global_tasks` / `save_global_tasks` | `root_dir[, config]` | `GlobalTaskConfig` / `()` | `.pgb1_global_tasks.json` CRUD |
 | `apply_task_changes` | `project_path, enabled_tasks` | `ApplyTaskResult` | 核心：对比启用列表 → 创建/归档任务文件夹 |
 | `list_archived_tasks` / `restore_archived_task` / `delete_archived_version` | ... | ... | 时光机：60 天过期清理 |
-| `preview_normalize` / `execute_normalize` | ... | ... | Phase 5b 规范化预览 + 执行 |
+| `scan_normalize_items` / `execute_normalize_v2` / `restore_normalize_backup` | `task_path` ／ `app_handle, requests, backup` ／ `current_path, backup_name` | `Vec<NormalizeItem>` ／ `()` ／ `()` | Phase 5b+ 规范化页面：全量盘点 + 命名/裁透明/加黑底 + 备份/恢复 |
 | `execute_scaling` | `app_handle, requests` | `()` | Phase 5c Lanczos3 + `scaling-progress` 事件 |
 | `start_conversion` / `stop_conversion` | ... | `()` | Phase 5d 转换会话启停 |
 | `execute_sequence_conversion` | `app_handle, sequences` | `()` | 序列帧 TexturePacker 转换流程 |

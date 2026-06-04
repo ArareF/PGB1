@@ -155,8 +155,10 @@ pub struct MaterialInfo {
     pub frame_count: u32,
     /// 文件扩展名（小写）
     pub extension: String,
-    /// 预览图路径（静帧=文件本身，序列帧=首帧）
+    /// 预览图路径（静帧=最新阶段文件，优先 02_done webp，回退 00_original；序列帧=首帧）
     pub preview_path: Option<String>,
+    /// 预览文件修改时间（Unix 秒），前端用作缓存破坏版本号（文件原地改动后强制刷新）
+    pub preview_version: u64,
     /// 已缩放的比例列表（静帧：扫描 01_scale/[XX]/ 得出；序列帧/其他：空）
     pub scales: Vec<u32>,
     /// 序列帧帧率（从 02_done/[an-XX-YY]/ 目录名解析；转换前为 None）
@@ -365,24 +367,45 @@ pub struct ArchivedMaterialVersion {
 
 // ─── 规范化功能 ─────────────────────────────────────────────
 
-/// 规范化操作类型
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum NormalizeActionType {
-    /// 重命名文件（用于静帧去 _01）
-    Rename,
-    /// 创建文件夹并移动（用于序列帧）
-    MoveToFolder,
+/// 规范化页面：单个素材的盘点项（每素材一项，序列帧不再逐帧展开）
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NormalizeItem {
+    /// 基础名（已去掉 _NN 帧号与扩展名）
+    pub base_name: String,
+    /// "static" | "sequence"
+    pub material_type: String,
+    /// 小写扩展名（序列帧取首帧扩展名）
+    pub ext: String,
+    /// 帧数（静帧恒为 1）
+    pub frame_count: u32,
+    /// 命名是否仍需规范化（去后缀 / 移入文件夹）
+    pub needs_rename: bool,
+    /// 是否 PNG（决定能否做自适应画布 / 加黑底）
+    pub is_png: bool,
+    /// base_name 按 '_' 切分后任一段等于 add 或 screen
+    pub is_add_or_screen: bool,
+    /// 缩略图绝对路径（静帧=本体 / 序列帧=首帧），前端用 convertFileSrc 显示
+    pub thumbnail_path: String,
+    /// 素材包含的全部文件绝对路径（静帧 1 个 / 序列帧 N 个）
+    pub paths: Vec<String>,
+    /// 规范化目标名（静帧=base.ext / 序列帧=base 文件夹名）
+    pub target_name: String,
+    /// 是否存在可恢复的纯净原件备份（.normalize_backup/{target_name}）
+    pub has_backup: bool,
 }
 
-/// 规范化单项操作预览
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct NormalizePreviewItem {
-    pub original_path: String,
-    pub original_name: String,
+/// 规范化页面：执行请求（每素材携带其勾选的操作）
+#[derive(Debug, Deserialize, Clone)]
+pub struct NormalizeRequest {
+    pub paths: Vec<String>,
+    pub material_type: String,
     pub target_name: String,
-    pub action_type: NormalizeActionType,
-    pub is_sequence: bool,
+    /// 命名规范化（静帧改名 / 序列帧移入文件夹）
+    pub do_rename: bool,
+    /// 自适应画布（裁切透明包围盒，仅静帧 PNG）
+    pub do_trim: bool,
+    /// 添加黑底（合成纯黑底，仅静帧 PNG）
+    pub do_black_bg: bool,
 }
 
 /// 缩放请求中的素材信息

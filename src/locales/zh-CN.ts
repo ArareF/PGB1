@@ -234,14 +234,35 @@ export default {
   },
 
   normalize: {
-    title: '规范化预览',
-    desc: '识别静帧与序列帧，清理文件名后缀',
-    alreadyNormalized: '00_original 目录已规范化，无需操作',
-    sourceFile: '原始文件',
-    target: '目标',
-    removeSuffix: '去后缀',
-    classify: '归类',
+    title: '规范化',
+    desc: '识别静帧与序列帧，清理命名并按需处理 PNG',
+    // 全局操作选项
+    optRename: '命名规范化',
+    optRenameHint: '静帧去 _NN 后缀 / 序列帧移入文件夹',
+    optTrim: '自适应画布',
+    optTrimHint: '裁掉 PNG 静帧多余的透明区域',
+    optBlackBg: '添加黑底',
+    optBlackBgHint: 'add/screen 的 PNG 静帧合成纯黑底',
+    optBackup: '执行前备份原件',
+    optBackupHint: '改动前复制到 .normalize_backup/（不可逆操作兜底）',
+    // 素材类型 / 状态
+    typeStatic: '静帧',
+    typeSequence: '序列帧',
+    frames: '{count} 帧',
+    alreadyNamed: '已规范',
+    notPng: '非 PNG',
+    notAddScreen: '非 add/screen',
+    // 列表与执行
+    noMaterials: '00_original 暂无素材',
+    columnMaterial: '素材',
+    columnOps: '操作',
+    colPreview: '将进行的操作',
+    selectedOps: '已选 {count} 项操作',
+    moveFrames: '移动{count}帧',
+    noOp: '不处理',
+    restore: '恢复原件',
     execute: '执行规范化',
+    progress: '处理中 {current}/{total}',
   },
 
   settings: {

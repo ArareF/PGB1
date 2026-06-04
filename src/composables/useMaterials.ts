@@ -14,6 +14,8 @@ export interface MaterialInfo {
   frame_count: number
   extension: string
   preview_path: string | null
+  /** 预览文件 mtime（Unix 秒），用作缓存破坏版本号 */
+  preview_version: number
   scales: number[]
   fps: number | null
 }

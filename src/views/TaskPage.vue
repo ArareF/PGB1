@@ -22,7 +22,6 @@ import SequencePreview from '../components/SequencePreview.vue'
 import ImageViewer from '../components/ImageViewer.vue'
 import FileDetailSidebar from '../components/FileDetailSidebar.vue'
 import UploadConfirmDialog from '../components/UploadConfirmDialog.vue'
-import NormalizationDialog from '../components/NormalizationDialog.vue'
 import SubtaskDialog from '../components/SubtaskDialog.vue'
 import NoteEditor from '../components/NoteEditor.vue'
 import NoteDialog from '../components/NoteDialog.vue'
@@ -394,8 +393,6 @@ async function markOriginalUploaded() {
   }
 }
 
-/** 规范化弹窗状态 */
-const showNormalizeDialog = ref(false)
 const showGuide = ref(false)
 
 /** ─── 导航按钮高亮判定 ──────────────────────────────
@@ -417,12 +414,12 @@ const hasConvertWork = computed(() =>
   )
 )
 
-/** 扫描 00_original 判断是否存在需要规范化的文件 */
+/** 扫描 00_original 判断是否存在需要命名规范化的素材（高亮判定只看命名工作）*/
 async function checkNormalizeWork() {
   if (!taskFolderPathRef.value) { hasNormalizeWork.value = false; return }
   try {
-    const items = await invoke<unknown[]>('preview_normalize', { taskPath: taskFolderPathRef.value })
-    hasNormalizeWork.value = items.length > 0
+    const items = await invoke<{ needs_rename: boolean }[]>('scan_normalize_items', { taskPath: taskFolderPathRef.value })
+    hasNormalizeWork.value = items.some(it => it.needs_rename)
   } catch (e) {
     console.error('检测规范化状态失败:', e)
     hasNormalizeWork.value = false
@@ -501,7 +498,7 @@ function updateNavigation() {
         handler: () => { subtaskAutoPrompt.value = false; subtaskRevertPrompt.value = false; showSubtaskDialog.value = true },
         disabled: !hasSubtasks,
       },
-      { id: 'normalize', label: t('task.normalize'), handler: () => { showNormalizeDialog.value = true }, ...levelFor('normalize', hasNormalizeWork.value) },
+      { id: 'normalize', label: t('task.normalize'), handler: () => router.push({ name: 'normalize', params: { projectId, taskId }, query: { taskPath: taskFolderPathRef.value } }), ...levelFor('normalize', hasNormalizeWork.value) },
       { id: 'scale', label: t('task.scale'), handler: startScaling, ...levelFor('scale', hasScaleWork.value) },
       { id: 'convert', label: t('task.convert'), handler: () => router.push({ name: 'convert', params: { projectId, taskId }, query: { taskPath: taskFolderPathRef.value } }), ...levelFor('convert', hasConvertWork.value) },
     ],
@@ -1185,14 +1182,6 @@ onUnmounted(() => {
     :file-count="1"
     @confirm="confirmPreviewUpload"
     @cancel="cancelPreviewUpload"
-  />
-
-  <!-- 规范化预览弹窗 -->
-  <NormalizationDialog
-    :show="showNormalizeDialog"
-    :task-path="taskFolderPathRef"
-    @close="showNormalizeDialog = false"
-    @success="refresh"
   />
 
   <!-- 子任务完成弹窗 -->

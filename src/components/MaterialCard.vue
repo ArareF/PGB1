@@ -71,7 +71,7 @@ function progressLabel(progress: string): string {
         <!-- 静帧/其他：图片预览 -->
         <img
           v-else-if="material.preview_path"
-          :src="convertFileSrc(material.preview_path)"
+          :src="`${convertFileSrc(material.preview_path)}?v=${material.preview_version}`"
           :alt="material.name"
           class="preview-img"
           loading="lazy"

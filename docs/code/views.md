@@ -1,6 +1,6 @@
 # 页面详情
 
-> `src/views/` 下 18 个页面的数据流、子组件依赖、核心交互。
+> `src/views/` 下 19 个页面的数据流、子组件依赖、核心交互。
 > 顶层索引见 [CODE_INDEX.md](../../CODE_INDEX.md#5-页面18)。
 
 ---
@@ -126,6 +126,23 @@
 ---
 
 ## Phase 5 工作流页面
+
+### NormalizePage.vue（601 行）
+
+**职责**：规范化执行页面（Phase 5b+），取代旧 `NormalizationDialog` 弹窗。
+
+**布局**：素材列表占满 main-content（每素材一行：缩略图 + 名称 + 类型角标 + 操作勾选）；全局开关面板 Teleport 到 `#content-row`。
+
+**数据流**：`scan_normalize_items`（全量盘点 `00_original`，序列帧合并为一项、已命名素材也列出）→ `selections[]` 与 `items[]` 平行 → `execute_normalize_v2`（按内容操作→命名操作顺序执行，发 `normalize-progress`）。
+
+**三操作 + 资格判定**：
+- 命名规范化：`needs_rename` 才可选（否则灰显「已规范」）
+- 自适应画布：仅 `static && is_png`
+- 添加黑底：仅 `static && is_png && is_add_or_screen`（base 按 `_` 切分含 add/screen）
+
+**全局开关**：命名规范化(ON)/自适应画布(OFF)/添加黑底(OFF)/执行前备份(ON)；`watch` 全局开关→批量重置有资格行（批量设置语义，手动覆盖会被下次全局切换重置）。
+
+---
 
 ### ScalePage.vue（406 行）
 

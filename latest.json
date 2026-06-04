@@ -1,11 +1,11 @@
 {
-  "version": "2.8.15",
-  "notes": "规范化升级为独立页面：序列帧合并显示、默认列出全部素材；新增 PNG 静帧「自适应画布」（裁切多余透明区域）与「添加黑底」（add/screen 合成纯黑底）；原件自动备份并支持一键恢复；修复静帧预览未显示最新阶段、原地改动后不刷新的问题。",
-  "pub_date": "2026-06-04T04:49:42Z",
+  "version": "2.8.16",
+  "notes": "修复 TexturePacker 序列帧的「打开工程文件」：此前转换完成后点击修改/打开工程文件会提示素材缺失（工程文件被移入子目录后素材相对路径错位一级），现已修复；打开时还会自动修复历史上已转换的旧工程文件。",
+  "pub_date": "2026-06-04T07:49:53Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.15/PGB1_2.8.15_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNklFYzFWODJZQUpLOUIzK0UwY1YvZGJoZVpqR01HOTBrVkRrRDB1WldyK0VNTTdjMUtrZWIxYlBoUDEzTHFYaFFRd24yaGdURm5zSHhGajFBN2hJRHdnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNTQ4NTUyCWZpbGU6UEdCMV8yLjguMTVfeDY0LXNldHVwLmV4ZQo0MmRvZExJZ21CUDZ4RDhUZXBLdGVuU2FFUHdHQjFVUGlaR1FhMFNKdFhhUXFzbDZWSVh0L0RqbUpmd3MxOGFMam50YXh1eUpoREE2dmpnZVhwd3REdz09Cg=="
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.16/PGB1_2.8.16_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkQzbHNWZEFmQVpmdk54STFMQ096TXRZZ3hmeE1TOHJUWlNPeGZIYllJaWNPK3JSVU9FREpsQU5qM3N4UDFGTkZ6eHFYblJiNlMwRGtCcG01SFdwc3dRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNTU5Mzc5CWZpbGU6UEdCMV8yLjguMTZfeDY0LXNldHVwLmV4ZQp1ajIycDVoYWtqc2h5cDhFeWhuZENWK2prb3B6aTBnMEtZdElyVjJxWHFPZnhQc3AzYklaL2dWRTF0aGtNaExTZEtTYjVOcUo1d3VHOGdoU2RTR2FCUT09Cg=="
     }
   }
 }

@@ -119,6 +119,7 @@ pub fn run() {
             commands::read_text_file,
             commands::find_game_exe,
             commands::open_file,
+            commands::open_sequence_tps,
             commands::rename_sequence_fps,
             commands::set_default_ae_file,
             commands::update_project_deadline,

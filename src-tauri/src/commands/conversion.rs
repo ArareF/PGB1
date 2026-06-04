@@ -301,6 +301,11 @@ pub async fn execute_sequence_conversion<R: Runtime>(
                 if belongs {
                     let dest = target_dir.join(&fname);
                     fs::rename(&path, &dest).map_err(|e| format!("移动 {} 失败: {}", fname, e))?;
+                    // .tps 从 02_done/ 根移入 [an-X-Y]/ 子目录后，TP 写入的 sprite 源相对路径
+                    // 错位一级（少一个 ../），立即补偿，否则用户再用 GUI 打开会报"素材缺失"。
+                    if ext == "tps" {
+                        fix_tps_sprite_depth(&dest)?;
+                    }
                 }
             }
         }
@@ -374,6 +379,44 @@ fn parse_tps_scale(tps_path: &Path) -> Result<u32, String> {
         }
     }
     Err(format!("无法从 .tps 解析 scale 值: {}", tps_path.display()))
+}
+
+// .tps 最终落在 02_done/[an-X-Y]/ 子目录，距 task_dir 两级，故 sprite 源（位于 task_dir/00_original/）
+// 的正确相对前缀为 ../../00_original/。TP 在生成阶段把 .tps 暂存于 02_done/ 根目录，写入的是一级前缀
+// ../00_original/；移动进 [an-X-Y]/ 后即错位一级。以下两个常量用于把一级前缀升级为两级。
+// 锚定 <filename> 前缀：两级形态 "<filename>../../00_original/" 不含一级子串 "<filename>../00_original/"
+// （前者第 11 字符起是 ".." 而非 "00"），故 replace 幂等，可安全重复调用。
+const TPS_SPRITE_REF_DEPTH1: &str = "<filename>../00_original/";
+const TPS_SPRITE_REF_DEPTH2: &str = "<filename>../../00_original/";
+
+/// 修复 .tps 内 sprite 源路径深度：一级前缀 ../00_original/ 升级为两级 ../../00_original/。
+/// 已是两级的形态不受影响（幂等）。返回是否发生了实际修改。读/写失败立即报错，不静默。
+fn fix_tps_sprite_depth(tps_path: &Path) -> Result<bool, String> {
+    let content = fs::read_to_string(tps_path)
+        .map_err(|e| format!("读取 .tps 修复源路径失败 ({}): {}", tps_path.display(), e))?;
+    if !content.contains(TPS_SPRITE_REF_DEPTH1) {
+        return Ok(false);
+    }
+    let fixed = content.replace(TPS_SPRITE_REF_DEPTH1, TPS_SPRITE_REF_DEPTH2);
+    fs::write(tps_path, &fixed)
+        .map_err(|e| format!("写回 .tps 修复源路径失败 ({}): {}", tps_path.display(), e))?;
+    log::info!("[conversion] 已修复 .tps sprite 源路径深度: {}", tps_path.display());
+    Ok(true)
+}
+
+/// 打开序列帧工程文件（.tps）：打开前先自愈 sprite 源路径深度，再用系统关联程序打开。
+/// 兼顾存量已转换的坏 .tps（历史上路径错位一级）与新转换文件。
+/// 自愈失败仅记录、不阻断打开——让用户至少能进入 GUI。
+#[tauri::command]
+pub fn open_sequence_tps(path: String) -> Result<(), String> {
+    let tps_path = Path::new(&path);
+    if !tps_path.exists() {
+        return Err(format!("工程文件不存在: {}", path));
+    }
+    if let Err(e) = fix_tps_sprite_depth(tps_path) {
+        log::warn!("[conversion] 打开前修复 .tps 路径失败，继续打开: {}", e);
+    }
+    super::files::open_file(path)
 }
 
 /// 停止转换会话

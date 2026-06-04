@@ -290,7 +290,8 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     if (!doneVersion) return
     const tpsPath = doneVersion.folder_path.replace(/\\/g, '/') + '/' + mat.name + '.tps'
     try {
-      await invoke('open_file', { path: tpsPath })
+      // 用专用命令：打开前自愈 .tps 内 sprite 源路径深度，兼顾存量坏文件（历史错位一级）
+      await invoke('open_sequence_tps', { path: tpsPath })
     } catch (e) {
       console.error('打开工程文件失败:', e)
     }

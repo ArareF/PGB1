@@ -303,16 +303,23 @@ async function handleRestore(it: NormalizeItem) {
 <style scoped>
 .list-area {
   height: 100%;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 七列网格：缩略图 | 名称 | 预览 | 恢复 | 命名 | 自适应画布 | 添加黑底（表头与行共用列定义，保证按列对齐）*/
 .normalize-table {
   --grid-cols: 56px minmax(110px, 1fr) minmax(150px, 1.5fr) 104px 72px 100px 88px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding: 2px;
 }
 
+/* 表头固定在顶部不参与滚动（滚动容器压到其下方）*/
 .table-head {
+  flex-shrink: 0;
   display: grid;
   grid-template-columns: var(--grid-cols);
   align-items: center;
@@ -323,17 +330,17 @@ async function handleRestore(it: NormalizeItem) {
   color: var(--text-primary);
   letter-spacing: 0.02em;
   border-bottom: 1px solid var(--border-medium);
-  position: sticky;
-  top: 0;
-  background: transparent;
-  z-index: 1;
 }
 
 .table-head .col-op {
   text-align: center;
 }
 
+/* 只有素材行在表头下方独立滚动 */
 .table-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }

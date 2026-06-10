@@ -9,9 +9,12 @@ mod pinboard;
 mod projects;
 mod notes;
 mod settings;
+pub(crate) mod psd;
 pub(crate) mod helpers;
+pub(crate) mod workflow_paths;
 
 pub use scanning::*;
+pub use psd::*;
 pub use conversion::*;
 pub use attendance::*;
 pub use translation::*;

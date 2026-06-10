@@ -1,8 +1,26 @@
+use super::workflow_paths::{export_dir, DIR_NC_BREAKDOWN};
 use crate::models::{
-    GlobalTask, GlobalTaskChild, GlobalTaskConfig, ProjectConfig,
+    GlobalTask, GlobalTaskChild, GlobalTaskConfig, MaterialType, ProjectConfig,
 };
 use std::fs;
 use std::path::Path;
+
+/// 文件类型扩展名 SSOT（小写，与前端 src/config/fileTypes.ts 对齐）
+pub(crate) const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "gif"];
+pub(crate) const VIDEO_EXTS: &[&str] = &["mp4", "mov", "avi", "mkv", "webm", "flv"];
+/// 序列帧帧文件允许的扩展名（不含 gif：帧文件必须是静态位图）
+pub(crate) const FRAME_EXTS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp"];
+
+/// 按扩展名（须已小写）判定素材类型
+pub(crate) fn material_type_from_ext(ext: &str) -> MaterialType {
+    if IMAGE_EXTS.contains(&ext) {
+        MaterialType::Image
+    } else if VIDEO_EXTS.contains(&ext) {
+        MaterialType::Video
+    } else {
+        MaterialType::Other
+    }
+}
 
 /// 精确匹配文件 stem 是否属于指定 base_name
 /// 兼容 TexturePacker multipack 输出的 `name-0.webp`
@@ -250,7 +268,7 @@ pub(crate) fn load_or_create_config(project_path: &Path) -> Result<ProjectConfig
         .unwrap_or("unknown")
         .to_string();
 
-    let export_path = project_path.join("03_Render_VFX").join("VFX").join("Export");
+    let export_path = export_dir(project_path);
     let enabled_tasks = if export_path.exists() {
         scan_task_names(&export_path)?
             .into_iter()
@@ -400,8 +418,6 @@ pub(crate) fn count_preview_progress(preview_dir: &Path, nc_preview_dir: &Path) 
         return (0, 0);
     }
 
-    let video_exts: &[&str] = &["mp4", "mov", "avi", "mkv", "webm", "flv"];
-
     // 收集 03_preview/ 第一层视频文件名（小写，含扩展名），并标记是否为 breakdown
     let mut video_names: Vec<(String, bool)> = Vec::new();
     if let Ok(entries) = fs::read_dir(preview_dir) {
@@ -409,7 +425,7 @@ pub(crate) fn count_preview_progress(preview_dir: &Path, nc_preview_dir: &Path) 
             let path = entry.path();
             if !path.is_file() { continue; }
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            if !video_exts.contains(&ext.as_str()) { continue; }
+            if !VIDEO_EXTS.contains(&ext.as_str()) { continue; }
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                 let name_lower = name.to_lowercase();
                 let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
@@ -450,7 +466,7 @@ pub(crate) fn count_preview_progress(preview_dir: &Path, nc_preview_dir: &Path) 
     };
 
     // 收集 nextcloud/preview/breakdown/ 中的文件名（小写）
-    let nc_breakdown = nc_preview_dir.join("breakdown");
+    let nc_breakdown = nc_preview_dir.join(DIR_NC_BREAKDOWN);
     let nc_breakdown_files: std::collections::HashSet<String> = if nc_breakdown.exists() {
         fs::read_dir(&nc_breakdown)
             .map(|entries| entries.flatten()
@@ -575,8 +591,15 @@ pub(crate) fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> 
     Ok(())
 }
 
-/// 移动目录（先复制再删除原目录）
+/// 移动目录：同卷优先走 `fs::rename`（瞬时且原子，大目录归档/恢复不再逐文件复制），
+/// 跨卷或 rename 失败时回退「复制 + 删除原目录」
 pub(crate) fn move_dir(src: &Path, dest: &Path) -> Result<(), String> {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目标父目录失败: {}", e))?;
+    }
+    if fs::rename(src, dest).is_ok() {
+        return Ok(());
+    }
     copy_dir_recursive(src, dest)?;
     fs::remove_dir_all(src).map_err(|e| format!("删除原目录失败: {}", e))?;
     Ok(())

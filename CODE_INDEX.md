@@ -2,7 +2,7 @@
 
 > 全量源代码文件职责目录视图。新会话快速了解代码现状用。
 > 详细信息（Props / 状态 / 防火手记 / 架构决策）见 [`docs/code/*.md`](docs/code/)。
-> 最后更新: 2026-04-17
+> 最后更新: 2026-06-10
 
 ---
 
@@ -12,16 +12,16 @@
 |------|--------|--------|------|
 | `src/components/` | 30 | 9438 | Vue UI 组件 |
 | `src/composables/` | 23 | 2959 | 组合式函数（逻辑复用） |
-| `src/views/` | 20 | 9468 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
+| `src/views/` | 19 | 9468 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
 | `src/styles/` | 4 | 1789 | CSS 设计系统 |
 | `src/layouts/` | 1 | 321 | 主布局 |
 | `src/types/` | 2 | 46 | TypeScript 类型定义 |
 | `src/utils/` | 1 | 23 | 工具函数 |
-| `src/config/` | 3 | 99 | 配置 SSOT（app/onboarding/fileTypes） |
+| `src/config/` | 6 | 170 | 配置 SSOT（app/onboarding/fileTypes/pinboard/priority/projectPaths） |
 | `src/i18n/` + `src/locales/` | 3 | 1318 | 国际化（vue-i18n + zh-CN + en） |
-| `src/router/` + 入口 | 5 | 167 | 路由 + main/App/vite-env |
-| `src-tauri/src/` | 22 | 9544 | Rust 后端 |
-| **合计** | **113** | **35696** | |
+| `src/router/` + 入口 | 5 | 172 | 路由 + main/App/vite-env |
+| `src-tauri/src/` | 25 | 10093 | Rust 后端 |
+| **合计** | **119** | **35797** | |
 
 ---
 
@@ -65,7 +65,10 @@
 | `src/config/app.ts` | 10 | 软件元信息 SSOT：`APP_NAME` / `APP_VERSION` / `APP_DEVELOPER` |
 | `src/config/onboarding.ts` | 81 | 引导数据 SSOT：`PAGE_INTROS` + `PAGE_GUIDE_ANNOTATIONS` |
 | `src/config/fileTypes.ts` | 8 | 文件扩展名常量 SSOT（IMAGE/VIDEO/TEXT/PSD/PDF） |
-| `src/router/index.ts` | 74 | 10 条路由定义 |
+| `src/config/pinboard.ts` | 28 | 贴图板画笔预设 SSOT（颜色 + 工具尺寸范围） |
+| `src/config/priority.ts` | 11 | 优先度排序权重 SSOT：`priorityRank()`（HomePage/ProjectPage 共用） |
+| `src/config/projectPaths.ts` | 32 | 项目目录结构 SSOT（与 Rust `workflow_paths.rs` 对齐）：taskFolderPath 等构造函数 |
+| `src/router/index.ts` | 79 | 14 条路由定义 |
 | `src/vite-env.d.ts` | 7 | Vite 类型声明 |
 
 ---
@@ -115,7 +118,7 @@
 
 ---
 
-## 4. Composables（22）
+## 4. Composables（23）
 
 | 文件 | 行数 | 一句话职责 |
 |------|------|-----------|
@@ -153,7 +156,7 @@
 | `ProjectPage.vue` | 528 | 任务列表 + 快捷功能（游戏介绍/项目素材/AE/任务列表）+ 两档排序 |
 | `TaskListPage.vue` | 600 | 任务管理页面（启用 / 模板 双 Tab；时光机已抽为独立页面） |
 | `TimeMachinePage.vue` | 545 | 时光机独立页面（任务归档 / 素材归档 双 Tab） |
-| `TaskPage.vue` | 1472 | 素材浏览主页面（树形/名称双视图 + Phase 5a–5d + 预览视频） |
+| `TaskPage.vue` | 1530 | 素材浏览主页面（树形/名称双视图 + Phase 5a–5d + 预览视频） |
 | `NormalizePage.vue` | 601 | 规范化执行页面（全量盘点 + 命名/自适应画布/加黑底 三操作 + 列对齐预览 + 备份恢复） |
 | `ScalePage.vue` | 406 | 素材缩放执行页面（Phase 5c + 进度反馈） |
 | `ConvertPage.vue` | 737 | 格式转换执行页面（Phase 5d + TP 预设折叠面板） |
@@ -166,7 +169,6 @@
 | `settings/GeneralSettings.vue` | 121 | 通用 Tab（主题 / 语言 / 缩放 / 自启） |
 | `settings/AttendanceSettings.vue` | 293 | 日报打卡 Tab（完全自包含 + `defineExpose`） |
 | `ReminderPage.vue` | 449 | 打卡提醒弹窗页面（支持 4 种 type） |
-| `OvertimePage.vue` | 230 | 加班时间设置弹窗（已弃用，未删除） |
 | `PinboardPage.vue` | 910 | 贴图板独立窗口（多标签 + 撤销/重做 + 归位） |
 | `TranslatorPage.vue` | 409 | 翻译悬浮窗（流式翻译 + 呼吸动画） |
 
@@ -193,39 +195,42 @@
 
 ---
 
-## 8. Rust 后端（22）
+## 8. Rust 后端（25）
 
 ### 主模块
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `main.rs` | 6 | 应用入口 |
-| `lib.rs` | 351 | Tauri 初始化 + 命令注册 + 插件 + Acrylic + hotkey + autolaunch 同步 |
-| `models.rs` | 637 | 数据模型（29 struct + 3 enum） |
-| `conversion.rs` | 144 | 转换会话管理（含 Prototype 双路径 + tp_scale/tp_webp_quality） |
+| `lib.rs` | 374 | Tauri 初始化 + 命令注册 + 插件 + Acrylic + hotkey + autolaunch 同步 |
+| `models.rs` | 681 | 数据模型（29 struct + 3 enum） |
+| `conversion.rs` | 153 | 转换会话管理（含 Prototype 双路径 + tp_scale/tp_webp_quality） |
 | `hotkey.rs` | 144 | 全局快捷键（独立线程 Win32 消息循环） |
-| `scheduler.rs` | 280 | 考勤调度器 + 日报 90 秒预热 |
+| `scheduler.rs` | 262 | 考勤调度器（3 常驻定时任务）+ 日报 90 秒预热 |
+| `migrations.rs` | 95 | 安装目录迁移（清理 v2.8.10 前中文 productName 旧安装残留） |
 
 ### commands/ 子模块
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `commands/mod.rs` | 24 | 子模块 `pub use` 重导出 |
-| `commands/scanning.rs` | 1681 | 扫描命令（`scan_projects`/`scan_tasks`/`scan_materials` 等 + DirSnapshot 缓存） |
-| `commands/attendance.rs` | 1183 | 考勤命令（打卡 / 日报 / 提醒 / Credential Manager） |
-| `commands/conversion.rs` | 1318 | 转换 / 缩放 / 规范化命令（Phase 5b+/c/d） |
-| `commands/projects.rs` | 717 | 项目管理命令（`mutate_project_config` 原子 helper 统一读改写） |
+| `commands/mod.rs` | 27 | 子模块 `pub use` 重导出 |
+| `commands/workflow_paths.rs` | 72 | **工作流目录命名 SSOT**（00_original/01_scale/02_done/nextcloud 等常量 + 路径构造函数，与前端 `projectPaths.ts` 对齐） |
+| `commands/scanning.rs` | 1316 | 扫描命令（`scan_projects`/`scan_tasks`/`scan_materials` 等 + DirSnapshot 缓存；Prototype 走 `from_dir_subcat` 快照与普通任务共用判定函数） |
+| `commands/attendance.rs` | 1138 | 考勤命令（打卡 / 日报 / 提醒 / Credential Manager） |
+| `commands/conversion.rs` | 1319 | 转换 / 缩放 / 规范化命令（Phase 5b+/c/d；普通/Prototype 共用 `Option<&str>` 子分类参数收集函数） |
+| `commands/projects.rs` | 707 | 项目管理命令（`mutate_project_config` 原子 helper 统一读改写） |
 | `commands/shortcuts.rs` | 591 | 快捷方式命令（图标提取 / favicon / find_game_exe） |
-| `commands/helpers.rs` | 521 | 公共辅助（DirSnapshot / PSD 缩略图 / mutate_project_config） |
-| `commands/translation.rs` | 340 | 翻译命令入口（SSE 流式 Gemini） |
+| `commands/helpers.rs` | 606 | 公共辅助（扩展名常量 SSOT / matches_base_name / mutate_project_config / move_dir rename-first） |
+| `commands/psd.rs` | 203 | PSD/PSB 缩略图提取（图层合并 + 内嵌 JPEG fallback + 磁盘缓存，`psd_cache_file` 与 scan_directory 共用） |
+| `commands/translation.rs` | 346 | 翻译命令入口（SSE 流式 Gemini） |
 | `commands/translation/pdf_reflow.rs` | 450 | PDF 内容流提取 + 流式排版 |
 | `commands/translation/pdf_font.rs` | 212 | CJK 字体处理（微软雅黑 Type0） |
 | `commands/translation/pdf_cmds.rs` | 194 | PDF 命令整合（`build_translated_pdf`） |
-| `commands/files.rs` | 701 | 文件操作（重命名 / 删除 / 回收站）+ 素材归档（archive/list/restore/delete 四命令 + 60 天 GC） |
-| `commands/pinboard.rs` | 182 | 贴图板 CRUD（RGBA→PNG） |
+| `commands/files.rs` | 734 | 文件操作（重命名 / 删除 / 回收站）+ 素材归档（archive/list/restore/delete 四命令 + 60 天 GC） |
+| `commands/pinboard.rs` | 184 | 贴图板 CRUD（RGBA→PNG） |
 | `commands/holiday.rs` | 148 | 外部 API 代理（IP 检测 / 节假日） |
 | `commands/settings.rs` | 69 | 设置 CRUD |
-| `commands/notes.rs` | 37 | 笔记 CRUD |
+| `commands/notes.rs` | 39 | 笔记 CRUD |
 
 ---
 

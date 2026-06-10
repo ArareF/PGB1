@@ -1,5 +1,10 @@
-use super::helpers::{matches_base_name, move_dir, mutate_project_config, validate_file_name};
-use crate::models::ArchivedMaterialVersion;
+use super::helpers::{matches_base_name, material_type_from_ext, move_dir, mutate_project_config, validate_file_name};
+use super::workflow_paths::{
+    nextcloud_task_dir, stage_dir_prefix, vfx_dir,
+    DIR_DONE, DIR_EXPORT, DIR_NC_ORIGINAL, DIR_NEXTCLOUD, DIR_ORIGINAL, DIR_SCALE,
+    STAGE_PREFIX_ANIM,
+};
+use crate::models::{ArchivedMaterialVersion, MaterialType};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -56,12 +61,12 @@ pub fn read_text_file(path: String) -> Result<String, String> {
 pub fn rename_material(task_path: String, base_name: String, new_base_name: String, material_type: String) -> Result<(), String> {
     let task_dir = Path::new(&task_path);
     let is_sequence = material_type == "sequence";
-    let mut dirs_to_scan: Vec<std::path::PathBuf> = vec![task_dir.join("00_original")];
-    let scale_dir = task_dir.join("01_scale");
+    let mut dirs_to_scan: Vec<std::path::PathBuf> = vec![task_dir.join(DIR_ORIGINAL)];
+    let scale_dir = task_dir.join(DIR_SCALE);
     if scale_dir.exists() { if let Ok(entries) = fs::read_dir(&scale_dir) { for e in entries.flatten() { if e.path().is_dir() { dirs_to_scan.push(e.path()); } } } }
-    let done_dir = task_dir.join("02_done");
+    let done_dir = task_dir.join(DIR_DONE);
     if done_dir.exists() { if let Ok(entries) = fs::read_dir(&done_dir) { for e in entries.flatten() { if e.path().is_dir() { dirs_to_scan.push(e.path()); } } } }
-    let nc_dir = task_dir.parent().and_then(|p| p.parent()).map(|vfx| vfx.join("nextcloud").join(task_dir.file_name().unwrap_or_default()));
+    let nc_dir = nextcloud_task_dir(task_dir);
     if let Some(ref nc) = nc_dir { if nc.exists() { dirs_to_scan.push(nc.clone()); } }
 
     for dir in &dirs_to_scan {
@@ -154,11 +159,11 @@ fn archive_material_internal(
     let is_sequence = material_type == "sequence";
 
     // 定位项目根：task_path = <project>/03_Render_VFX/VFX/Export/<TaskName>/
-    let vfx_dir = task_dir
+    let vfx_root = task_dir
         .parent()
         .and_then(|p| p.parent())
         .ok_or_else(|| "无法定位 VFX 目录".to_string())?;
-    let project_dir = vfx_dir
+    let project_dir = vfx_root
         .parent()
         .and_then(|p| p.parent())
         .ok_or_else(|| "无法定位项目根目录".to_string())?;
@@ -179,26 +184,26 @@ fn archive_material_internal(
     // 收集归档源：(stage_label, src_dir)。include_original 决定是否归档 00_original。
     let mut archive_sources: Vec<(String, PathBuf)> = Vec::new();
     if include_original {
-        archive_sources.push(("00_original".to_string(), task_dir.join("00_original")));
+        archive_sources.push((DIR_ORIGINAL.to_string(), task_dir.join(DIR_ORIGINAL)));
     }
-    let scale_dir = task_dir.join("01_scale");
+    let scale_dir = task_dir.join(DIR_SCALE);
     if scale_dir.exists() {
         if let Ok(entries) = fs::read_dir(&scale_dir) {
             for e in entries.flatten() {
                 if e.path().is_dir() {
                     let sub = e.file_name().to_string_lossy().to_string();
-                    archive_sources.push((format!("01_scale/{}", sub), e.path()));
+                    archive_sources.push((format!("{}/{}", DIR_SCALE, sub), e.path()));
                 }
             }
         }
     }
-    let done_dir = task_dir.join("02_done");
+    let done_dir = task_dir.join(DIR_DONE);
     if done_dir.exists() {
         if let Ok(entries) = fs::read_dir(&done_dir) {
             for e in entries.flatten() {
                 if e.path().is_dir() {
                     let sub = e.file_name().to_string_lossy().to_string();
-                    archive_sources.push((format!("02_done/{}", sub), e.path()));
+                    archive_sources.push((format!("{}/{}", DIR_DONE, sub), e.path()));
                 }
             }
         }
@@ -225,7 +230,7 @@ fn archive_material_internal(
     }
 
     // nextcloud 副本：本地上传标记，直接删（决策对齐）
-    let nc_dir = vfx_dir.join("nextcloud").join(&task_name);
+    let nc_dir = vfx_root.join(DIR_NEXTCLOUD).join(&task_name);
     if nc_dir.exists() {
         if let Ok(entries) = fs::read_dir(&nc_dir) {
             for entry in entries.flatten() {
@@ -240,7 +245,7 @@ fn archive_material_internal(
             }
         }
         // original/ 子目录（原件直传副本）：删除匹配文件，避免遗留孤儿（方案 B 配套）
-        let nc_original = nc_dir.join("original");
+        let nc_original = nc_dir.join(DIR_NC_ORIGINAL);
         if nc_original.exists() {
             if let Ok(entries) = fs::read_dir(&nc_original) {
                 for entry in entries.flatten() {
@@ -382,8 +387,7 @@ pub fn restore_archived_material(
         return Err(format!("归档版本不存在: {}", archive_path.display()));
     }
 
-    let vfx_dir = project_dir.join("03_Render_VFX").join("VFX");
-    let task_dir = vfx_dir.join("Export").join(&task_name);
+    let task_dir = vfx_dir(project_dir).join(DIR_EXPORT).join(&task_name);
 
     if !task_dir.exists() {
         return Err(format!(
@@ -394,9 +398,9 @@ pub fn restore_archived_material(
 
     // 冲突预检：拒绝式
     let mut conflicts: Vec<String> = Vec::new();
-    collect_restore_conflicts(&archive_path.join("00_original"), &task_dir.join("00_original"), "00_original", &mut conflicts);
+    collect_restore_conflicts(&archive_path.join(DIR_ORIGINAL), &task_dir.join(DIR_ORIGINAL), DIR_ORIGINAL, &mut conflicts);
 
-    let archived_scale = archive_path.join("01_scale");
+    let archived_scale = archive_path.join(DIR_SCALE);
     if archived_scale.exists() {
         if let Ok(entries) = fs::read_dir(&archived_scale) {
             for e in entries.flatten() {
@@ -404,8 +408,8 @@ pub fn restore_archived_material(
                     let sub = e.file_name().to_string_lossy().to_string();
                     collect_restore_conflicts(
                         &archived_scale.join(&sub),
-                        &task_dir.join("01_scale").join(&sub),
-                        &format!("01_scale/{}", sub),
+                        &task_dir.join(DIR_SCALE).join(&sub),
+                        &format!("{}/{}", DIR_SCALE, sub),
                         &mut conflicts,
                     );
                 }
@@ -413,7 +417,7 @@ pub fn restore_archived_material(
         }
     }
 
-    let archived_done = archive_path.join("02_done");
+    let archived_done = archive_path.join(DIR_DONE);
     if archived_done.exists() {
         if let Ok(entries) = fs::read_dir(&archived_done) {
             for e in entries.flatten() {
@@ -421,8 +425,8 @@ pub fn restore_archived_material(
                     let sub = e.file_name().to_string_lossy().to_string();
                     collect_restore_conflicts(
                         &archived_done.join(&sub),
-                        &task_dir.join("02_done").join(&sub),
-                        &format!("02_done/{}", sub),
+                        &task_dir.join(DIR_DONE).join(&sub),
+                        &format!("{}/{}", DIR_DONE, sub),
                         &mut conflicts,
                     );
                 }
@@ -438,14 +442,14 @@ pub fn restore_archived_material(
     }
 
     // 执行恢复
-    restore_stage_dir(&archive_path.join("00_original"), &task_dir.join("00_original"))?;
+    restore_stage_dir(&archive_path.join(DIR_ORIGINAL), &task_dir.join(DIR_ORIGINAL))?;
 
     if archived_scale.exists() {
         if let Ok(entries) = fs::read_dir(&archived_scale) {
             for e in entries.flatten() {
                 if e.path().is_dir() {
                     let sub = e.file_name().to_string_lossy().to_string();
-                    let dest = task_dir.join("01_scale").join(&sub);
+                    let dest = task_dir.join(DIR_SCALE).join(&sub);
                     restore_stage_dir(&archived_scale.join(&sub), &dest)?;
                 }
             }
@@ -456,7 +460,7 @@ pub fn restore_archived_material(
             for e in entries.flatten() {
                 if e.path().is_dir() {
                     let sub = e.file_name().to_string_lossy().to_string();
-                    let dest = task_dir.join("02_done").join(&sub);
+                    let dest = task_dir.join(DIR_DONE).join(&sub);
                     restore_stage_dir(&archived_done.join(&sub), &dest)?;
                 }
             }
@@ -520,29 +524,29 @@ pub fn delete_archived_material_version(
 
 /// 从归档目录推断素材类型：看 `00_original` 下的首个条目
 fn infer_archived_material_type(ts_path: &Path) -> String {
-    let original = ts_path.join("00_original");
+    let original = ts_path.join(DIR_ORIGINAL);
     if original.exists() {
         if let Ok(entries) = fs::read_dir(&original) {
             for e in entries.flatten() {
                 let p = e.path();
                 if p.is_dir() { return "sequence".to_string(); }
                 let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-                return match ext.as_str() {
-                    "mp4" | "mov" | "webm" | "avi" | "mkv" => "video".to_string(),
-                    "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" => "image".to_string(),
+                return match material_type_from_ext(&ext) {
+                    MaterialType::Video => "video".to_string(),
+                    MaterialType::Image => "image".to_string(),
                     _ => "other".to_string(),
                 };
             }
         }
     }
     // fallback：看 02_done 子目录命名
-    let done = ts_path.join("02_done");
+    let done = ts_path.join(DIR_DONE);
     if done.exists() {
         if let Ok(entries) = fs::read_dir(&done) {
             for e in entries.flatten() {
                 if e.path().is_dir() {
                     let name = e.file_name().to_string_lossy().to_lowercase();
-                    if name.starts_with("[an-") { return "sequence".to_string(); }
+                    if name.starts_with(&stage_dir_prefix(STAGE_PREFIX_ANIM)) { return "sequence".to_string(); }
                     return "image".to_string();
                 }
             }
@@ -556,7 +560,7 @@ fn scan_archive_content(ts_path: &Path) -> (u64, Vec<String>) {
     let mut total_size: u64 = 0;
     let mut stages: Vec<String> = Vec::new();
 
-    let original_path = ts_path.join("00_original");
+    let original_path = ts_path.join(DIR_ORIGINAL);
     if original_path.exists() {
         if let Ok(entries) = fs::read_dir(&original_path) {
             let mut has_content = false;
@@ -564,11 +568,11 @@ fn scan_archive_content(ts_path: &Path) -> (u64, Vec<String>) {
                 has_content = true;
                 total_size += compute_path_size(&e.path());
             }
-            if has_content { stages.push("00_original".to_string()); }
+            if has_content { stages.push(DIR_ORIGINAL.to_string()); }
         }
     }
 
-    for parent_stage in ["01_scale", "02_done"] {
+    for parent_stage in [DIR_SCALE, DIR_DONE] {
         let stage_path = ts_path.join(parent_stage);
         if !stage_path.exists() { continue; }
         if let Ok(entries) = fs::read_dir(&stage_path) {
@@ -676,15 +680,16 @@ pub fn find_game_exe(root_dir: String) -> Result<Option<String>, String> {
 #[tauri::command]
 pub fn rename_sequence_fps(task_path: String, base_name: String, old_fps: u32, new_fps: u32) -> Result<(), String> {
     if old_fps == new_fps { return Ok(()); }
-    let done_dir = Path::new(&task_path).join("02_done");
+    let done_dir = Path::new(&task_path).join(DIR_DONE);
     if !done_dir.exists() { return Ok(()); }
     let old_suffix = format!("-{}]", old_fps);
-    let entries = fs::read_dir(&done_dir).map_err(|e| format!("读取 02_done 失败: {}", e))?;
+    let an_prefix = stage_dir_prefix(STAGE_PREFIX_ANIM);
+    let entries = fs::read_dir(&done_dir).map_err(|e| format!("读取 {} 失败: {}", DIR_DONE, e))?;
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_dir() { continue; }
         let dir_name = match path.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
-        if !dir_name.starts_with("[an-") || !dir_name.ends_with(old_suffix.as_str()) { continue; }
+        if !dir_name.starts_with(&an_prefix) || !dir_name.ends_with(old_suffix.as_str()) { continue; }
         let has_match = fs::read_dir(&path).map(|rd| rd.flatten().any(|e| e.file_name().to_str().map(|n| matches_base_name(n, base_name.as_str())).unwrap_or(false))).unwrap_or(false);
         if !has_match { continue; }
         let prefix = &dir_name[..dir_name.len() - old_suffix.len()];

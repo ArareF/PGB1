@@ -8,7 +8,6 @@ pub struct AttendanceScheduler {
     clock_in_handle: Option<JoinHandle<()>>,
     clock_out_handle: Option<JoinHandle<()>>,
     daily_report_handle: Option<JoinHandle<()>>,
-    overtime_handle: Option<JoinHandle<()>>,
 }
 
 impl AttendanceScheduler {
@@ -17,7 +16,6 @@ impl AttendanceScheduler {
             clock_in_handle: None,
             clock_out_handle: None,
             daily_report_handle: None,
-            overtime_handle: None,
         }
     }
 
@@ -30,9 +28,6 @@ impl AttendanceScheduler {
             h.abort();
         }
         if let Some(h) = self.daily_report_handle.take() {
-            h.abort();
-        }
-        if let Some(h) = self.overtime_handle.take() {
             h.abort();
         }
     }
@@ -76,19 +71,6 @@ impl AttendanceScheduler {
     pub fn reschedule(&mut self, app: AppHandle, config: &AttendanceConfig) {
         self.stop();
         self.start(app, config);
-    }
-
-    /// 创建一次性加班定时任务
-    pub fn schedule_overtime(&mut self, app: AppHandle, minutes: u64) {
-        // 取消之前的加班定时
-        if let Some(h) = self.overtime_handle.take() {
-            h.abort();
-        }
-
-        self.overtime_handle = Some(tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(minutes * 60)).await;
-            let _ = create_reminder_window(&app, "overtime");
-        }));
     }
 }
 

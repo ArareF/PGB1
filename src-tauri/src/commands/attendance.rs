@@ -1019,67 +1019,6 @@ pub fn dismiss_clock_in_reminder(app_handle: tauri::AppHandle) -> Result<(), Str
     Ok(())
 }
 
-/// 创建加班定时提醒
-#[tauri::command]
-pub fn schedule_overtime_reminder(
-    app_handle: tauri::AppHandle,
-    scheduler: tauri::State<'_, SchedulerState>,
-    minutes: u64,
-) -> Result<(), String> {
-    let mut sched = scheduler
-        .lock()
-        .map_err(|e| format!("获取调度器锁失败: {}", e))?;
-    sched.schedule_overtime(app_handle, minutes);
-    Ok(())
-}
-
-/// 显示加班设置弹窗
-/// 必须 spawn 到 async runtime（同 test_reminder，防止 build() 主线程死锁）
-#[tauri::command]
-pub fn show_overtime_dialog(app_handle: tauri::AppHandle) -> Result<(), String> {
-    let app = app_handle.clone();
-    tauri::async_runtime::spawn(async move {
-        use tauri::Manager;
-
-        let label = "reminder-overtime-setting";
-
-        // 如果已存在，聚焦
-        if let Some(existing) = app.get_webview_window(label) {
-            let _ = existing.show();
-            let _ = existing.set_focus();
-            return;
-        }
-
-        let window = match tauri::WebviewWindowBuilder::new(
-            &app,
-            label,
-            tauri::WebviewUrl::App("/overtime".into()),
-        )
-        .title("PGB1")
-        .inner_size(400.0, 200.0)
-        .resizable(false)
-        .decorations(false)
-        .transparent(true)
-        .always_on_top(true)
-        .center()
-        .build()
-        {
-            Ok(w) => w,
-            Err(e) => {
-                log::error!("创建加班设置窗口失败: {}", e);
-                return;
-            }
-        };
-
-        #[cfg(target_os = "windows")]
-        {
-            use window_vibrancy::apply_acrylic;
-            let _ = apply_acrylic(&window, Some(crate::FLOATING_ACRYLIC));
-        }
-    });
-    Ok(())
-}
-
 /// 重置所有定时任务（设置保存后调用）
 #[tauri::command]
 pub fn reschedule_attendance(

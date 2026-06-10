@@ -490,14 +490,6 @@ export default {
     missedClockOut: 'You forgot to clock out yesterday',
   },
 
-  overtime: {
-    title: 'How long?',
-    plus30min: '+30 min',
-    plus1hour: '+1 hour',
-    plus2hours: '+2 hours',
-    custom: 'Custom:',
-  },
-
   translator: {
     placeholder: 'Enter text to translate...',
     paste: 'Paste',

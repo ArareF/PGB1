@@ -29,6 +29,7 @@ import NoteRenderer from '../components/NoteRenderer.vue'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import SidebarShell from '../components/SidebarShell.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
+import { taskFolderPath, nextcloudTaskPath, nextcloudPreviewPath } from '../config/projectPaths'
 import { formatSize } from '../utils/format'
 
 const route = useRoute()
@@ -699,24 +700,25 @@ function checkSubtaskAutoPrompt() {
 }
 
 async function refresh() {
-  if (taskFolderPathRef.value) {
-    await loadMaterials(taskFolderPathRef.value)
-    // 刷新后清除选中列表（素材列表可能变化）
-    selectedPaths.value = new Set()
-    // 刷新规范化按钮高亮态（与 materials 解耦，需独立 invoke）
-    checkNormalizeWork()
-    // 同步刷新预览视频列表
-    await loadPreviewGroups()
-    // 刷新项目数据（获取最新 prompted 标记 + 子任务完成状态），再检测
-    await loadProjects()
-    const freshProject = projects.value.find(p => p.name === projectId)
-    if (freshProject && enabledSubtasks.value.length > 0) {
-      completedSubtasks.value = new Set(freshProject.completed_subtasks)
-      subtaskCompleted.value = enabledSubtasks.value.filter(k => completedSubtasks.value.has(k)).length
-      updateNavigation()
-    }
-    checkSubtaskAutoPrompt()
+  if (!taskFolderPathRef.value) return
+  // 刷新规范化按钮高亮态（与 materials 解耦，独立 invoke，不阻塞主刷新）
+  checkNormalizeWork()
+  // 素材 / 预览视频 / 项目数据三者互不依赖，并行加载缩短刷新延迟
+  await Promise.all([
+    loadMaterials(taskFolderPathRef.value),
+    loadPreviewGroups(),
+    loadProjects(),
+  ])
+  // 刷新后清除选中列表（素材列表可能变化）
+  selectedPaths.value = new Set()
+  // 项目数据就绪后同步子任务完成状态（最新 prompted 标记），再检测
+  const freshProject = projects.value.find(p => p.name === projectId)
+  if (freshProject && enabledSubtasks.value.length > 0) {
+    completedSubtasks.value = new Set(freshProject.completed_subtasks)
+    subtaskCompleted.value = enabledSubtasks.value.filter(k => completedSubtasks.value.has(k)).length
+    updateNavigation()
   }
+  checkSubtaskAutoPrompt()
 }
 
 onMounted(async () => {
@@ -724,9 +726,9 @@ onMounted(async () => {
   await loadSettings()
   const project = projects.value.find(p => p.name === projectId)
   if (project) {
-    taskFolderPathRef.value = `${project.path}\\03_Render_VFX\\VFX\\Export\\${taskId}`
-    nextcloudPathRef.value = `${project.path}\\03_Render_VFX\\VFX\\nextcloud\\${taskId}`
-    nextcloudPreviewPathRef.value = `${project.path}\\03_Render_VFX\\VFX\\nextcloud\\preview`
+    taskFolderPathRef.value = taskFolderPath(project.path, taskId)
+    nextcloudPathRef.value = nextcloudTaskPath(project.path, taskId)
+    nextcloudPreviewPathRef.value = nextcloudPreviewPath(project.path)
     projectPathRef.value = project.path
     await loadMaterials(taskFolderPathRef.value)
     checkNormalizeWork()

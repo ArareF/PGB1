@@ -5,6 +5,10 @@ use crate::models::{
 };
 use crate::conversion::{ConversionState, ConversionSession, handle_file_event, bring_window_to_front};
 use super::helpers::{split_prototype_name, copy_dir_recursive, matches_base_name, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
+use super::workflow_paths::{
+    an_dir_name, nextcloud_task_dir, DIR_DONE, DIR_NC_BREAKDOWN, DIR_NC_ORIGINAL,
+    DIR_ORIGINAL, DIR_SCALE, STAGE_PREFIX_ANIM, STAGE_PREFIX_IMG,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
@@ -23,8 +27,8 @@ pub fn start_conversion<R: Runtime>(
     request: StartConversionRequest,
 ) -> Result<(), String> {
     let task_dir = Path::new(&request.task_path);
-    let done_path = task_dir.join("02_done");
-    let scale_dir = task_dir.join("01_scale");
+    let done_path = task_dir.join(DIR_DONE);
+    let scale_dir = task_dir.join(DIR_SCALE);
 
     if !done_path.exists() {
         fs::create_dir_all(&done_path).map_err(|e| e.to_string())?;
@@ -38,7 +42,7 @@ pub fn start_conversion<R: Runtime>(
 
     // 如果有静帧需要转换，01_scale/ 目录必须存在
     if !request.images.is_empty() && !scale_dir.exists() {
-        return Err(format!("01_scale 目录不存在，请先执行缩放操作"));
+        return Err(format!("{} 目录不存在，请先执行缩放操作", DIR_SCALE));
     }
 
     // 2. 开启 notify 递归监控 01_scale/
@@ -141,7 +145,7 @@ pub async fn execute_sequence_conversion<R: Runtime>(
     cleanup_residual_artifacts(&done_path, &sequences);
 
     let task_dir = done_path.parent().ok_or("无效的 done 路径")?;
-    let original_dir = task_dir.join("00_original");
+    let original_dir = task_dir.join(DIR_ORIGINAL);
 
     for seq in sequences {
         // 取消检查点：每帧迭代前
@@ -279,7 +283,7 @@ pub async fn execute_sequence_conversion<R: Runtime>(
         let final_scale = parse_tps_scale(&tps_path)?;
 
         // 6. 整理三件套
-        let target_dir_name = format!("[an-{}-{}]", final_scale, fps);
+        let target_dir_name = an_dir_name(final_scale, fps);
         let target_dir = done_path.join(&target_dir_name);
         if !target_dir.exists() {
             fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
@@ -481,7 +485,7 @@ pub fn execute_scaling(app_handle: AppHandle, requests: Vec<ScaleRequest>) -> Re
 
         // 后端组装路径，避免前端拼接 Windows 分隔符
         let target_dir = Path::new(&req.task_path)
-            .join("01_scale")
+            .join(DIR_SCALE)
             .join(format!("[{}]", req.scale_percent));
         if !target_dir.exists() {
             fs::create_dir_all(&target_dir)
@@ -554,7 +558,7 @@ const NORMALIZE_BACKUP_DIR: &str = ".normalize_backup";
 #[tauri::command]
 pub fn scan_normalize_items(task_path: String) -> Result<Vec<NormalizeItem>, String> {
     let task_dir = Path::new(&task_path);
-    let original_dir = task_dir.join("00_original");
+    let original_dir = task_dir.join(DIR_ORIGINAL);
 
     if !original_dir.exists() {
         return Ok(Vec::new());
@@ -930,9 +934,9 @@ pub fn collect_drag_files(
     materials: Vec<DragMaterialRequest>,
 ) -> Result<Vec<String>, String> {
     let task_dir = Path::new(&task_path);
-    let done_dir = task_dir.join("02_done");
-    let scale_dir = task_dir.join("01_scale");
-    let original_dir = task_dir.join("00_original");
+    let done_dir = task_dir.join(DIR_DONE);
+    let scale_dir = task_dir.join(DIR_SCALE);
+    let original_dir = task_dir.join(DIR_ORIGINAL);
 
     let is_prototype = task_dir
         .file_name()
@@ -943,96 +947,65 @@ pub fn collect_drag_files(
     let mut file_paths = Vec::new();
 
     for mat in &materials {
-        if is_prototype {
-            let (sub_name, base_name) = split_prototype_name(&mat.name);
-            let paths = collect_best_files_prototype(
-                &base_name,
-                &mat.material_type,
-                &sub_name,
-                &original_dir,
-                &scale_dir,
-                &done_dir,
-            );
-            file_paths.extend(paths);
+        // Prototype 素材名为 "subcat/basename"，拆出子分类；普通任务无子分类
+        let (sub_name, base_name) = if is_prototype {
+            let (s, b) = split_prototype_name(&mat.name);
+            (Some(s), b)
         } else {
-            let paths = collect_best_files(
-                &mat.name,
-                &mat.material_type,
-                &original_dir,
-                &scale_dir,
-                &done_dir,
-            );
-            file_paths.extend(paths);
-        }
+            (None, mat.name.clone())
+        };
+        let paths = collect_best_files(
+            &base_name,
+            &mat.material_type,
+            sub_name.as_deref().filter(|s| !s.is_empty()),
+            &original_dir,
+            &scale_dir,
+            &done_dir,
+        );
+        file_paths.extend(paths);
     }
 
     Ok(file_paths)
 }
 
+/// 收集素材的最佳拖拽文件（优先级：02_done > 01_scale > 00_original）。
+/// sub_name = Prototype 子分类（None = 普通任务，各阶段目录直接查；Some = 深入一层子分类）
 fn collect_best_files(
     base_name: &str,
     material_type: &str,
+    sub_name: Option<&str>,
     original_dir: &Path,
     scale_dir: &Path,
     done_dir: &Path,
 ) -> Vec<String> {
-    if material_type == "image" {
-        if done_dir.exists() {
-            let files = collect_matching_files_in_subdirs(done_dir, base_name, "img");
-            if !files.is_empty() { return files; }
-        }
-        if scale_dir.exists() {
-            let files = collect_matching_files_in_subdirs(scale_dir, base_name, "");
-            if !files.is_empty() { return files; }
-        }
-        collect_matching_files_flat(original_dir, base_name)
-    } else if material_type == "sequence" {
-        if done_dir.exists() {
-            let files = collect_matching_files_in_subdirs(done_dir, base_name, "an");
-            if !files.is_empty() { return files; }
-        }
-        let seq_dir = original_dir.join(base_name);
-        if seq_dir.is_dir() {
-            return collect_all_files_in_dir(&seq_dir);
-        }
-        collect_scattered_sequence_files(original_dir, base_name)
-    } else {
-        collect_matching_files_flat(original_dir, base_name)
-    }
-}
+    // Prototype 的 00_original 素材在子分类一层之下
+    let original_search = match sub_name {
+        Some(s) => original_dir.join(s),
+        None => original_dir.to_path_buf(),
+    };
 
-fn collect_best_files_prototype(
-    base_name: &str,
-    material_type: &str,
-    sub_name: &str,
-    original_dir: &Path,
-    scale_dir: &Path,
-    done_dir: &Path,
-) -> Vec<String> {
     if material_type == "image" {
         if done_dir.exists() {
-            let files = collect_matching_files_in_proto_subdirs(done_dir, base_name, sub_name, "img");
+            let files = collect_matching_files_in_subdirs(done_dir, base_name, STAGE_PREFIX_IMG, sub_name);
             if !files.is_empty() { return files; }
         }
         if scale_dir.exists() {
-            let files = collect_matching_files_in_proto_subdirs(scale_dir, base_name, sub_name, "");
+            let files = collect_matching_files_in_subdirs(scale_dir, base_name, "", sub_name);
             if !files.is_empty() { return files; }
         }
-        let sub_dir = original_dir.join(sub_name);
-        collect_matching_files_flat(&sub_dir, base_name)
+        collect_matching_files_flat(&original_search, base_name)
     } else if material_type == "sequence" {
         if done_dir.exists() {
-            let files = collect_matching_files_in_proto_subdirs(done_dir, base_name, sub_name, "an");
+            let files = collect_matching_files_in_subdirs(done_dir, base_name, STAGE_PREFIX_ANIM, sub_name);
             if !files.is_empty() { return files; }
         }
-        let seq_dir = original_dir.join(sub_name).join(base_name);
+        let seq_dir = original_search.join(base_name);
         if seq_dir.is_dir() {
             return collect_all_files_in_dir(&seq_dir);
         }
-        Vec::new()
+        collect_scattered_sequence_files(&original_search, base_name)
     } else {
-        let sub_dir = original_dir.join(sub_name);
-        collect_matching_files_flat(&sub_dir, base_name)
+        collect_matching_files_flat(&original_search, base_name)
     }
 }
 
@@ -1072,33 +1045,11 @@ fn collect_scattered_sequence_files(dir: &Path, base_name: &str) -> Vec<String> 
     results
 }
 
-fn collect_matching_files_in_subdirs(dir: &Path, base_name: &str, prefix: &str) -> Vec<String> {
-    let mut results = Vec::new();
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() { continue; }
-            let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if !prefix.is_empty() && !dir_name.starts_with(&format!("[{}-", prefix)) { continue; }
-            if prefix.is_empty() && !dir_name.starts_with('[') { continue; }
-            if let Ok(inner) = fs::read_dir(&path) {
-                for f in inner.flatten() {
-                    let fp = f.path();
-                    if !fp.is_file() { continue; }
-                    let name = fp.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    if !matches_base_name(name, base_name) { continue; }
-                    let ext = fp.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                    if ext == "tps" { continue; }
-                    results.push(fp.to_string_lossy().to_string());
-                }
-            }
-        }
-    }
-    results
-}
-
-fn collect_matching_files_in_proto_subdirs(
-    dir: &Path, base_name: &str, sub_name: &str, prefix: &str,
+/// 在各 `[...]` 阶段子目录中收集匹配 base_name 的文件（排除 .tps）。
+/// prefix 过滤子目录名（"img"/"an"，空 = 任意 `[` 开头）；
+/// sub_name = Prototype 子分类（Some 时深入一层）
+fn collect_matching_files_in_subdirs(
+    dir: &Path, base_name: &str, prefix: &str, sub_name: Option<&str>,
 ) -> Vec<String> {
     let mut results = Vec::new();
     if let Ok(entries) = fs::read_dir(dir) {
@@ -1108,9 +1059,15 @@ fn collect_matching_files_in_proto_subdirs(
             let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if !prefix.is_empty() && !dir_name.starts_with(&format!("[{}-", prefix)) { continue; }
             if prefix.is_empty() && !dir_name.starts_with('[') { continue; }
-            let sub_dir = path.join(sub_name);
-            if !sub_dir.exists() { continue; }
-            if let Ok(inner) = fs::read_dir(&sub_dir) {
+            let search_dir = match sub_name {
+                Some(s) => {
+                    let p = path.join(s);
+                    if !p.exists() { continue; }
+                    p
+                }
+                None => path,
+            };
+            if let Ok(inner) = fs::read_dir(&search_dir) {
                 for f in inner.flatten() {
                     let fp = f.path();
                     if !fp.is_file() { continue; }
@@ -1149,13 +1106,11 @@ pub fn copy_to_nextcloud(
 ) -> Result<CopyResult, String> {
     let task_dir = Path::new(&task_path);
     let task_name = task_dir.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
-    let done_dir = task_dir.join("02_done");
-    let scale_dir = task_dir.join("01_scale");
-    let original_dir = task_dir.join("00_original");
+    let done_dir = task_dir.join(DIR_DONE);
+    let scale_dir = task_dir.join(DIR_SCALE);
+    let original_dir = task_dir.join(DIR_ORIGINAL);
 
-    let nextcloud_dir = task_dir
-        .parent().and_then(|p| p.parent())
-        .map(|vfx| vfx.join("nextcloud").join(task_name))
+    let nextcloud_dir = nextcloud_task_dir(task_dir)
         .ok_or_else(|| "无法推导 nextcloud 路径".to_string())?;
 
     fs::create_dir_all(&nextcloud_dir)
@@ -1183,10 +1138,10 @@ pub fn copy_to_nextcloud(
 }
 
 fn copy_material_normal(base_name: &str, material_type: &str, done_dir: &Path, original_dir: &Path, nextcloud_dir: &Path) -> Result<u32, String> {
-    let prefix = if material_type == "sequence" { "an" } else { "img" };
+    let prefix = if material_type == "sequence" { STAGE_PREFIX_ANIM } else { STAGE_PREFIX_IMG };
 
     // 正常交付物（02_done 产物）→ nextcloud 根目录
-    let done_files = collect_matching_files_in_subdirs(done_dir, base_name, prefix);
+    let done_files = collect_matching_files_in_subdirs(done_dir, base_name, prefix, None);
     if !done_files.is_empty() {
         let mut count = 0u32;
         for src_path_str in &done_files {
@@ -1205,7 +1160,7 @@ fn copy_material_normal(base_name: &str, material_type: &str, done_dir: &Path, o
     if material_type == "image" {
         let original_files = collect_matching_files_flat(original_dir, base_name);
         if !original_files.is_empty() {
-            let original_dest_dir = nextcloud_dir.join("original");
+            let original_dest_dir = nextcloud_dir.join(DIR_NC_ORIGINAL);
             fs::create_dir_all(&original_dest_dir).map_err(|e| format!("创建 original 目录失败: {}", e))?;
             let mut count = 0u32;
             for src_path_str in &original_files {
@@ -1232,8 +1187,8 @@ fn copy_material_prototype(
     fs::create_dir_all(&original_sub_dir).map_err(|e| format!("创建 _original 目录失败: {}", e))?;
 
     let mut count = 0u32;
-    let prefix = if material_type == "sequence" { "an" } else { "img" };
-    let done_files = collect_matching_files_in_proto_subdirs(done_dir, base_name, sub_name, prefix);
+    let prefix = if material_type == "sequence" { STAGE_PREFIX_ANIM } else { STAGE_PREFIX_IMG };
+    let done_files = collect_matching_files_in_subdirs(done_dir, base_name, prefix, Some(sub_name));
     for src_path_str in &done_files {
         let src_path = Path::new(src_path_str);
         let file_name = src_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -1242,7 +1197,7 @@ fn copy_material_prototype(
         count += 1;
     }
 
-    let scale_files = collect_matching_files_in_proto_subdirs(scale_dir, base_name, sub_name, "");
+    let scale_files = collect_matching_files_in_subdirs(scale_dir, base_name, "", Some(sub_name));
     for src_path_str in &scale_files {
         let src_path = Path::new(src_path_str);
         let file_name = src_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -1258,7 +1213,7 @@ fn copy_material_prototype(
         let original_sub = original_dir.join(sub_name);
         let original_files = collect_matching_files_flat(&original_sub, base_name);
         if !original_files.is_empty() {
-            let original_dest_dir = sub_dir.join("original");
+            let original_dest_dir = sub_dir.join(DIR_NC_ORIGINAL);
             fs::create_dir_all(&original_dest_dir).map_err(|e| format!("创建 original 目录失败: {}", e))?;
             for src_path_str in original_files {
                 let src_path = Path::new(&src_path_str);
@@ -1331,7 +1286,7 @@ pub fn copy_preview_to_nextcloud(
     let is_breakdown = name_no_ext.to_lowercase().contains("_breakdown");
 
     let nc_preview = Path::new(&nextcloud_preview_path);
-    let dest_dir = if is_breakdown { nc_preview.join("breakdown") } else { nc_preview.to_path_buf() };
+    let dest_dir = if is_breakdown { nc_preview.join(DIR_NC_BREAKDOWN) } else { nc_preview.to_path_buf() };
 
     fs::create_dir_all(&dest_dir).map_err(|e| format!("创建目录失败: {}", e))?;
 

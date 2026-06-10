@@ -1,7 +1,7 @@
 # Rust 后端详情
 
-> `src-tauri/src/` 下 22 个 Rust 源文件的命令清单、数据模型、架构决策。
-> 顶层索引见 [CODE_INDEX.md](../../CODE_INDEX.md#8-rust-后端22)。
+> `src-tauri/src/` 下 25 个 Rust 源文件的命令清单、数据模型、架构决策。
+> 顶层索引见 [CODE_INDEX.md](../../CODE_INDEX.md#8-rust-后端25)。
 
 ---
 
@@ -11,10 +11,10 @@
 
 应用入口，调 `pgb1_lib::run()`。
 
-### lib.rs（351 行）
+### lib.rs（374 行）
 
 **Tauri 初始化**：
-- 命令注册（约 78 个）
+- 命令注册（约 76 个）
 - 插件注册：`opener` / `drag` / `dialog` / `clipboard` / `notification` / `autostart`
 - Windows Acrylic 毛玻璃
 - 调度器初始化 + 补打检测
@@ -27,7 +27,7 @@
 
 **29 个 struct + 3 个 enum**。见 [数据模型](#数据模型) 小节。
 
-### conversion.rs（144 行）
+### conversion.rs（153 行）
 
 **转换管理**：
 - `ConversionSession` 状态管理（含 `tp_scale` / `tp_webp_quality` TP 预设参数）
@@ -47,10 +47,11 @@
 - `do_toggle_window`
 - `parse_shortcut` 支持计算器键（`0xB7`）
 
-### scheduler.rs（280 行）
+### scheduler.rs（262 行）
 
 **考勤调度器**：
-- `AttendanceScheduler`：管理 3 个常驻定时任务（出勤/退勤/日报）+ 1 个临时加班任务
+- `AttendanceScheduler`：管理 3 个常驻定时任务（出勤/退勤/日报）。
+  旧「临时加班定时任务」（schedule_overtime）随 OvertimePage 死链一并删除（2026-06-10）
 - `Arc<Mutex<AttendanceScheduler>>` 作为 Tauri State
 - `create_reminder_window`：400×200 毛玻璃置顶弹窗
   - **visible(false) 创建 + Rust 侧 500ms 延迟 show() 双保险**（由 ReminderPage onMounted 调 show()）
@@ -65,11 +66,18 @@
 
 ## commands/ 子模块
 
-### commands/mod.rs（24 行）
+### commands/mod.rs（27 行）
 
-`pub use` 重导出所有子模块的命令，统一对外接口（Sprint 3 加 `holiday` 子模块）。
+`pub use` 重导出所有子模块的命令，统一对外接口（含 `psd` / `workflow_paths` 子模块）。
 
-### commands/scanning.rs（1681 行）—— 最大文件
+### commands/workflow_paths.rs（72 行，2026-06-10 新增）
+
+**工作流目录命名 SSOT**（与前端 `src/config/projectPaths.ts` 对齐）：
+- 目录名常量：`DIR_ORIGINAL` / `DIR_SCALE` / `DIR_DONE` / `DIR_PREVIEW` / `DIR_NEXTCLOUD` / `DIR_NC_PREVIEW` / `DIR_NC_BREAKDOWN` / `DIR_NC_ORIGINAL` / `DIR_EXPORT` / `DIR_AE` / `DIR_PSD` 等
+- 阶段前缀常量：`STAGE_PREFIX_ANIM`（an）/ `STAGE_PREFIX_IMG`（img）
+- 路径构造：`vfx_dir` / `export_dir` / `nextcloud_dir` / `nextcloud_task_dir` / `img_dir_name` / `an_dir_name` / `stage_dir_prefix`
+
+### commands/scanning.rs（1316 行）—— 最大文件
 
 **扫描命令**：
 - `scan_projects` / `scan_tasks` / `scan_materials` / `scan_directory`
@@ -79,14 +87,13 @@
 - `scan_app_shortcuts`
 
 **DirSnapshot 缓存**：目录快照减少重复 IO。
+- `from_dir`：普通任务（key = 阶段子目录名，value = 子目录内条目）
+- `from_dir_subcat`：Prototype 专用（value = `[XX]/{subcat}/` 子层条目），使所有查询方法对 Prototype 同样适用——普通/Prototype 共用 `determine_progress_image_cached` / `determine_progress_sequence_cached`（2026-06-10 双轨合并，旧 `determine_progress_prototype_*` / `find_file_in_*` 直读函数已删除）
+- `from_nextcloud_dir`：根层（"." 键）+ original/ 子目录（原件直传，方案 B）
 
-**素材进度判定关键算法**：
-- `find_file_in_dir`：精确匹配 `file_stem() == base_name`
-- `find_webp_in_subdirs` / `find_webp_in_proto_subdirs`：multipack 感知匹配
+**Prototype 处理**：`split_prototype_name` + 按子分类构建快照（每子分类 3 次批量读取）。
 
-**Prototype 修复**：`split_prototype_name` + 各阶段目录深入 `subcat` 子目录。
-
-### commands/attendance.rs（1183 行）
+### commands/attendance.rs（1138 行）
 
 **考勤命令**：
 - `load_attendance_config` / `save_attendance_config`
@@ -96,7 +103,6 @@
 - `open_daily_report`（含预热 + 滚动）
 - `test_reminder`
 - `load_attendance_record` / `save_attendance_record`
-- `schedule_overtime_reminder` / `show_overtime_dialog`
 - `reschedule_attendance`
 - `open_reminder_window`（前端主动打开提醒窗口，用于「结束加班」按钮触发退勤打卡）
 
@@ -105,7 +111,7 @@
 - `spawn_daily_report_scroll` 轮询就绪后 JS focus + HWND 置顶 + `send_ctrl_end()` 跳到文档末尾
 - `send_ctrl_end()` / `scroll_to_bottom_via_wheel`（Win32 API 物理滚动）
 
-### commands/conversion.rs（1318 行）
+### commands/conversion.rs（1319 行）
 
 **转换/缩放命令**：
 - `scan_normalize_items` / `execute_normalize_v2` / `restore_normalize_backup`（Phase 5b+ 规范化独立页面：全量盘点 + 命名/自适应画布/加黑底三操作 + `.normalize_backup` 备份/恢复 + `normalize-progress` 事件；备份按规范后名做 key 保留最早纯净原件；图像辅助 `trim_transparent` / `composite_on_black`）
@@ -115,9 +121,9 @@
 - `collect_drag_files`（Phase 5a OS 级拖拽收集）
 - `copy_to_nextcloud` / `import_files` / `copy_preview_to_nextcloud`
 
-**Prototype 特例**：`collect_scales_for_proto_sequence`（Prototype 序列帧专用 scale 收集）。
+**Prototype 处理**：`collect_best_files` / `collect_matching_files_in_subdirs` 统一接受 `sub_name: Option<&str>` 参数（None = 普通任务，Some = 深入子分类一层），不再有 `_prototype` 孪生函数（2026-06-10 合并）。
 
-### commands/projects.rs（717 行）
+### commands/projects.rs（707 行）
 
 **项目管理命令**：
 - `create_project` / `rename_project` / `delete_project`（移入回收站）
@@ -141,16 +147,25 @@
 - `copy_icon_to_cache`
 - `find_game_exe`（Unity `UnityCrashHandler64.exe` 指纹 + Godot `.pck` 同名配对）
 
-### commands/helpers.rs（521 行）
+### commands/helpers.rs（606 行）
 
 **公共辅助函数**：
+- **扩展名常量 SSOT**（与前端 `fileTypes.ts` 对齐）：`IMAGE_EXTS` / `VIDEO_EXTS` / `FRAME_EXTS` + `material_type_from_ext`
 - `matches_base_name`
-- `DirSnapshot`（目录快照缓存）
 - `calc_dir_size`
-- `regex_strip_version`
-- `extract_psd_thumbnail`（PSD 图层合并 + PSB 内嵌 JPEG fallback，`PSD_SEMAPHORE(2)` 限并发）
-- `get_file_mtime`
+- `regex_strip_version` / `extract_version_number`
+- `count_upload_progress` / `count_preview_progress`
 - **`mutate_project_config`**（Sprint 3·Y-19 新增）：`.pgb1_project.json` 的"读→闭包改→写回"原子 helper，消除 4 个命令的模板重复
+- `move_dir`：同卷优先 `fs::rename`（原子瞬时），跨卷回退复制+删除（2026-06-10）
+- `copy_dir_recursive`（symlink/junction 防环）
+
+> 注：`DirSnapshot` 在 scanning.rs；PSD 缩略图已拆到 `commands/psd.rs`。
+
+### commands/psd.rs（203 行，2026-06-10 从 scanning.rs 拆出）
+
+**PSD/PSB 缩略图**：
+- `extract_psd_thumbnail`（命令）：PSD 图层合并 + PSB 内嵌 JPEG fallback，`PSD_SEMAPHORE(2)` 限并发，磁盘缓存
+- `psd_cache_file`：缓存路径 hash 计算（路径 + mtime + max_size），与 `scan_directory` 的命中检查共用，杜绝两处 hash 逻辑漂移
 
 ### commands/translation.rs（340 行）
 
@@ -195,7 +210,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 
 **决策理由**：把前端 fetch 迁到 Rust `reqwest`，避免 IP 泄漏 + 收敛 CSP `connect-src`。
 
-### commands/files.rs（701 行）
+### commands/files.rs（734 行）
 
 **文件操作命令**：
 - `open_file`（`ShellExecuteW "open"`）
@@ -281,8 +296,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 | `open_daily_report` | `app_handle` | `()` | 日报 WebView + 预热命中检测 + 自动滚动 |
 | `test_reminder` | `app_handle, reminder_type` | `()` | 设置页测试：spawn 异步触发提醒弹窗 |
 | `load/save_attendance_record` | ... | ... | 本地打卡记录 |
-| `schedule_overtime_reminder` | `app_handle, scheduler, minutes` | `()` | 一次性加班定时提醒 |
-| `show_overtime_dialog` / `open_reminder_window` | ... | ... | spawn 异步创建弹窗避免 sync 命令死锁 |
+| `open_reminder_window` | ... | ... | spawn 异步创建弹窗避免 sync 命令死锁 |
 | `reschedule_attendance` | `app_handle, scheduler` | `()` | 重置所有定时任务 |
 | `translate_text_stream` | `app_handle, api_key, model, lang_a, lang_b, text` | `()` | 流式 Gemini SSE，逐块 emit `translate-chunk` |
 | `translate_text_once` | `app_handle, api_key, model, text, page_index?` | `String` | 单次翻译 + 6 次重试（10s×2^n，上限 120s） |
@@ -425,7 +439,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 
 ### 考勤调度系统
 
-`scheduler.rs` 管理 3 个常驻定时任务（出勤/退勤/日报）+ 1 个临时加班任务。`Arc<Mutex<AttendanceScheduler>>` 作为 Tauri State。
+`scheduler.rs` 管理 3 个常驻定时任务（出勤/退勤/日报）。`Arc<Mutex<AttendanceScheduler>>` 作为 Tauri State。
 
 **提醒弹窗** = 独立 `WebviewWindow`（400×200 毛玻璃置顶），指向 Vue 路由 `/reminder/:type`。
 
@@ -449,4 +463,4 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 
 ### Tauri sync 命令死锁规避
 
-`#[tauri::command]` 内创建窗口会死锁。所有创建窗口的操作（`show_overtime_dialog` / `test_reminder` / `open_pinboard_window` / `open_reminder_window`）都用 `tauri::async_runtime::spawn` 异步化。
+`#[tauri::command]` 内创建窗口会死锁。所有创建窗口的操作（`test_reminder` / `open_pinboard_window` / `open_reminder_window`）都用 `tauri::async_runtime::spawn` 异步化。

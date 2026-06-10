@@ -4,8 +4,13 @@ use crate::models::{
 };
 use super::helpers::{
     calc_dir_size, count_preview_progress, count_upload_progress,
-    find_app_icon, load_or_create_config, matches_base_name, read_notes_file,
-    regex_strip_version, scan_task_names,
+    find_app_icon, load_or_create_config, matches_base_name, material_type_from_ext,
+    read_notes_file, regex_strip_version, scan_task_names, FRAME_EXTS, VIDEO_EXTS,
+};
+use super::workflow_paths::{
+    export_dir, nextcloud_dir, nextcloud_task_dir, stage_dir_prefix,
+    DIR_DONE, DIR_NC_BREAKDOWN, DIR_NC_PREVIEW, DIR_ORIGINAL, DIR_PREVIEW, DIR_SCALE,
+    STAGE_PREFIX_ANIM, STAGE_PREFIX_IMG,
 };
 use std::fs;
 use std::path::Path;
@@ -37,7 +42,7 @@ pub fn scan_projects(root_dir: String) -> Result<Vec<ProjectInfo>, String> {
         }
 
         // 检查是否为有效项目：必须存在 03_Render_VFX/VFX/Export/
-        let export_path = path.join("03_Render_VFX").join("VFX").join("Export");
+        let export_path = export_dir(&path);
         if !export_path.exists() {
             continue;
         }
@@ -56,20 +61,20 @@ pub fn scan_projects(root_dir: String) -> Result<Vec<ProjectInfo>, String> {
             .to_string();
 
         let enabled_tasks = config.enabled_tasks.clone();
-        let nextcloud_dir = path.join("03_Render_VFX").join("VFX").join("nextcloud");
+        let nc_root = nextcloud_dir(&path);
 
         // 统计所有父任务中素材+视频全部上传的任务（含有子任务的父任务）
         let completed_tasks: Vec<String> = enabled_tasks.iter()
             .filter(|t| !t.contains('/'))
             .filter(|parent| {
-                let original_dir = export_path.join(parent).join("00_original");
-                let nc_task_dir = nextcloud_dir.join(parent);
+                let original_dir = export_path.join(parent).join(DIR_ORIGINAL);
+                let nc_task_dir = nc_root.join(parent);
                 let is_prototype = parent.to_lowercase() == "prototype";
                 let (total, uploaded) = count_upload_progress(&original_dir, &nc_task_dir, is_prototype);
                 if total == 0 || uploaded < total { return false; }
                 // 同时要求预览视频也全部上传
-                let preview_dir = export_path.join(parent).join("03_preview");
-                let nc_preview_dir = nextcloud_dir.join("preview");
+                let preview_dir = export_path.join(parent).join(DIR_PREVIEW);
+                let nc_preview_dir = nc_root.join(DIR_NC_PREVIEW);
                 let (video_total, video_uploaded) = count_preview_progress(&preview_dir, &nc_preview_dir);
                 video_total == 0 || video_uploaded >= video_total
             })
@@ -111,9 +116,8 @@ pub fn scan_projects(root_dir: String) -> Result<Vec<ProjectInfo>, String> {
 #[tauri::command]
 pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
     let project_dir = Path::new(&project_path);
-    let vfx_dir = project_dir.join("03_Render_VFX").join("VFX");
-    let export_path = vfx_dir.join("Export");
-    let nextcloud_dir = vfx_dir.join("nextcloud");
+    let export_path = export_dir(project_dir);
+    let nc_root = nextcloud_dir(project_dir);
 
     if !export_path.exists() {
         return Err(format!("Export 目录不存在: {}", export_path.display()));
@@ -167,14 +171,14 @@ pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
         let has_subtasks = task_name.to_lowercase() == "prototype";
 
         // 统计素材上传进度
-        let original_dir = path.join("00_original");
-        let nc_task_dir = nextcloud_dir.join(&task_name);
+        let original_dir = path.join(DIR_ORIGINAL);
+        let nc_task_dir = nc_root.join(&task_name);
         let is_prototype = task_name.to_lowercase() == "prototype";
         let (material_total, material_uploaded) = count_upload_progress(&original_dir, &nc_task_dir, is_prototype);
 
         // 统计预览视频上传进度
-        let preview_dir = path.join("03_preview");
-        let nc_preview_dir = nextcloud_dir.join("preview");
+        let preview_dir = path.join(DIR_PREVIEW);
+        let nc_preview_dir = nc_root.join(DIR_NC_PREVIEW);
         let (video_total, video_uploaded) = count_preview_progress(&preview_dir, &nc_preview_dir);
 
         // 任务卡片大小：显示已上传到 nextcloud 的文件大小
@@ -207,8 +211,6 @@ pub fn scan_tasks(project_path: String) -> Result<Vec<TaskInfo>, String> {
 /// 前端可用 loading="lazy" 渲染，与 PNG/JPG 行为完全一致
 #[tauri::command]
 pub fn scan_directory(app_handle: tauri::AppHandle, dir_path: String) -> Result<Vec<FileEntry>, String> {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
     use tauri::Manager;
 
     let dir = Path::new(&dir_path);
@@ -252,7 +254,7 @@ pub fn scan_directory(app_handle: tauri::AppHandle, dir_path: String) -> Result<
                 .to_lowercase()
         };
 
-        // PSD/PSB：检查 256px 缓存是否命中，hash 计算与 extract_psd_thumbnail 完全一致
+        // PSD/PSB：检查 256px 缓存是否命中（hash 计算走 psd::psd_cache_file，与 extract_psd_thumbnail 一致）
         let thumbnail_path = if !is_dir && (extension == "psd" || extension == "psb") {
             psd_cache_dir.as_ref().and_then(|cache_dir| {
                 let mtime = meta.as_ref()
@@ -260,12 +262,7 @@ pub fn scan_directory(app_handle: tauri::AppHandle, dir_path: String) -> Result<
                     .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
                     .unwrap_or(0);
                 let path_str = path.to_string_lossy().to_string();
-                let mut hasher = DefaultHasher::new();
-                path_str.hash(&mut hasher);
-                mtime.hash(&mut hasher);
-                256u32.hash(&mut hasher);
-                let hash = hasher.finish();
-                let cache_file = cache_dir.join(format!("{:016x}.jpg", hash));
+                let cache_file = super::psd::psd_cache_file(cache_dir, &path_str, mtime, 256);
                 if cache_file.exists() {
                     Some(cache_file.to_string_lossy().to_string())
                 } else {
@@ -316,6 +313,31 @@ impl DirSnapshot {
                 let dir_name = entry.file_name().to_string_lossy().to_string();
                 let children = Self::read_children(&path);
                 subdirs.insert(dir_name, children);
+            }
+        }
+        Self { subdirs }
+    }
+
+    /// Prototype 专用：一次性读取 dir 下所有子目录的 {subcat}/ 子层内容。
+    /// key 仍为第一层子目录名（如 "[70]"、"[img-70]"、"[an-50-24]"），
+    /// value 为该子目录下 {subcat}/ 内的条目——使所有查询方法对 Prototype 同样适用
+    fn from_dir_subcat(dir: &Path, subcat: &str) -> Self {
+        let mut subdirs = std::collections::HashMap::new();
+        if !dir.exists() {
+            return Self { subdirs };
+        }
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let sub_path = path.join(subcat);
+                if !sub_path.is_dir() {
+                    continue;
+                }
+                let dir_name = entry.file_name().to_string_lossy().to_string();
+                subdirs.insert(dir_name, Self::read_children(&sub_path));
             }
         }
         Self { subdirs }
@@ -397,9 +419,10 @@ impl DirSnapshot {
 
     /// 收集包含 base_name 文件的 [an-XX-YY] 子目录的 scale 值
     fn collect_seq_scales(&self, base_name: &str) -> Vec<u32> {
+        let an_prefix = stage_dir_prefix(STAGE_PREFIX_ANIM);
         let mut scales = Vec::new();
         for (dir_name, files) in &self.subdirs {
-            if !dir_name.starts_with("[an-") || !dir_name.ends_with(']') {
+            if !dir_name.starts_with(&an_prefix) || !dir_name.ends_with(']') {
                 continue;
             }
             if files.iter().any(|(n, _, _)| matches_base_name(n, base_name)) {
@@ -438,8 +461,9 @@ impl DirSnapshot {
 
     /// 从 [an-*] 子目录中提取 fps（找到第一个匹配 base_name 的子目录）
     fn extract_fps(&self, base_name: &str) -> Option<u32> {
+        let an_prefix = stage_dir_prefix(STAGE_PREFIX_ANIM);
         for (dir_name, files) in &self.subdirs {
-            if !dir_name.starts_with("[an-") || !dir_name.ends_with(']') {
+            if !dir_name.starts_with(&an_prefix) || !dir_name.ends_with(']') {
                 continue;
             }
             if files.iter().any(|(n, _, _)| matches_base_name(n, base_name)) {
@@ -456,10 +480,11 @@ impl DirSnapshot {
 
     /// 计算 [an-*] 子目录中匹配 base_name 的文件总大小
     fn sum_seq_size(&self, base_name: &str) -> Option<u64> {
+        let an_prefix = stage_dir_prefix(STAGE_PREFIX_ANIM);
         let mut total: u64 = 0;
         let mut found = false;
         for (dir_name, files) in &self.subdirs {
-            if !dir_name.starts_with("[an-") {
+            if !dir_name.starts_with(&an_prefix) {
                 continue;
             }
             for (name, size, is_file) in files {
@@ -474,10 +499,11 @@ impl DirSnapshot {
 
     /// 计算 [img-*] 子目录中匹配 base_name 的文件总大小
     fn sum_img_size(&self, base_name: &str) -> Option<u64> {
+        let img_prefix = stage_dir_prefix(STAGE_PREFIX_IMG);
         let mut total: u64 = 0;
         let mut found = false;
         for (dir_name, files) in &self.subdirs {
-            if !dir_name.starts_with("[img-") {
+            if !dir_name.starts_with(&img_prefix) {
                 continue;
             }
             for (name, size, is_file) in files {
@@ -493,8 +519,9 @@ impl DirSnapshot {
     /// 找到 [img-*] 子目录中匹配 base_name 的首个文件，返回 (子目录名, 文件名)。
     /// 用于把静帧预览图升级到最新阶段（02_done 成品）。
     fn find_img_done_file(&self, base_name: &str) -> Option<(String, String)> {
+        let img_prefix = stage_dir_prefix(STAGE_PREFIX_IMG);
         for (dir_name, files) in &self.subdirs {
-            if !dir_name.starts_with("[img-") {
+            if !dir_name.starts_with(&img_prefix) {
                 continue;
             }
             for (name, _, is_file) in files {
@@ -529,7 +556,7 @@ fn preview_mtime(preview: &Option<String>) -> u64 {
 #[tauri::command]
 pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
     let task_dir = Path::new(&task_path);
-    let original_dir = task_dir.join("00_original");
+    let original_dir = task_dir.join(DIR_ORIGINAL);
 
     if !original_dir.exists() {
         return Ok(Vec::new());
@@ -544,20 +571,14 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
         return scan_materials_prototype(task_dir);
     }
 
-    let scale_dir = task_dir.join("01_scale");
-    let done_dir = task_dir.join("02_done");
-
-    // 获取 nextcloud 路径：从 task_path 向上推导
-    let nextcloud_dir = task_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|vfx| vfx.join("nextcloud").join(task_dir.file_name().unwrap_or_default()));
+    let scale_dir = task_dir.join(DIR_SCALE);
+    let done_dir = task_dir.join(DIR_DONE);
 
     // ── 预读目录结构（一次性读取，后续查询走内存） ──
     let scale_cache = DirSnapshot::from_dir(&scale_dir);
     let done_cache = DirSnapshot::from_dir(&done_dir);
-    let nc_cache = nextcloud_dir.as_ref()
-        .map(|nc| DirSnapshot::from_nextcloud_dir(nc))
+    let nc_cache = nextcloud_task_dir(task_dir)
+        .map(|nc| DirSnapshot::from_nextcloud_dir(&nc))
         .unwrap_or_else(|| DirSnapshot { subdirs: std::collections::HashMap::new() });
 
     let mut materials = Vec::new();
@@ -710,11 +731,7 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
             .unwrap_or("unknown");
         let base_name = stem.strip_suffix("_01").unwrap_or(stem).to_string();
 
-        let material_type = match ext.as_str() {
-            "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" => MaterialType::Image,
-            "mp4" | "mov" | "avi" | "webm" => MaterialType::Video,
-            _ => MaterialType::Other,
-        };
+        let material_type = material_type_from_ext(&ext);
 
         let progress = if material_type == MaterialType::Image {
             determine_progress_image_cached(&base_name, &scale_cache, &done_cache, &nc_cache)
@@ -769,15 +786,15 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
     Ok(materials)
 }
 
-/// Prototype 特例：扫描子分类目录下的素材
+/// Prototype 特例：扫描子分类目录下的素材。
+/// 进度/比例/帧率判定与普通任务共用 DirSnapshot 缓存路径——
+/// 按子分类构建快照（[XX]/{subcat}/ 子层），每个子分类 3 次目录批量读取，
+/// 后续所有素材查询走内存，与普通任务的判定函数完全一致。
 fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String> {
-    let original_dir = task_dir.join("00_original");
-    let scale_dir = task_dir.join("01_scale");
-    let done_dir = task_dir.join("02_done");
-    let nextcloud_dir = task_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|vfx| vfx.join("nextcloud").join("Prototype"));
+    let original_dir = task_dir.join(DIR_ORIGINAL);
+    let scale_dir = task_dir.join(DIR_SCALE);
+    let done_dir = task_dir.join(DIR_DONE);
+    let nc_task_dir = nextcloud_task_dir(task_dir);
 
     let mut materials = Vec::new();
 
@@ -800,6 +817,13 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
             continue;
         }
 
+        // ── 按子分类预读目录快照（一次性读取，后续查询走内存） ──
+        let scale_cache = DirSnapshot::from_dir_subcat(&scale_dir, &sub_name);
+        let done_cache = DirSnapshot::from_dir_subcat(&done_dir, &sub_name);
+        let nc_cache = nc_task_dir.as_ref()
+            .map(|nc| DirSnapshot::from_nextcloud_dir(&nc.join(&sub_name)))
+            .unwrap_or_else(|| DirSnapshot { subdirs: std::collections::HashMap::new() });
+
         let inner_entries = fs::read_dir(&sub_path)
             .map_err(|e| format!("无法读取子分类 {}: {}", sub_name, e))?;
 
@@ -818,20 +842,15 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
             }
 
             if path.is_dir() {
-                // 序列帧
+                // 序列帧（防御保留：业务规则上 Prototype 不应有序列帧）
                 let frame_count = count_frames(&path);
                 let first_frame = find_first_frame(&path);
                 let size_bytes = calc_dir_size(&path);
                 let base_name = file_name.clone();
 
-                let progress = determine_progress_prototype_seq(
-                    &base_name,
-                    &sub_name,
-                    &done_dir,
-                    &nextcloud_dir,
-                );
-                let scales = collect_scales_for_sequence(&base_name, &done_dir, Some(&sub_name));
-                let fps = collect_fps_for_sequence(&base_name, &done_dir);
+                let progress = determine_progress_sequence_cached(&base_name, &done_cache, &nc_cache);
+                let scales = done_cache.collect_seq_scales(&base_name);
+                let fps = done_cache.extract_fps(&base_name);
 
                 materials.push(MaterialInfo {
                     name: format!("{}/{}", sub_name, base_name),
@@ -861,26 +880,16 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
                     .unwrap_or("unknown");
                 let base_name = stem.strip_suffix("_01").unwrap_or(stem).to_string();
 
-                let material_type = match ext.as_str() {
-                    "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" => MaterialType::Image,
-                    "mp4" | "mov" | "avi" | "webm" => MaterialType::Video,
-                    _ => MaterialType::Other,
-                };
+                let material_type = material_type_from_ext(&ext);
 
                 let progress = if material_type == MaterialType::Image {
-                    determine_progress_prototype_img(
-                        &base_name,
-                        &sub_name,
-                        &scale_dir,
-                        &done_dir,
-                        &nextcloud_dir,
-                    )
+                    determine_progress_image_cached(&base_name, &scale_cache, &done_cache, &nc_cache)
                 } else {
                     MaterialProgress::Original
                 };
 
                 let scales = if material_type == MaterialType::Image {
-                    collect_scales_for_image(&base_name, &scale_dir, Some(&sub_name))
+                    scale_cache.collect_img_scales(&base_name)
                 } else {
                     Vec::new()
                 };
@@ -907,175 +916,6 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
     Ok(materials)
 }
 
-fn determine_progress_prototype_img(
-    base_name: &str,
-    sub_name: &str,
-    scale_dir: &Path,
-    done_dir: &Path,
-    nextcloud_dir: &Option<std::path::PathBuf>,
-) -> MaterialProgress {
-    if let Some(nc) = nextcloud_dir {
-        let nc_sub = nc.join(sub_name);
-        if nc_sub.exists() && find_file_in_dir(&nc_sub, base_name) {
-            return MaterialProgress::Uploaded;
-        }
-        // 原件直传：original/ 子目录（方案 B）
-        let nc_original = nc_sub.join("original");
-        if nc_original.exists() && find_file_in_dir(&nc_original, base_name) {
-            return MaterialProgress::Uploaded;
-        }
-    }
-    if done_dir.exists() && find_file_in_subdirs(done_dir, base_name, "img", Some(sub_name)) {
-        return MaterialProgress::Done;
-    }
-    if scale_dir.exists() && find_file_in_subdirs(scale_dir, base_name, "", Some(sub_name)) {
-        return MaterialProgress::Scaled;
-    }
-    MaterialProgress::Original
-}
-
-fn determine_progress_prototype_seq(
-    base_name: &str,
-    sub_name: &str,
-    done_dir: &Path,
-    nextcloud_dir: &Option<std::path::PathBuf>,
-) -> MaterialProgress {
-    let in_nextcloud = nextcloud_dir
-        .as_ref()
-        .map(|nc| {
-            let nc_sub = nc.join(sub_name);
-            nc_sub.exists() && find_file_in_dir(&nc_sub, base_name)
-        })
-        .unwrap_or(false);
-    let in_done_webp = done_dir.exists()
-        && find_webp_in_subdirs(done_dir, base_name, "an", Some(sub_name));
-    let in_done_any = done_dir.exists()
-        && find_file_in_subdirs(done_dir, base_name, "an", Some(sub_name));
-
-    if in_nextcloud {
-        if !in_done_webp {
-            return MaterialProgress::Broken;
-        }
-        return MaterialProgress::Uploaded;
-    }
-    if in_done_any {
-        if !in_done_webp {
-            return MaterialProgress::Broken;
-        }
-        return MaterialProgress::Done;
-    }
-    MaterialProgress::Original
-}
-
-
-fn collect_fps_for_sequence(base_name: &str, done_dir: &Path) -> Option<u32> {
-    if !done_dir.exists() {
-        return None;
-    }
-    if let Ok(entries) = fs::read_dir(done_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            // [an-XX-YY] 格式
-            if !dir_name.starts_with("[an-") || !dir_name.ends_with(']') {
-                continue;
-            }
-            // 检查目录内是否有以 base_name 开头的文件
-            if let Ok(files) = fs::read_dir(&path) {
-                let has_match = files.flatten().any(|f| {
-                    f.file_name()
-                        .to_str()
-                        .map(|n| matches_base_name(n, base_name))
-                        .unwrap_or(false)
-                });
-                if has_match {
-                    // 解析 fps：[an-XX-YY] → YY
-                    let inner = dir_name.trim_start_matches('[').trim_end_matches(']');
-                    if let Some(fps_str) = inner.rsplitn(2, '-').next() {
-                        if let Ok(fps) = fps_str.parse::<u32>() {
-                            return Some(fps);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-
-fn collect_scales_for_sequence(base_name: &str, done_dir: &Path, sub_name: Option<&str>) -> Vec<u32> {
-    let mut scales = Vec::new();
-    if !done_dir.exists() {
-        return scales;
-    }
-    if let Ok(entries) = fs::read_dir(done_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = entry.file_name().to_string_lossy().to_string();
-            if !dir_name.starts_with("[an-") || !dir_name.ends_with(']') {
-                continue;
-            }
-            let sub_dir = sub_name.map(|s| path.join(s));
-            let search_dir = sub_dir.as_deref().unwrap_or(&path);
-            if search_dir.exists() && find_file_in_dir(search_dir, base_name) {
-                let inner = dir_name.trim_start_matches('[').trim_end_matches(']');
-                let parts: Vec<&str> = inner.split('-').collect();
-                if parts.len() >= 2 {
-                    if let Ok(scale) = parts[1].parse::<u32>() {
-                        scales.push(scale);
-                    }
-                }
-            }
-        }
-    }
-    scales.sort();
-    scales.dedup();
-    scales
-}
-
-fn collect_scales_for_image(base_name: &str, scale_dir: &Path, sub_name: Option<&str>) -> Vec<u32> {
-    let mut scales = Vec::new();
-    if !scale_dir.exists() {
-        return scales;
-    }
-    if let Ok(entries) = fs::read_dir(scale_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = entry.file_name().to_string_lossy().to_string();
-            // [XX] 格式
-            if !dir_name.starts_with('[') || !dir_name.ends_with(']') {
-                continue;
-            }
-            let sub_dir = sub_name.map(|s| path.join(s));
-            let search_dir = sub_dir.as_deref().unwrap_or(&path);
-            if search_dir.exists() && find_file_in_dir(search_dir, base_name) {
-                let scale_str = dir_name.trim_start_matches('[').trim_end_matches(']');
-                if let Ok(scale) = scale_str.parse::<u32>() {
-                    scales.push(scale);
-                }
-            }
-        }
-    }
-    scales.sort();
-    scales.dedup();
-    scales
-}
-
-
-
 /// 缓存版：判定静帧进度（scan_materials 专用，避免重复 read_dir）
 fn determine_progress_image_cached(
     base_name: &str,
@@ -1087,7 +927,7 @@ fn determine_progress_image_cached(
     if nc_cache.has_file_in_root(base_name) || nc_cache.has_file_in_original(base_name) {
         return MaterialProgress::Uploaded;
     }
-    if done_cache.has_file_in_subdirs(base_name, "img") {
+    if done_cache.has_file_in_subdirs(base_name, STAGE_PREFIX_IMG) {
         return MaterialProgress::Done;
     }
     if scale_cache.has_file_in_subdirs(base_name, "") {
@@ -1103,8 +943,8 @@ fn determine_progress_sequence_cached(
     nc_cache: &DirSnapshot,
 ) -> MaterialProgress {
     let in_nextcloud = nc_cache.has_file_in_root(base_name);
-    let in_done_webp = done_cache.has_webp_in_subdirs(base_name, "an");
-    let in_done_any = done_cache.has_file_in_subdirs(base_name, "an");
+    let in_done_webp = done_cache.has_webp_in_subdirs(base_name, STAGE_PREFIX_ANIM);
+    let in_done_any = done_cache.has_file_in_subdirs(base_name, STAGE_PREFIX_ANIM);
 
     if in_nextcloud {
         if !in_done_webp {
@@ -1119,76 +959,6 @@ fn determine_progress_sequence_cached(
         return MaterialProgress::Done;
     }
     MaterialProgress::Original
-}
-
-fn find_file_in_dir(dir: &Path, base_name: &str) -> bool {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            if matches_base_name(name, base_name) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn find_file_in_subdirs(dir: &Path, base_name: &str, prefix: &str, sub_name: Option<&str>) -> bool {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = entry.file_name().to_string_lossy().to_string();
-            if prefix.is_empty() || dir_name.starts_with(&format!("[{}-", prefix)) {
-                let sub_dir = sub_name.map(|s| path.join(s));
-                let search_dir = sub_dir.as_deref().unwrap_or(&path);
-                if search_dir.exists() && find_file_in_dir(search_dir, base_name) {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
-fn find_webp_in_subdirs(dir: &Path, base_name: &str, prefix: &str, sub_name: Option<&str>) -> bool {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let dir_name = entry.file_name().to_string_lossy().to_string();
-            if !dir_name.starts_with(&format!("[{}-", prefix)) {
-                continue;
-            }
-            let sub_dir = sub_name.map(|s| path.join(s));
-            let search_dir = sub_dir.as_deref().unwrap_or(&path);
-            if !search_dir.exists() {
-                continue;
-            }
-            if let Ok(files) = fs::read_dir(search_dir) {
-                for f in files.flatten() {
-                    let fpath = f.path();
-                    if !fpath.is_file() {
-                        continue;
-                    }
-                    let fname = fpath.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    let fext = fpath.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                    if fext == "webp" && matches_base_name(&fname, base_name) {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    false
 }
 
 fn count_frames(dir: &Path) -> u32 {
@@ -1238,7 +1008,7 @@ pub fn list_sequence_frames(dir_path: String, base_name: Option<String>) -> Resu
                 .and_then(|e| e.to_str())
                 .unwrap_or("")
                 .to_lowercase();
-            if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "webp" | "bmp") {
+            if FRAME_EXTS.contains(&ext.as_str()) {
                 // 有 base_name 过滤时，只取 {base_name}_NN 模式的文件
                 if let Some(ref pfx) = prefix {
                     let stem = path
@@ -1275,35 +1045,31 @@ pub fn scan_material_versions(
     let (subcat, actual_base_name) = super::helpers::split_prototype_name(&base_name);
 
     // 00_original（Prototype：进入 subcat 子目录）
-    let original_dir = task_dir.join("00_original");
+    let original_dir = task_dir.join(DIR_ORIGINAL);
     let original_search_dir = if subcat.is_empty() {
         original_dir
     } else {
         original_dir.join(&subcat)
     };
     if original_search_dir.exists() {
-        collect_versions_flat(&original_search_dir, &actual_base_name, "00_original", "原始", "", &mut versions);
+        collect_versions_flat(&original_search_dir, &actual_base_name, DIR_ORIGINAL, "原始", "", &mut versions);
     }
 
     // 01_scale — 子目录 [100], [70], [50] 等
-    let scale_dir = task_dir.join("01_scale");
+    let scale_dir = task_dir.join(DIR_SCALE);
     if scale_dir.exists() {
         collect_versions_in_scale_dirs(&scale_dir, &actual_base_name, &subcat, &mut versions);
     }
 
     // 02_done — 子目录 [img-XX] 或 [an-XX-YY]
-    let done_dir = task_dir.join("02_done");
-    let prefix = if material_type == "sequence" { "an" } else { "img" };
+    let done_dir = task_dir.join(DIR_DONE);
+    let prefix = if material_type == "sequence" { STAGE_PREFIX_ANIM } else { STAGE_PREFIX_IMG };
     if done_dir.exists() {
         collect_versions_in_done_dirs(&done_dir, &actual_base_name, prefix, &subcat, &mut versions);
     }
 
     // nextcloud（Prototype：进入 subcat 子目录）
-    let nextcloud_dir = task_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|vfx| vfx.join("nextcloud").join(task_dir.file_name().unwrap_or_default()));
-    if let Some(nc) = nextcloud_dir {
+    if let Some(nc) = nextcloud_task_dir(task_dir) {
         let nc_search_dir = if subcat.is_empty() {
             nc
         } else {
@@ -1395,7 +1161,7 @@ fn collect_versions_in_scale_dirs(
                 collect_versions_flat(
                     &search_dir,
                     base_name,
-                    "01_scale",
+                    DIR_SCALE,
                     "已缩放",
                     &scale,
                     versions,
@@ -1435,7 +1201,7 @@ fn collect_versions_in_done_dirs(
                 collect_versions_flat(
                     &search_dir,
                     base_name,
-                    "02_done",
+                    DIR_DONE,
                     "已完成",
                     &scale,
                     versions,
@@ -1445,6 +1211,25 @@ fn collect_versions_in_done_dirs(
     }
 }
 
+/// 判定单个预览视频的上传状态：
+/// 同名已上传 → "uploaded"；nextcloud 存在同 baseName 旧版本 → "outdated"；否则 "none"
+fn preview_upload_status(
+    name_lower: &str,
+    ext: &str,
+    nc_set: &std::collections::HashSet<String>,
+) -> String {
+    if nc_set.contains(name_lower) {
+        return "uploaded".to_string();
+    }
+    let suffix = format!(".{}", ext);
+    let base_no_ver = regex_strip_version(name_lower.trim_end_matches(&suffix));
+    let has_older = nc_set.iter().any(|f| {
+        let f_base = f.trim_end_matches(&suffix);
+        regex_strip_version(f_base) == base_no_ver
+    });
+    if has_older { "outdated".to_string() } else { "none".to_string() }
+}
+
 /// 扫描任务的 03_preview 目录，返回视频文件列表（含上传状态）
 /// nextcloud_preview_path: nextcloud/preview/ 目录路径（含 breakdown 子目录）
 #[tauri::command]
@@ -1452,12 +1237,10 @@ pub fn scan_preview_videos(
     task_path: String,
     nextcloud_preview_path: String,
 ) -> Result<Vec<PreviewVideoEntry>, String> {
-    let preview_dir = Path::new(&task_path).join("03_preview");
+    let preview_dir = Path::new(&task_path).join(DIR_PREVIEW);
     if !preview_dir.exists() {
         return Ok(Vec::new());
     }
-
-    let video_exts: &[&str] = &["mp4", "mov", "avi", "mkv", "webm", "flv"];
 
     // 收集 nextcloud/preview/ 中的文件名（小写），用于状态判断
     let nc_preview = Path::new(&nextcloud_preview_path);
@@ -1475,7 +1258,7 @@ pub fn scan_preview_videos(
     };
 
     // 收集 nextcloud/preview/breakdown/ 中的文件名（小写）
-    let nc_breakdown = nc_preview.join("breakdown");
+    let nc_breakdown = nc_preview.join(DIR_NC_BREAKDOWN);
     let nc_breakdown_files: std::collections::HashSet<String> = if nc_breakdown.exists() {
         fs::read_dir(&nc_breakdown)
             .map(|rd| {
@@ -1504,41 +1287,19 @@ pub fn scan_preview_videos(
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_lowercase();
-            if !video_exts.contains(&ext.as_str()) {
+            if !VIDEO_EXTS.contains(&ext.as_str()) {
                 return None;
             }
             let name = path.file_name()?.to_str()?.to_string();
             let name_lower = name.to_lowercase();
             let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
 
-            // 判断上传状态：breakdown 文件查 nc_breakdown_files，否则查 nc_files
+            // 判断上传状态：breakdown 文件对比 nc_breakdown_files，否则对比 nc_files
             let is_breakdown = name_lower
                 .trim_end_matches(&format!(".{}", ext))
                 .contains("_breakdown");
-            let upload_status = if is_breakdown {
-                if nc_breakdown_files.contains(&name_lower) {
-                    "uploaded".to_string()
-                } else {
-                    // 检查是否存在同 baseName 的旧版本（待更新）
-                    let base = name_lower.trim_end_matches(&format!(".{}", ext));
-                    let base_no_ver = regex_strip_version(base);
-                    let has_older = nc_breakdown_files.iter().any(|f| {
-                        let f_base = f.trim_end_matches(&format!(".{}", ext));
-                        regex_strip_version(f_base) == base_no_ver
-                    });
-                    if has_older { "outdated".to_string() } else { "none".to_string() }
-                }
-            } else if nc_files.contains(&name_lower) {
-                "uploaded".to_string()
-            } else {
-                let base = name_lower.trim_end_matches(&format!(".{}", ext));
-                let base_no_ver = regex_strip_version(base);
-                let has_older = nc_files.iter().any(|f| {
-                    let f_base = f.trim_end_matches(&format!(".{}", ext));
-                    regex_strip_version(f_base) == base_no_ver
-                });
-                if has_older { "outdated".to_string() } else { "none".to_string() }
-            };
+            let nc_set = if is_breakdown { &nc_breakdown_files } else { &nc_files };
+            let upload_status = preview_upload_status(&name_lower, &ext, nc_set);
 
             Some(PreviewVideoEntry {
                 name,
@@ -1552,197 +1313,4 @@ pub fn scan_preview_videos(
 
     files.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(files)
-}
-
-/// 提取 PSD/PSB 缩略图，写入磁盘缓存并返回缓存文件路径（前端用 convertFileSrc 引用）
-/// max_size: 最长边像素上限（卡片用 256，侧边栏用 800）
-/// 使用信号量限制并发数（2），避免大量 PSD 同时解析导致线程池饱和
-static PSD_SEMAPHORE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
-
-#[tauri::command]
-pub async fn extract_psd_thumbnail(
-    app_handle: tauri::AppHandle,
-    path: String,
-    max_size: u32,
-) -> Result<Option<String>, String> {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    use tauri::Manager;
-
-    // 用 mtime 做缓存失效判定（tokio::fs 异步版本，不阻塞 executor 线程）
-    let mtime = tokio::fs::metadata(&path).await
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
-        .unwrap_or(0);
-
-    let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
-    mtime.hash(&mut hasher);
-    max_size.hash(&mut hasher);
-    let hash = hasher.finish();
-
-    let cache_dir = app_handle.path().app_config_dir()
-        .map_err(|e| format!("获取配置目录失败: {}", e))?
-        .join("psd_thumbnails");
-    let cache_file = cache_dir.join(format!("{:016x}.jpg", hash));
-
-    // 磁盘缓存命中 → 直接返回路径（tokio::fs 异步检查，不阻塞 executor 线程）
-    if tokio::fs::metadata(&cache_file).await.is_ok() {
-        return Ok(Some(cache_file.to_string_lossy().to_string()));
-    }
-
-    let _permit = PSD_SEMAPHORE.acquire().await.map_err(|e| format!("信号量错误: {}", e))?;
-    let cache_file_clone = cache_file.clone();
-    let cache_dir_clone = cache_dir.clone();
-
-    tokio::task::spawn_blocking(move || {
-        let data = fs::read(&path).map_err(|e| format!("读取文件失败: {}", e))?;
-
-        // 判断文件版本：1=PSD，2=PSB
-        let is_psb = data.len() >= 6
-            && &data[0..4] == b"8BPS"
-            && u16::from_be_bytes([data[4], data[5]]) == 2;
-
-        let jpeg_data = if is_psb {
-            // PSB：psd crate 不支持，只能用内嵌 JPEG 缩略图
-            extract_embedded_thumbnail(&data)
-        } else {
-            // PSD：优先图层合并（高质量），失败时 fallback 到内嵌 JPEG
-            match extract_psd_via_layer_composite(&data, max_size, &path) {
-                Ok(Some(jpeg)) => Some(jpeg),
-                _ => extract_embedded_thumbnail(&data),
-            }
-        };
-
-        match jpeg_data {
-            Some(jpeg) => {
-                // 写入磁盘缓存，前端用 convertFileSrc 引用
-                fs::create_dir_all(&cache_dir_clone)
-                    .map_err(|e| format!("创建缓存目录失败: {}", e))?;
-                fs::write(&cache_file_clone, &jpeg)
-                    .map_err(|e| format!("写入缓存文件失败: {}", e))?;
-                Ok(Some(cache_file_clone.to_string_lossy().to_string()))
-            }
-            None => Ok(None),
-        }
-    })
-    .await
-    .map_err(|e| format!("线程执行失败: {}", e))?
-}
-
-/// 从 PSD/PSB 文件的 Image Resources 段提取内嵌 JPEG 缩略图
-/// 资源 ID 0x040C（Photoshop 5.0+）或 0x0409（Photoshop 4.0）
-fn extract_embedded_thumbnail(data: &[u8]) -> Option<Vec<u8>> {
-    // 文件头固定 26 字节：4(sig) + 2(ver) + 6(reserved) + 2(ch) + 4(h) + 4(w) + 2(depth) + 2(mode)
-    if data.len() < 26 {
-        return None;
-    }
-    // 校验签名 "8BPS"
-    if &data[0..4] != b"8BPS" {
-        return None;
-    }
-    let version = u16::from_be_bytes([data[4], data[5]]);
-    if version != 1 && version != 2 {
-        return None;
-    }
-
-    let mut pos: usize = 26;
-
-    // 跳过 Color Mode Data 段（4 字节长度 + 数据）
-    if pos + 4 > data.len() { return None; }
-    let cm_len = u32::from_be_bytes([data[pos], data[pos+1], data[pos+2], data[pos+3]]) as usize;
-    pos += 4 + cm_len;
-
-    // Image Resources 段（4 字节长度 + 数据）
-    if pos + 4 > data.len() { return None; }
-    let ir_len = u32::from_be_bytes([data[pos], data[pos+1], data[pos+2], data[pos+3]]) as usize;
-    pos += 4;
-    let ir_end = pos + ir_len;
-    if ir_end > data.len() { return None; }
-
-    // 遍历 Image Resource Block
-    let mut safety = 0u32;
-    while pos + 12 <= ir_end && safety < 500 {
-        safety += 1;
-        // 签名 "8BIM"
-        if &data[pos..pos+4] != b"8BIM" { break; }
-        let res_id = u16::from_be_bytes([data[pos+4], data[pos+5]]);
-        // Pascal string（name）
-        let name_len = data[pos+6] as usize;
-        let padded_name_len = if (name_len + 1) % 2 != 0 { name_len + 2 } else { name_len + 1 };
-        let data_len_offset = pos + 6 + padded_name_len;
-        if data_len_offset + 4 > ir_end { break; }
-        let block_data_len = u32::from_be_bytes([
-            data[data_len_offset], data[data_len_offset+1],
-            data[data_len_offset+2], data[data_len_offset+3],
-        ]) as usize;
-        let block_data_start = data_len_offset + 4;
-
-        if (res_id == 0x040C || res_id == 0x0409) && block_data_len > 28 {
-            // 缩略图资源头：4(format) + 4(w) + 4(h) + 4(widthbytes) + 4(totalsize) + 4(compressed_size) + 4(bpp) = 28 字节
-            let jpeg_start = block_data_start + 28;
-            let jpeg_end = block_data_start + block_data_len;
-            if jpeg_end <= data.len() {
-                let fmt = u32::from_be_bytes([
-                    data[block_data_start], data[block_data_start+1],
-                    data[block_data_start+2], data[block_data_start+3],
-                ]);
-                if fmt == 1 {
-                    // format=1 表示 JPEG
-                    let jpeg = data[jpeg_start..jpeg_end].to_vec();
-                    if jpeg.len() >= 2 && jpeg[0] == 0xFF && jpeg[1] == 0xD8 {
-                        return Some(jpeg);
-                    }
-                }
-            }
-        }
-
-        // 跳到下一个 resource block（数据长度按偶数对齐）
-        let padded_data_len = if block_data_len % 2 != 0 { block_data_len + 1 } else { block_data_len };
-        pos = block_data_start + padded_data_len;
-    }
-
-    None
-}
-
-/// 使用 psd crate 合并图层生成缩略图 JPEG 字节（仅 PSD，PSB 不支持）
-fn extract_psd_via_layer_composite(data: &[u8], max_size: u32, path: &str) -> Result<Option<Vec<u8>>, String> {
-    use image::{RgbaImage, imageops};
-
-    let psd = match psd::Psd::from_bytes(data) {
-        Ok(p) => p,
-        Err(e) => {
-            log::warn!("PSD 解析失败 {}: {}", path, e);
-            return Ok(None);
-        }
-    };
-
-    let w = psd.width();
-    let h = psd.height();
-    if w == 0 || h == 0 {
-        return Ok(None);
-    }
-
-    let rgba = psd.rgba();
-    let img = RgbaImage::from_raw(w, h, rgba)
-        .ok_or_else(|| "RGBA 数据长度不匹配".to_string())?;
-
-    let thumb_max = max_size.max(1).min(w.max(h));
-    let (thumb_w, thumb_h) = if w >= h {
-        (thumb_max, (h as f32 * thumb_max as f32 / w as f32).round() as u32)
-    } else {
-        ((w as f32 * thumb_max as f32 / h as f32).round() as u32, thumb_max)
-    };
-    let thumb_w = thumb_w.max(1);
-    let thumb_h = thumb_h.max(1);
-
-    let thumb = imageops::resize(&img, thumb_w, thumb_h, imageops::FilterType::Triangle);
-
-    let rgb_thumb = image::DynamicImage::ImageRgba8(thumb).to_rgb8();
-    let mut jpeg_buf: Vec<u8> = Vec::new();
-    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_buf, 85);
-    encoder.encode_image(&rgb_thumb).map_err(|e| format!("JPEG 编码失败: {}", e))?;
-
-    Ok(Some(jpeg_buf))
 }

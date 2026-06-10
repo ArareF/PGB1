@@ -18,6 +18,7 @@ import FolderBrowserDialog from '../components/FolderBrowserDialog.vue'
 import { useI18n } from 'vue-i18n'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
+import { PSD_SUBPATH } from '../config/projectPaths'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -207,7 +208,7 @@ setNavigation({
 const DIR_CONFIG = [
   { label: '01_Preproduction', subPath: '01_Preproduction', flatten: false },
   { label: '02_Production', subPath: '02_Production', flatten: false },
-  { label: '03_Render_VFX / VFX / PSD', subPath: '03_Render_VFX\\VFX\\PSD', flatten: true },
+  { label: '03_Render_VFX / VFX / PSD', subPath: PSD_SUBPATH, flatten: true },
   { label: '05_Outside', subPath: '05_Outside', flatten: false },
 ]
 

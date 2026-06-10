@@ -96,8 +96,6 @@ pub fn run() {
             commands::load_attendance_record,
             commands::save_attendance_record,
             commands::dismiss_clock_in_reminder,
-            commands::schedule_overtime_reminder,
-            commands::show_overtime_dialog,
             commands::reschedule_attendance,
             commands::open_reminder_window,
             commands::translate_text_stream,

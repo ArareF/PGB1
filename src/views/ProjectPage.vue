@@ -14,6 +14,8 @@ import NoteDialog from '../components/NoteDialog.vue'
 import NoteRenderer from '../components/NoteRenderer.vue'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
+import { priorityRank } from '../config/priority'
+import { aeDirPath } from '../config/projectPaths'
 
 const route = useRoute()
 const router = useRouter()
@@ -53,15 +55,12 @@ const sortMode = ref<'default' | 'priority'>(
 )
 watch(sortMode, val => localStorage.setItem(SORT_MODE_KEY, val))
 
-// 优先度排序：high(0) > medium(1) > null/无(2) > low(3)
-const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 3 }
-
 const sortedTasks = computed(() => {
   const list = [...tasks.value]
   if (sortMode.value === 'default') return list
   return list.sort((a, b) => {
-    const ao = a.priority ? (PRIORITY_ORDER[a.priority] ?? 2) : 2
-    const bo = b.priority ? (PRIORITY_ORDER[b.priority] ?? 2) : 2
+    const ao = priorityRank(a.priority)
+    const bo = priorityRank(b.priority)
     if (ao !== bo) return ao - bo
     return a.name.localeCompare(b.name)
   })
@@ -220,7 +219,7 @@ const aepFiles = ref<FileEntry[]>([])
 const aepPanelStyle = ref({ top: '0px', right: '0px' })
 
 function getAeDir() {
-  return projectPath.replace(/\\/g, '/') + '/03_Render_VFX/VFX/AE'
+  return aeDirPath(projectPath)
 }
 
 async function scanAepFiles(): Promise<FileEntry[]> {

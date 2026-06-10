@@ -95,9 +95,10 @@ pub fn handle_file_event<R: Runtime>(
 
         // 普通: 02_done/[img-XX]/file.webp
         // Prototype: 02_done/[img-XX]/{subcat}/file.webp
+        let img_dir = crate::commands::workflow_paths::img_dir_name(scale);
         let target_dir = match &subcat {
-            Some(subcat_name) => done_path.join(format!("[img-{}]", scale)).join(subcat_name),
-            None => done_path.join(format!("[img-{}]", scale)),
+            Some(subcat_name) => done_path.join(&img_dir).join(subcat_name),
+            None => done_path.join(&img_dir),
         };
         // 事件载荷：Prototype 携带 subcat 前缀（"subcat/stem"），与前端 images map key 对齐
         let event_name = match &subcat {

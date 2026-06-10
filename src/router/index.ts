@@ -59,11 +59,6 @@ const router = createRouter({
       component: () => import('../views/ReminderPage.vue'),
     },
     {
-      path: '/overtime',
-      name: 'overtime',
-      component: () => import('../views/OvertimePage.vue'),
-    },
-    {
       path: '/settings',
       name: 'settings',
       component: () => import('../views/SettingsPage.vue'),

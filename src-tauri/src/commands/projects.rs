@@ -7,6 +7,10 @@ use super::helpers::{
     load_or_create_config, move_dir, mutate_project_config, scan_task_names, to_title_case,
     validate_file_name, PROTOTYPE_SUBCATEGORIES, PSD_SUBCATEGORIES,
 };
+use super::workflow_paths::{
+    export_dir, vfx_dir, DIR_AE, DIR_DONE, DIR_EXPORT, DIR_NC_BREAKDOWN, DIR_NC_PREVIEW,
+    DIR_NEXTCLOUD, DIR_ORIGINAL, DIR_PREVIEW, DIR_PSD, DIR_SCALE,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -71,11 +75,9 @@ pub fn apply_task_changes(
     let to_create: Vec<&str> = new_set.difference(&old_set).copied().filter(|s| !s.contains('/')).collect();
     let to_archive: Vec<&str> = old_set.difference(&new_set).copied().filter(|s| !s.contains('/')).collect();
 
-    let vfx_dir = project_dir
-        .join("03_Render_VFX")
-        .join("VFX");
-    let export_dir = vfx_dir.join("Export");
-    let nextcloud_dir = vfx_dir.join("nextcloud");
+    let vfx_root = vfx_dir(project_dir);
+    let export_root = vfx_root.join(DIR_EXPORT);
+    let nextcloud_root = vfx_root.join(DIR_NEXTCLOUD);
 
     let mut created = Vec::new();
     let mut archived = Vec::new();
@@ -87,12 +89,12 @@ pub fn apply_task_changes(
         let is_prototype = task_name.to_lowercase() == "prototype";
 
         // Export/{Name}/00_original/, 01_scale/, 02_done/, 03_preview/
-        let task_export = export_dir.join(&folder_name);
-        let subdirs = ["00_original", "01_scale", "02_done", "03_preview"];
+        let task_export = export_root.join(&folder_name);
+        let subdirs = [DIR_ORIGINAL, DIR_SCALE, DIR_DONE, DIR_PREVIEW];
 
         for sub in &subdirs {
             let sub_path = task_export.join(sub);
-            if is_prototype && (*sub == "00_original" || *sub == "02_done") {
+            if is_prototype && (*sub == DIR_ORIGINAL || *sub == DIR_DONE) {
                 // Prototype: 00_original/02_done 下创建 7 个子分类；01_scale 只建空目录（缩放时按需创建 [XX]/subcat/）
                 for cat in &PROTOTYPE_SUBCATEGORIES {
                     if let Err(e) = fs::create_dir_all(sub_path.join(cat)) {
@@ -111,7 +113,7 @@ pub fn apply_task_changes(
         }
 
         // nextcloud/{Name}/
-        let task_nc = nextcloud_dir.join(&folder_name);
+        let task_nc = nextcloud_root.join(&folder_name);
         if is_prototype {
             for cat in &PROTOTYPE_SUBCATEGORIES {
                 if let Err(e) = fs::create_dir_all(task_nc.join(cat)) {
@@ -138,18 +140,18 @@ pub fn apply_task_changes(
             .join(format!("timestamp_{}", timestamp));
 
         // 归档 Export/{Name}/
-        let src_export = export_dir.join(&folder_name);
+        let src_export = export_root.join(&folder_name);
         if src_export.exists() {
-            let dest = archive_base.join("Export").join(&folder_name);
+            let dest = archive_base.join(DIR_EXPORT).join(&folder_name);
             if let Err(e) = move_dir(&src_export, &dest) {
                 errors.push(format!("归档 Export/{} 失败: {}", folder_name, e));
             }
         }
 
         // 归档 nextcloud/{Name}/
-        let src_nc = nextcloud_dir.join(&folder_name);
+        let src_nc = nextcloud_root.join(&folder_name);
         if src_nc.exists() {
-            let dest = archive_base.join("nextcloud").join(&folder_name);
+            let dest = archive_base.join(DIR_NEXTCLOUD).join(&folder_name);
             if let Err(e) = move_dir(&src_nc, &dest) {
                 errors.push(format!("归档 nextcloud/{} 失败: {}", folder_name, e));
             }
@@ -318,19 +320,19 @@ pub fn restore_archived_task(
         return Err(format!("归档版本不存在: {}", archive_path.display()));
     }
 
-    let vfx_dir = project_dir.join("03_Render_VFX").join("VFX");
+    let vfx_root = vfx_dir(project_dir);
 
     // 恢复 Export/{TaskName}/
-    let archived_export = archive_path.join("Export").join(&task_name);
+    let archived_export = archive_path.join(DIR_EXPORT).join(&task_name);
     if archived_export.exists() {
-        let dest = vfx_dir.join("Export").join(&task_name);
+        let dest = vfx_root.join(DIR_EXPORT).join(&task_name);
         move_dir(&archived_export, &dest)?;
     }
 
     // 恢复 nextcloud/{TaskName}/
-    let archived_nc = archive_path.join("nextcloud").join(&task_name);
+    let archived_nc = archive_path.join(DIR_NEXTCLOUD).join(&task_name);
     if archived_nc.exists() {
-        let dest = vfx_dir.join("nextcloud").join(&task_name);
+        let dest = vfx_root.join(DIR_NEXTCLOUD).join(&task_name);
         move_dir(&archived_nc, &dest)?;
     }
 
@@ -415,21 +417,21 @@ pub fn create_project(
     }
 
     // 创建标准目录骨架
-    let vfx_base = project_dir.join("03_Render_VFX").join("VFX");
+    let vfx_base = vfx_dir(&project_dir);
     let mut dirs_to_create: Vec<PathBuf> = vec![
         project_dir.join("00_Game Design & Doc"),
         project_dir.join("01_Preproduction"),
         project_dir.join("02_Production"),
-        vfx_base.join("Export"),
-        vfx_base.join("nextcloud"),
-        vfx_base.join("nextcloud").join("preview"),
-        vfx_base.join("nextcloud").join("preview").join("breakdown"),
-        vfx_base.join("AE"),
+        vfx_base.join(DIR_EXPORT),
+        vfx_base.join(DIR_NEXTCLOUD),
+        vfx_base.join(DIR_NEXTCLOUD).join(DIR_NC_PREVIEW),
+        vfx_base.join(DIR_NEXTCLOUD).join(DIR_NC_PREVIEW).join(DIR_NC_BREAKDOWN),
+        vfx_base.join(DIR_AE),
         project_dir.join("04_Trailer"),
         project_dir.join("05_Outside"),
     ];
     // PSD/ 下 8 个固定子目录（与任务列表无关）
-    let psd_base = vfx_base.join("PSD");
+    let psd_base = vfx_base.join(DIR_PSD);
     for cat in &PSD_SUBCATEGORIES {
         dirs_to_create.push(psd_base.join(cat));
     }
@@ -662,7 +664,7 @@ pub fn rename_project(project_path: String, new_name: String) -> Result<ProjectI
 
     // 返回新的 ProjectInfo（重新扫描单个项目）
     let config = load_or_create_config(&new_path)?;
-    let export_path = new_path.join("03_Render_VFX").join("VFX").join("Export");
+    let export_path = export_dir(&new_path);
     let tasks = if export_path.exists() {
         scan_task_names(&export_path)?
     } else {

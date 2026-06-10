@@ -18,6 +18,7 @@ import NoteDialog from '../components/NoteDialog.vue'
 import NoteRenderer from '../components/NoteRenderer.vue'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
+import { priorityRank } from '../config/priority'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -72,9 +73,6 @@ function isProjectComplete(p: ProjectInfo): boolean {
   return total > 0 && done >= total
 }
 
-// 优先度排序：high(0) > medium(1) > null/无(2) > low(3)
-const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 3 }
-
 // 仅识别标准日期格式（YYYY-MM-DD），忽略文字备注（如"转交了"）
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
@@ -94,8 +92,8 @@ const sortedProjects = computed(() => {
 
   if (sortMode.value === 'priority') {
     return list.sort((a, b) => {
-      const ao = a.priority ? (PRIORITY_ORDER[a.priority] ?? 2) : 2
-      const bo = b.priority ? (PRIORITY_ORDER[b.priority] ?? 2) : 2
+      const ao = priorityRank(a.priority)
+      const bo = priorityRank(b.priority)
       if (ao !== bo) return ao - bo
       return a.name.localeCompare(b.name)
     })
@@ -106,8 +104,8 @@ const sortedProjects = computed(() => {
   today.setHours(0, 0, 0, 0)
   return list.sort((a, b) => {
     // 第一键：优先度
-    const ao = a.priority ? (PRIORITY_ORDER[a.priority] ?? 2) : 2
-    const bo = b.priority ? (PRIORITY_ORDER[b.priority] ?? 2) : 2
+    const ao = priorityRank(a.priority)
+    const bo = priorityRank(b.priority)
     if (ao !== bo) return ao - bo
     // 第二键：有效日期在前，无有效日期（含文字备注）沉底
     const aDate = parseDeadline(a.deadline)

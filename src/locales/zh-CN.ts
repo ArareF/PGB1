@@ -510,14 +510,6 @@ export default {
     missedClockOut: '昨天忘记打退勤卡了',
   },
 
-  overtime: {
-    title: '加班多久？',
-    plus30min: '+30分',
-    plus1hour: '+1小时',
-    plus2hours: '+2小时',
-    custom: '自定义:',
-  },
-
   translator: {
     placeholder: '在此输入要翻译的文本...',
     paste: '粘贴',

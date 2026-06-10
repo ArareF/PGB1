@@ -1,7 +1,7 @@
 # 页面详情
 
-> `src/views/` 下 19 个页面的数据流、子组件依赖、核心交互。
-> 顶层索引见 [CODE_INDEX.md](../../CODE_INDEX.md#5-页面18)。
+> `src/views/` 下 19 个页面的数据流、子组件依赖、核心交互（OvertimePage 已于 2026-06-10 删除）。
+> 顶层索引见 [CODE_INDEX.md](../../CODE_INDEX.md#5-页面19)。
 
 ---
 
@@ -285,10 +285,6 @@
 **加班流程**：`clock-out` 弹窗点「加班」→ emit `overtime-started` 事件 + 关窗（不再弹出加班时间设置窗口），主页显示「结束加班」按钮。
 
 **漏打退勤检测**：`clock-in` 弹窗 `onMounted` 时检查 localStorage 加班残留或 attendance record 中 `last_clock_in > last_clock_out`，命中则显示橙色警告条「昨天忘记打退勤卡了」+ emit `overtime-ended` 清除加班按钮。
-
-### OvertimePage.vue（230 行）
-
-**状态**：已弃用（保留代码未删除）。加班时间设置弹窗（快捷按钮 +30分/+1小时/+2小时 + 自定义输入）。
 
 ### PinboardPage.vue（910 行）
 

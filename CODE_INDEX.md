@@ -2,7 +2,7 @@
 
 > 全量源代码文件职责目录视图。新会话快速了解代码现状用。
 > 详细信息（Props / 状态 / 防火手记 / 架构决策）见 [`docs/code/*.md`](docs/code/)。
-> 最后更新: 2026-06-10
+> 最后更新: 2026-06-16
 
 ---
 
@@ -10,18 +10,20 @@
 
 | 目录 | 文件数 | 总行数 | 说明 |
 |------|--------|--------|------|
-| `src/components/` | 30 | 9438 | Vue UI 组件 |
-| `src/composables/` | 23 | 2959 | 组合式函数（逻辑复用） |
-| `src/views/` | 19 | 9468 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
-| `src/styles/` | 4 | 1789 | CSS 设计系统 |
+| `src/components/` | 30 | 9489 | Vue UI 组件 |
+| `src/composables/` | 23 | 3175 | 组合式函数（逻辑复用） |
+| `src/views/` | 19 | 9485 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
+| `src/styles/` | 4 | 1836 | CSS 设计系统 |
 | `src/layouts/` | 1 | 321 | 主布局 |
-| `src/types/` | 2 | 46 | TypeScript 类型定义 |
+| `src/types/` | 2 | 57 | TypeScript 类型定义 |
 | `src/utils/` | 1 | 23 | 工具函数 |
 | `src/config/` | 6 | 170 | 配置 SSOT（app/onboarding/fileTypes/pinboard/priority/projectPaths） |
-| `src/i18n/` + `src/locales/` | 3 | 1318 | 国际化（vue-i18n + zh-CN + en） |
-| `src/router/` + 入口 | 5 | 172 | 路由 + main/App/vite-env |
-| `src-tauri/src/` | 25 | 10093 | Rust 后端 |
-| **合计** | **119** | **35797** | |
+| `src/i18n/` + `src/locales/` | 3 | 1396 | 国际化（vue-i18n + zh-CN + en） |
+| `src/router/` + 入口 | 5 | 204 | 路由 + main/App/vite-env/vite.config |
+| `src-tauri/src/` | 25 | 10208 | Rust 后端 |
+| **合计** | **119** | **36364** | |
+
+> 行数口径 = 文件总行数（含空行），与历史版本一致。
 
 ---
 
@@ -32,7 +34,7 @@
 | [docs/code/components.md](docs/code/components.md) | 31 个组件的 Props、关键公共类、笔记体系接入 |
 | [docs/code/composables.md](docs/code/composables.md) | 22 个 composable 的关键导出、状态、模块级单例说明 |
 | [docs/code/views.md](docs/code/views.md) | 18 个页面的数据流、与组件/composable 的依赖图 |
-| [docs/code/rust-backend.md](docs/code/rust-backend.md) | Rust 命令清单（约 75 个）+ 数据模型 + 调度器 |
+| [docs/code/rust-backend.md](docs/code/rust-backend.md) | Rust 命令清单（约 90 个）+ 数据模型 + 调度器 |
 | [docs/code/styles-system.md](docs/code/styles-system.md) | CSS 变量 SSOT、毛玻璃层级、动画系统、公共类 |
 
 ---
@@ -129,7 +131,7 @@
 | `useDirectoryFiles.ts` | 41 | 通用目录扫描 + `openInExplorer` |
 | `useFrameCache.ts` | 57 | 序列帧 LRU 缓存（max 10 序列 / 120 帧） |
 | `useTheme.ts` | 30 | 明暗主题切换 + localStorage |
-| `useScale.ts` | 28 | UI 全局缩放（1920 基准，clamp [0.67, 1.25]） |
+| `useScale.ts` | 28 | UI 全局缩放模块级单例（按设置页传入档位直接应用） |
 | `useSettings.ts` | 126 | 应用设置 CRUD（JSON 深拷贝脱壳 Vue Proxy） |
 | `usePsdThumbnail.ts` | 41 | PSD 缩略图并发去重缓存 |
 | `useStatusBar.ts` | 504 | 状态栏数据单例（时钟 / 打卡 / 节假日 / 番茄钟 / 加班） |
@@ -178,7 +180,7 @@
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `styles/design-system.css` | 1538 | **SSOT**：颜色 / 间距 / 排版 / 圆角 / 阴影 / 过渡 / 毛玻璃变量 / 优先度 token / 公共类 |
+| `styles/design-system.css` | 1585 | **SSOT**：颜色 / 间距 / 排版 / 圆角 / 阴影 / 过渡 / 毛玻璃变量 / 优先度 token / 公共类 |
 | `styles/glass.css` | 86 | 毛玻璃工具类（subtle/medium/strong） + backdrop-filter 兄弟冲突规则 |
 | `styles/dialog.css` | 120 | 弹窗公共样式（overlay / content / btn 变体 / 进出场动画） |
 | `styles/reset.css` | 45 | 基础重置 + 字体引用 |

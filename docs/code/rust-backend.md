@@ -11,11 +11,11 @@
 
 应用入口，调 `pgb1_lib::run()`。
 
-### lib.rs（374 行）
+### lib.rs（375 行）
 
 **Tauri 初始化**：
-- 命令注册（约 76 个）
-- 插件注册：`opener` / `drag` / `dialog` / `clipboard` / `notification` / `autostart`
+- 命令注册（约 90 个）
+- 插件注册：`single-instance` / `log` / `autostart` / `opener` / `drag` / `dialog` / `clipboard` / `notification` / `updater` / `process`
 - Windows Acrylic 毛玻璃
 - 调度器初始化 + 补打检测
 - `hotkey` 全局快捷键初始化
@@ -23,7 +23,7 @@
 
 **关闭行为**：`CloseRequested` 拦截 + `hide()` 最小化到系统托盘，不退出。
 
-### models.rs（637 行）
+### models.rs（681 行）
 
 **29 个 struct + 3 个 enum**。见 [数据模型](#数据模型) 小节。
 
@@ -62,6 +62,12 @@
 - `pre_warm_daily_report`：提前 90 秒创建隐藏 WebView 加载 Google Docs
 - 在 `daily_timer_loop` 中日报提醒前 90 秒触发
 
+### migrations.rs（95 行）
+
+**安装目录迁移**（v2.8.10 起 productName 由「PG素材管理系统」→「PGB1」的善后）：
+- `migrate_legacy_install`：新版首次启动时静默清理旧中文 productName 安装残留（`%LOCALAPPDATA%\Programs\PG素材管理系统\` 及老快捷方式），失败只记日志不中断启动
+- **爆炸半径自律**：仅固定字面量路径，不 glob、不递归、不碰 `AppData\Roaming`；目录需含 `.exe` 才认定为 NSIS 安装目录后清理
+
 ---
 
 ## commands/ 子模块
@@ -77,7 +83,7 @@
 - 阶段前缀常量：`STAGE_PREFIX_ANIM`（an）/ `STAGE_PREFIX_IMG`（img）
 - 路径构造：`vfx_dir` / `export_dir` / `nextcloud_dir` / `nextcloud_task_dir` / `img_dir_name` / `an_dir_name` / `stage_dir_prefix`
 
-### commands/scanning.rs（1316 行）—— 最大文件
+### commands/scanning.rs（1324 行）—— 最大文件
 
 **扫描命令**：
 - `scan_projects` / `scan_tasks` / `scan_materials` / `scan_directory`
@@ -111,7 +117,7 @@
 - `spawn_daily_report_scroll` 轮询就绪后 JS focus + HWND 置顶 + `send_ctrl_end()` 跳到文档末尾
 - `send_ctrl_end()` / `scroll_to_bottom_via_wheel`（Win32 API 物理滚动）
 
-### commands/conversion.rs（1319 行）
+### commands/conversion.rs（1336 行）
 
 **转换/缩放命令**：
 - `scan_normalize_items` / `execute_normalize_v2` / `restore_normalize_backup`（Phase 5b+ 规范化独立页面：全量盘点 + 命名/自适应画布/加黑底三操作 + `.normalize_backup` 备份/恢复 + `normalize-progress` 事件；备份按规范后名做 key 保留最早纯净原件；图像辅助 `trim_transparent` / `composite_on_black`）
@@ -147,7 +153,7 @@
 - `copy_icon_to_cache`
 - `find_game_exe`（Unity `UnityCrashHandler64.exe` 指纹 + Godot `.pck` 同名配对）
 
-### commands/helpers.rs（606 行）
+### commands/helpers.rs（661 行）
 
 **公共辅助函数**：
 - **扩展名常量 SSOT**（与前端 `fileTypes.ts` 对齐）：`IMAGE_EXTS` / `VIDEO_EXTS` / `FRAME_EXTS` + `material_type_from_ext`
@@ -167,7 +173,7 @@
 - `extract_psd_thumbnail`（命令）：PSD 图层合并 + PSB 内嵌 JPEG fallback，`PSD_SEMAPHORE(2)` 限并发，磁盘缓存
 - `psd_cache_file`：缓存路径 hash 计算（路径 + mtime + max_size），与 `scan_directory` 的命中检查共用，杜绝两处 hash 逻辑漂移
 
-### commands/translation.rs（340 行）
+### commands/translation.rs（346 行）
 
 **翻译命令入口**：
 - `translate_text_stream`（SSE 流式 Gemini API）
@@ -177,14 +183,14 @@
 
 PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块。
 
-### commands/translation/pdf_font.rs（212 行）
+### commands/translation/pdf_font.rs（216 行）
 
 **CJK 字体处理**（Sprint 3·Y-7 剥离）：
 - `load_cjk_font_bytes`：`msyh` / `simhei` 候选
 - `extract_single_ttf_from_data`：TTC → TTF 表重定位
 - `add_yahe_font`：`Type0` + `Identity-H` + `FontFile2` + `ToUnicode CMap`
 
-### commands/translation/pdf_reflow.rs（450 行）
+### commands/translation/pdf_reflow.rs（464 行）
 
 **PDF 内容流提取 + 流式排版**（Sprint 3·Y-7 剥离）：
 - `obj_to_f32`
@@ -193,7 +199,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 - `get_page_xobject_dict`
 - `render_flow_pages`（字符宽度换行 + 图片穿插 + 自适应分页）
 
-### commands/translation/pdf_cmds.rs（194 行）
+### commands/translation/pdf_cmds.rs（199 行）
 
 **PDF 命令整合**（Sprint 3·Y-7 剥离）：
 - `build_translated_pdf`（reflow 架构整合者）
@@ -210,7 +216,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 
 **决策理由**：把前端 fetch 迁到 Rust `reqwest`，避免 IP 泄漏 + 收敛 CSP `connect-src`。
 
-### commands/files.rs（734 行）
+### commands/files.rs（768 行）
 
 **文件操作命令**：
 - `open_file`（`ShellExecuteW "open"`）
@@ -236,7 +242,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 
 **rename_material 帧文件下划线兼容**：序列帧帧文件命名为 `{base_name}_{帧号}.png`（下划线分隔），`matches_base_name` 只认连字符，故 sequence 分支内对帧文件单独放宽判定为 `stem == base_name || stem.starts_with("{base_name}_") || stem.starts_with("{base_name}-")`，外层目录判定保持严格。
 
-### commands/pinboard.rs（182 行）
+### commands/pinboard.rs（184 行）
 
 **贴图板命令**：
 - `get_pinboard` / `save_pinboard`
@@ -251,7 +257,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 - `save_settings`
 - `set_default_ae_file`
 
-### commands/notes.rs（37 行）
+### commands/notes.rs（39 行）
 
 **笔记命令**：
 - `get_notes`（读 `.pgb1_notes.json`）

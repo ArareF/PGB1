@@ -111,10 +111,12 @@ const {
   openRenameDialog,
   openDeleteDialog,
   openResetDialog,
+  openNotSequenceDialog,
   closeSidebarDialog,
   confirmRename,
   confirmDelete,
   confirmReset,
+  confirmMarkNotSequence,
   startEditFps,
   cancelEditFps,
   confirmEditFps,
@@ -1110,6 +1112,11 @@ onUnmounted(() => {
         @click="openTpsFile"
       >{{ $t('task.modify') }}</button>
       <button
+        v-if="selectedMaterial?.material_type === 'sequence'"
+        class="sidebar-action-btn"
+        @click="openNotSequenceDialog"
+      >{{ $t('task.notSequence') }}</button>
+      <button
         v-if="(selectedMaterial?.material_type === 'image' || selectedMaterial?.material_type === 'sequence') && selectedMaterial?.progress !== 'original' && selectedMaterial?.progress !== 'none'"
         class="sidebar-action-btn"
         @click="openResetDialog"
@@ -1145,6 +1152,16 @@ onUnmounted(() => {
           <div class="sidebar-dialog-actions">
             <button class="sidebar-dialog-btn" :disabled="sidebarDialogBusy" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
             <button class="sidebar-dialog-btn danger" :disabled="sidebarDialogBusy" @click="confirmDelete">{{ $t('task.confirmDelete') }}</button>
+          </div>
+        </div>
+        <!-- 非序列帧确认弹窗 -->
+        <div v-if="sidebarDialog === 'not-sequence'" class="sidebar-dialog">
+          <p class="sidebar-dialog-title">{{ $t('task.notSequenceTitle') }}</p>
+          <p class="sidebar-dialog-desc">{{ $t('task.notSequenceDesc', { name: selectedMaterial?.name }) }}</p>
+          <p v-if="sidebarDialogError" class="sidebar-dialog-error">{{ sidebarDialogError }}</p>
+          <div class="sidebar-dialog-actions">
+            <button class="sidebar-dialog-btn" :disabled="sidebarDialogBusy" @click="closeSidebarDialog">{{ $t('common.cancel') }}</button>
+            <button class="sidebar-dialog-btn primary" :disabled="sidebarDialogBusy" @click="confirmMarkNotSequence">{{ $t('common.confirm') }}</button>
           </div>
         </div>
         <!-- 更新（清派生版本）确认弹窗 -->

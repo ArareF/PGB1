@@ -32,6 +32,61 @@ pub(crate) fn matches_base_name(file_name: &str, base_name: &str) -> bool {
     stem == base_name || stem.starts_with(&format!("{base_name}-"))
 }
 
+/// 序列帧判定 SSOT：帧编号必须紧跟在这些混合模式 token 之后
+/// （业务规则：真序列帧形如 `<base>_<混合模式>_<帧编号>`）
+pub(crate) const SEQUENCE_BLEND_MODES: &[&str] = &["add", "screen", "normal"];
+
+/// 判定 stem 是否为序列帧的某一帧；是则返回基础名（去掉末尾 `_<帧编号>`）。
+///
+/// 规则：剥掉末尾 `_<纯数字>` 后，新的末尾 token（小写）必须 ∈ [`SEQUENCE_BLEND_MODES`]。
+/// 不依赖帧编号位数 —— 2 位 `_01` 与 0 补位 `_0001` 同等支持。
+///
+/// 示例：
+///   - `bonus_vfx_a_screen_01`  → Some("bonus_vfx_a_screen")  （screen 后接编号）
+///   - `main_vfx_a_add_seed_01`  → None  （编号前是补充名 seed，非混合模式）
+pub(crate) fn is_sequence_stem(stem: &str) -> Option<String> {
+    // 1. 末尾必须是 `_<纯数字>`
+    let pos = stem.rfind('_')?;
+    let suffix = &stem[pos + 1..];
+    if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let base = &stem[..pos];
+    // 2. base 的末尾 token 必须是混合模式
+    let mode_token = base.rsplit('_').next().unwrap_or(base);
+    if SEQUENCE_BLEND_MODES.contains(&mode_token.to_lowercase().as_str()) {
+        Some(base.to_string())
+    } else {
+        None
+    }
+}
+
+/// 手动「非序列帧」名簿文件名（置于任务 `00_original/` 下，显性可读、可手编辑）
+pub(crate) const NOT_SEQUENCE_LIST_FILE: &str = "非序列帧.txt";
+
+/// 「非序列帧」名簿的自我说明头（文件不存在时自动写入，引导用户手动撤回）
+pub(crate) const NOT_SEQUENCE_LIST_HEADER: &str =
+    "# 此文件列出被手动标记为「非序列帧」的素材基础名，每行一个。\n\
+     # 删除对应行并刷新，即可恢复为序列帧识别。\n";
+
+/// 读取 `00_original/非序列帧.txt`，返回被手动排除的基础名集合（小写）。
+/// 防御性：文件不存在/读取失败 → 空集合；`#` 开头与空行忽略。
+pub(crate) fn read_not_sequence_list(original_dir: &Path) -> std::collections::HashSet<String> {
+    let mut set = std::collections::HashSet::new();
+    let content = match fs::read_to_string(original_dir.join(NOT_SEQUENCE_LIST_FILE)) {
+        Ok(c) => c,
+        Err(_) => return set,
+    };
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        set.insert(trimmed.to_lowercase());
+    }
+    set
+}
+
 /// Windows 文件名非法字符（Win32 API 限制）
 pub(crate) const WINDOWS_ILLEGAL_CHARS: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
 

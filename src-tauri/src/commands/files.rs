@@ -1,4 +1,7 @@
-use super::helpers::{matches_base_name, material_type_from_ext, move_dir, mutate_project_config, validate_file_name};
+use super::helpers::{
+    matches_base_name, material_type_from_ext, move_dir, mutate_project_config,
+    read_not_sequence_list, validate_file_name, NOT_SEQUENCE_LIST_FILE, NOT_SEQUENCE_LIST_HEADER,
+};
 use super::workflow_paths::{
     nextcloud_task_dir, stage_dir_prefix, vfx_dir,
     DIR_DONE, DIR_EXPORT, DIR_NC_ORIGINAL, DIR_NEXTCLOUD, DIR_ORIGINAL, DIR_SCALE,
@@ -271,6 +274,37 @@ pub fn delete_material(task_path: String, base_name: String, material_type: Stri
 #[tauri::command]
 pub fn reset_material_versions(task_path: String, base_name: String, material_type: String) -> Result<(), String> {
     archive_material_internal(task_path, base_name, material_type, false)
+}
+
+/// 手动标记某素材为「非序列帧」：把基础名追加进 `00_original/非序列帧.txt`。
+/// 文件不存在则带说明头自动创建；已存在（忽略大小写）则幂等跳过。
+/// 撤回方式：用户手动编辑该文件删除对应行后刷新（应用内不提供逆向按钮）。
+#[tauri::command]
+pub fn mark_not_sequence(task_path: String, base_name: String) -> Result<(), String> {
+    let name = base_name.trim();
+    if name.is_empty() {
+        return Err("基础名不能为空".to_string());
+    }
+    let original_dir = Path::new(&task_path).join(DIR_ORIGINAL);
+    if !original_dir.exists() {
+        return Err(format!("00_original 目录不存在: {}", original_dir.display()));
+    }
+    // 已存在（忽略大小写）→ 幂等返回，避免重复行
+    if read_not_sequence_list(&original_dir).contains(&name.to_lowercase()) {
+        return Ok(());
+    }
+    let list_path = original_dir.join(NOT_SEQUENCE_LIST_FILE);
+    // 文件不存在则以说明头起头，引导用户后续手动撤回
+    let mut content = fs::read_to_string(&list_path)
+        .unwrap_or_else(|_| NOT_SEQUENCE_LIST_HEADER.to_string());
+    if !content.is_empty() && !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push_str(name);
+    content.push('\n');
+    fs::write(&list_path, content).map_err(|e| format!("写入非序列帧名簿失败: {}", e))?;
+    log::info!("[mark_not_sequence] 标记非序列帧: {} → {}", name, list_path.display());
+    Ok(())
 }
 
 /// 列出项目下所有素材归档版本（顺带清理超过 60 天的归档，对齐 `list_archived_tasks`）

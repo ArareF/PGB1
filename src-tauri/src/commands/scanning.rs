@@ -4,8 +4,9 @@ use crate::models::{
 };
 use super::helpers::{
     calc_dir_size, count_preview_progress, count_upload_progress,
-    find_app_icon, load_or_create_config, matches_base_name, material_type_from_ext,
-    read_notes_file, regex_strip_version, scan_task_names, FRAME_EXTS, VIDEO_EXTS,
+    find_app_icon, is_sequence_stem, load_or_create_config, matches_base_name,
+    material_type_from_ext, read_not_sequence_list, read_notes_file, regex_strip_version,
+    scan_task_names, FRAME_EXTS, VIDEO_EXTS,
 };
 use super::workflow_paths::{
     export_dir, nextcloud_dir, nextcloud_task_dir, stage_dir_prefix,
@@ -581,6 +582,9 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
         .map(|nc| DirSnapshot::from_nextcloud_dir(&nc))
         .unwrap_or_else(|| DirSnapshot { subdirs: std::collections::HashMap::new() });
 
+    // 用户手动标记的「非序列帧」基础名集合（00_original/非序列帧.txt，小写）
+    let not_seq_set = read_not_sequence_list(&original_dir);
+
     let mut materials = Vec::new();
 
     let entries =
@@ -619,18 +623,9 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("unknown");
-            // 检查 stem 末尾是否有 _NN 纯数字后缀（序列帧特征）
-            let seq_base = if let Some(pos) = stem.rfind('_') {
-                let suffix = &stem[pos + 1..];
-                if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
-                    Some(stem[..pos].to_string())
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            if let Some(base) = seq_base {
+            // 序列帧特征：stem 形如 `<base>_<混合模式>_<帧编号>`（编号紧跟 add/screen/normal）。
+            // 仅看末尾 _NN 数字会误判静帧变体（如 `..._seed_01/02`），故用 is_sequence_stem 收紧。
+            if let Some(base) = is_sequence_stem(stem) {
                 seq_candidates.entry(base).or_default().push(path);
             } else {
                 standalone_files.push((path, file_name));
@@ -672,6 +667,19 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
     for (base_name, mut files) in seq_candidates {
         // 同名目录已存在 → 散落文件是残留，跳过
         if dir_names.contains(&base_name) {
+            continue;
+        }
+
+        // 用户手动标记为「非序列帧」→ 不合并为序列帧，拆成独立静帧逐个展开
+        if not_seq_set.contains(&base_name.to_lowercase()) {
+            for path in files {
+                let fname = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                standalone_files.push((path, fname));
+            }
             continue;
         }
 

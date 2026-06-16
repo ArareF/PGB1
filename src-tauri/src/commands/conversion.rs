@@ -4,7 +4,8 @@ use crate::models::{
     NormalizeRequest, ScaleRequest, StartConversionRequest,
 };
 use crate::conversion::{ConversionState, ConversionSession, handle_file_event, bring_window_to_front};
-use super::helpers::{split_prototype_name, copy_dir_recursive, matches_base_name, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
+use super::helpers::{split_prototype_name, copy_dir_recursive, is_sequence_stem, matches_base_name, read_not_sequence_list, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
+use std::collections::HashSet;
 use super::workflow_paths::{
     an_dir_name, nextcloud_task_dir, DIR_DONE, DIR_NC_BREAKDOWN, DIR_NC_ORIGINAL,
     DIR_ORIGINAL, DIR_SCALE, STAGE_PREFIX_ANIM, STAGE_PREFIX_IMG,
@@ -570,17 +571,20 @@ pub fn scan_normalize_items(task_path: String) -> Result<Vec<NormalizeItem>, Str
         .map(|n| n.to_lowercase() == "prototype")
         .unwrap_or(false);
 
+    // 用户手动标记的「非序列帧」基础名集合（task 级 00_original/非序列帧.txt，小写）
+    let not_seq = read_not_sequence_list(&original_dir);
+
     let mut items = Vec::new();
 
     if is_prototype {
         for cat in &PROTOTYPE_SUBCATEGORIES {
             let sub_dir = original_dir.join(cat);
             if sub_dir.is_dir() {
-                inventory_dir(&sub_dir, &mut items)?;
+                inventory_dir(&sub_dir, &mut items, &not_seq)?;
             }
         }
     } else {
-        inventory_dir(&original_dir, &mut items)?;
+        inventory_dir(&original_dir, &mut items, &not_seq)?;
     }
 
     items.sort_by(|a, b| a.base_name.cmp(&b.base_name));
@@ -683,10 +687,18 @@ pub fn execute_normalize_v2(
     Ok(())
 }
 
-/// 盘点单个目录：子目录视为已规范序列帧夹；松散文件按基础名分组。
-fn inventory_dir(dir: &Path, items: &mut Vec<NormalizeItem>) -> Result<(), String> {
-    // 松散文件分组：base -> (paths, 是否带数字帧号后缀)
-    let mut loose: HashMap<String, (Vec<PathBuf>, bool)> = HashMap::new();
+/// 盘点单个目录：子目录视为已规范序列帧夹；松散文件先按序列帧特征分组，其余按独立静帧处理。
+///
+/// 序列帧判定与 `scan_materials` 同轴：编号必须紧跟混合模式（[`is_sequence_stem`]），
+/// 避免把静帧变体（如 `..._seed_01/02`）误并为序列帧。`not_seq`（用户手动名簿）命中的组拆回静帧。
+fn inventory_dir(
+    dir: &Path,
+    items: &mut Vec<NormalizeItem>,
+    not_seq: &HashSet<String>,
+) -> Result<(), String> {
+    // 序列帧候选：seq_base -> 帧文件；其余松散文件按独立静帧逐个处理
+    let mut seq: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    let mut statics: Vec<PathBuf> = Vec::new();
 
     let entries = fs::read_dir(dir).map_err(|e| format!("读取目录失败: {}", e))?;
     for entry in entries.flatten() {
@@ -728,18 +740,18 @@ fn inventory_dir(dir: &Path, items: &mut Vec<NormalizeItem>) -> Result<(), Strin
         }
 
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        let (base, had_suffix) = split_base_suffix(stem);
-        let entry = loose.entry(base).or_insert_with(|| (Vec::new(), false));
-        entry.0.push(path);
-        if had_suffix {
-            entry.1 = true;
+        // 序列帧特征：编号紧跟 add/screen/normal。否则按独立静帧处理。
+        if let Some(seq_base) = is_sequence_stem(stem) {
+            seq.entry(seq_base).or_default().push(path);
+        } else {
+            statics.push(path);
         }
     }
 
-    for (base, (mut files, had_suffix)) in loose {
-        files.sort();
-        if files.len() > 1 {
-            // 多文件同基础名 → 未规范序列帧（待移入文件夹）
+    // 序列帧候选组：多帧且未被手动排除 → 序列帧；否则（单帧/被排除）拆回静帧
+    for (base, mut files) in seq {
+        if files.len() > 1 && !not_seq.contains(&base.to_lowercase()) {
+            files.sort();
             let ext = files[0]
                 .extension()
                 .and_then(|e| e.to_str())
@@ -759,31 +771,36 @@ fn inventory_dir(dir: &Path, items: &mut Vec<NormalizeItem>) -> Result<(), Strin
                 has_backup: false, // 序列帧不做内容操作，无备份
             });
         } else {
-            // 单文件 → 静帧
-            let path = &files[0];
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-            let is_png = ext == "png";
-            let target_name = format!("{}.{}", base, ext);
-            // 备份按规范后名做 key（跨"去后缀改名"稳定，二次处理不会覆盖纯净原件）
-            let has_backup = dir.join(NORMALIZE_BACKUP_DIR).join(&target_name).exists();
-            items.push(NormalizeItem {
-                base_name: base.clone(),
-                material_type: "static".to_string(),
-                ext: ext.clone(),
-                frame_count: 1,
-                needs_rename: had_suffix, // 带 _NN 后缀才需去后缀
-                is_png,
-                is_add_or_screen: is_png && base_is_add_or_screen(&base),
-                thumbnail_path: path.to_string_lossy().to_string(),
-                paths: vec![path.to_string_lossy().to_string()],
-                target_name,
-                has_backup,
-            });
+            statics.extend(files);
         }
+    }
+
+    // 独立静帧：逐个处理（带 _NN 后缀者去后缀）
+    for path in statics {
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let (base, had_suffix) = split_base_suffix(stem);
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let is_png = ext == "png";
+        let target_name = format!("{}.{}", base, ext);
+        // 备份按规范后名做 key（跨"去后缀改名"稳定，二次处理不会覆盖纯净原件）
+        let has_backup = dir.join(NORMALIZE_BACKUP_DIR).join(&target_name).exists();
+        items.push(NormalizeItem {
+            base_name: base.clone(),
+            material_type: "static".to_string(),
+            ext: ext.clone(),
+            frame_count: 1,
+            needs_rename: had_suffix, // 带 _NN 后缀才需去后缀
+            is_png,
+            is_add_or_screen: is_png && base_is_add_or_screen(&base),
+            thumbnail_path: path.to_string_lossy().to_string(),
+            paths: vec![path.to_string_lossy().to_string()],
+            target_name,
+            has_backup,
+        });
     }
 
     Ok(())

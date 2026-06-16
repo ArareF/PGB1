@@ -111,6 +111,7 @@ pub fn run() {
             commands::rename_material,
             commands::delete_material,
             commands::reset_material_versions,
+            commands::mark_not_sequence,
             commands::list_archived_materials,
             commands::restore_archived_material,
             commands::delete_archived_material_version,

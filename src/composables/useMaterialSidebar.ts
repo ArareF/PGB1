@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { MaterialInfo } from './useMaterials'
 import type { MaterialVersion } from '../types/material'
 
-export type SidebarDialog = 'none' | 'rename' | 'delete' | 'reset'
+export type SidebarDialog = 'none' | 'rename' | 'delete' | 'reset' | 'not-sequence'
 
 export interface UseMaterialSidebarOptions {
   /** 当前任务目录（Export/<taskId>） */
@@ -146,6 +146,11 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     sidebarDialogError.value = null
   }
 
+  function openNotSequenceDialog() {
+    sidebarDialog.value = 'not-sequence'
+    sidebarDialogError.value = null
+  }
+
   function closeSidebarDialog() {
     sidebarDialog.value = 'none'
     renameInput.value = ''
@@ -282,6 +287,28 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     }
   }
 
+  /** 标记当前素材为「非序列帧」：写入 00_original/非序列帧.txt 后刷新 */
+  async function confirmMarkNotSequence() {
+    const mat = selectedMaterial.value
+    if (!mat) return
+    sidebarDialogBusy.value = true
+    sidebarDialogError.value = null
+    try {
+      await invoke('mark_not_sequence', {
+        taskPath: opts.taskFolderPathRef.value,
+        baseName: mat.name,
+      })
+      closeSidebarDialog()
+      closeSidebar()
+      await opts.refresh()
+    } catch (e) {
+      console.error('[useMaterialSidebar] 标记非序列帧失败:', e)
+      sidebarDialogError.value = String(e)
+    } finally {
+      sidebarDialogBusy.value = false
+    }
+  }
+
   /** 打开序列帧工程文件（.tps） */
   async function openTpsFile() {
     const mat = selectedMaterial.value
@@ -315,10 +342,12 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     openRenameDialog,
     openDeleteDialog,
     openResetDialog,
+    openNotSequenceDialog,
     closeSidebarDialog,
     confirmRename,
     confirmDelete,
     confirmReset,
+    confirmMarkNotSequence,
     startEditFps,
     cancelEditFps,
     confirmEditFps,

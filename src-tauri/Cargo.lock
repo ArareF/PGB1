@@ -3574,7 +3574,7 @@ dependencies = [
 
 [[package]]
 name = "pgb1"
-version = "2.8.15"
+version = "2.8.17"
 dependencies = [
  "base64 0.22.1",
  "chrono",

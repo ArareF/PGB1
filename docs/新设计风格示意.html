@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PG ASSET CONTROL — Sharp Grid 设计示意</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   PG ASSET CONTROL · Sharp Grid System · 设计示意稿 v1.1
+   暗色工业控制台：锐角矩形 / 状态色带 / 低装饰高秩序
+   所有取值与 docs/新设计风格.md（含 §12 修订）一一对应
+   ============================================================ */
+:root{
+  /* 背景层 — 纯灰度，由暗到亮（bg-work 已是最深可见层） */
+  --bg-work:   #0D0D0D;   /* 主工作区 / 最深可见层（原 bg-base 级别） */
+  --bg-nav:    #141414;   /* 左侧导航 */
+  --bg-panel:  #1A1A1A;   /* 一级面板 / 卡片 / 路径条 */
+  --bg-panel2: #222222;   /* 二级面板 / Inspector */
+  --bg-raise:  #2B2B2B;   /* 三级浮层（下拉/弹窗/内嵌块） */
+  --bg-hover:  #353535;   /* 选中底 */
+  --bg-thumb:  #090909;   /* 缩略图井 */
+
+  /* 线框 — 纯灰 */
+  --line:        #2A2A2A;
+  --line-weak:   #1D1D1D;
+  --line-strong: #3C3C3C;
+
+  /* 文字 — 中性冷灰 */
+  --tx:    #EEEEEE;
+  --tx-2:  #C6C6C6;   /* 次级文字（原 #A8A8A8 太弱，提亮增强可读性） */
+  --tx-3:  #969696;   /* 弱文字（原 #6C6C6C 在深底上几乎糊，提亮） */
+  --tx-dis:#5A5A5A;   /* 禁用/最弱（随之微提，保持层级间距） */
+
+  /* 强调色：只用于状态与选中 */
+  --acc-blue:  #2F8CFF;   /* 进行中 / 选中 */
+  --acc-teal:  #20C7B5;   /* 辅助 / 专注 */
+  --acc-green: #36C275;   /* 已完成 / 已上传 */
+  --acc-amber: #E8A23A;   /* 待确认 */
+  --acc-red:   #E85D4F;   /* 返修 / 危险 */
+  --acc-purple:#8B6CFF;   /* 备用 */
+
+  /* 形状与节奏 */
+  --cut: 8px;             /* 签名切角 */
+  --band: 4px;            /* 状态色带宽 */
+  --topline: 3px;         /* 选中顶线 */
+  --gap: 14px;
+
+  --font-disp:'Chakra Petch','Microsoft YaHei UI','PingFang SC',sans-serif;
+  --font-mono:'IBM Plex Mono','Cascadia Mono',Consolas,monospace;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+::selection{background:rgba(47,140,255,.30)}
+html,body{height:100%}
+body{
+  font-family:var(--font-disp);
+  font-size:13px;
+  color:var(--tx-2);
+  background:#000000;   /* 绝对底层，被工作区完全覆盖 */
+  overflow:hidden;
+  min-width:1180px;
+}
+
+/* —— 直角细滚动条 —— */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line);border:2px solid var(--bg-work)}
+::-webkit-scrollbar-thumb:hover{background:var(--line-strong)}
+
+button{font-family:inherit;cursor:pointer;background:none;border:none;color:inherit}
+.mono{font-family:var(--font-mono)}
+
+/* ============ 整体骨架 ============ */
+.frame{display:flex;height:100vh}
+.col{flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* ============ 左侧导航 72px ============ */
+.nav{
+  width:72px;flex:none;background:var(--bg-nav);
+  border-right:1px solid var(--line-weak);
+  display:flex;flex-direction:column;align-items:stretch;
+}
+.nav-logo{
+  height:82px;display:flex;align-items:center;justify-content:center;
+  border-bottom:1px solid var(--line-weak);
+  font-weight:700;font-size:17px;color:var(--tx);letter-spacing:.06em;cursor:pointer;
+}
+.nav-logo b{color:var(--acc-blue)}
+.nav-logo:hover{background:#1A1A1A}
+
+/* —— 左侧边栏 = 快捷方式启动台（对齐 界面设计.md L37：应用/文件夹/网页三类） —— */
+.lnch-add{
+  height:38px;margin:10px 12px 4px;border:1px dashed var(--line-strong);color:var(--tx-3);
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  transition:border-color .12s,color .12s,background .12s;
+}
+.lnch-add:hover{border-color:var(--acc-blue);color:var(--acc-blue);background:rgba(47,140,255,.06)}
+.lnch{
+  position:relative;padding:9px 0 10px;display:flex;flex-direction:column;
+  align-items:center;gap:5px;color:var(--tx-3);cursor:pointer;
+  transition:background .12s,color .12s;
+}
+.lnch:hover{background:#1E1E1E;color:var(--tx-2)}
+.lnch .tile{
+  width:34px;height:34px;border:1px solid var(--line);background:var(--bg-panel);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--tx-2);
+}
+.lnch:hover .tile{border-color:var(--line-strong)}
+.lnch .nm{font-size:9px;letter-spacing:.02em;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lnch.app .tile{color:var(--acc-blue)}
+.lnch.folder .tile{color:var(--acc-amber)}
+.lnch.web .tile{color:var(--acc-teal)}
+.lnch-sep{height:1px;background:var(--line-weak);margin:5px 14px}
+.nav-spacer{flex:1}
+.nav-foot{
+  padding:10px 0 12px;text-align:center;
+  font-family:var(--font-mono);font-size:9px;color:var(--tx-dis);letter-spacing:.08em;
+  border-top:1px solid var(--line-weak);
+}
+
+/* ============ 顶部系统状态栏 52px ============ */
+.titlebar{
+  height:32px;flex:none;background:var(--bg-work);
+  border-bottom:1px solid var(--line-weak);
+  display:flex;align-items:center;padding:0 0 0 18px;gap:12px;
+}
+.tb-brand{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.16em;color:var(--tx-dis)}
+.tb-brand b{color:var(--tx-3);font-weight:600}
+.titlebar .spacer{flex:1}
+.win-controls{display:flex;height:32px}
+.win-controls button{
+  width:40px;height:100%;display:flex;align-items:center;justify-content:center;
+  color:var(--tx-3);font-size:12px;transition:background .12s,color .12s;
+}
+.win-controls button:hover{background:var(--bg-panel2);color:var(--tx)}
+.win-controls button.close:hover{background:rgba(232,93,79,.18);color:var(--acc-red)}
+.win-controls svg{width:11px;height:11px;stroke:currentColor;stroke-width:1.4;fill:none}
+
+/* ============ 路径条 44px ============ */
+.navbar{
+  height:50px;flex:none;background:var(--bg-panel);
+  border-bottom:1px solid var(--line-weak);
+  display:flex;align-items:center;padding:0 12px 0 18px;gap:14px;
+}
+.back-btn{
+  width:28px;height:28px;border:1px solid var(--line);color:var(--tx-2);
+  display:flex;align-items:center;justify-content:center;
+  transition:border-color .12s,color .12s,opacity .12s;
+}
+.back-btn:hover{border-color:var(--line-strong);color:var(--tx)}
+.back-btn[disabled]{opacity:.25;pointer-events:none}
+.back-btn svg{width:13px;height:13px;stroke:currentColor;stroke-width:1.6;fill:none}
+/* 返回 + 当前页标题（不用面包屑，靠返回按钮逐级返回 —— 对齐 INDEX 决策） */
+.nav-title{
+  font-family:var(--font-disp);font-size:18px;font-weight:600;color:var(--tx);
+  letter-spacing:.02em;white-space:nowrap;flex:none;
+}
+.nav-sub{
+  font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;color:var(--tx-dis);
+  flex:none;align-self:flex-end;padding-bottom:4px;
+}
+.more-wrap{position:relative;flex:none}
+.more-btn{
+  height:28px;padding:0 12px;border:1px solid var(--line);color:var(--tx-2);
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:12px;letter-spacing:.04em;
+  transition:border-color .12s,color .12s,background .12s;
+}
+.more-btn:hover{border-color:var(--line-strong);color:var(--tx)}
+.more-btn .car{font-size:8px;opacity:.7}
+.more-menu{
+  position:absolute;top:32px;right:0;min-width:152px;z-index:30;
+  background:var(--bg-raise);border:1px solid var(--line-strong);
+  display:none;flex-direction:column;
+}
+.more-menu.open{display:flex}
+.more-menu button{
+  height:34px;padding:0 14px;text-align:left;
+  font-size:12px;color:var(--tx-2);
+  display:flex;align-items:center;gap:8px;
+  border-bottom:1px solid var(--line-weak);
+  transition:background .12s,color .12s;
+}
+.more-menu button:last-child{border-bottom:none}
+.more-menu button:hover{background:var(--bg-hover);color:var(--tx)}
+.tools{display:flex;align-items:center;gap:8px;flex:none;margin-left:auto}
+.tsep{width:1px;height:18px;background:var(--line);margin:0 4px}
+.tbtn{
+  height:28px;padding:0 12px;border:1px solid var(--line);
+  font-size:12px;letter-spacing:.04em;color:var(--tx-2);
+  display:inline-flex;align-items:center;gap:6px;
+  transition:border-color .12s,color .12s,background .12s;
+}
+.tbtn:hover{border-color:var(--line-strong);color:var(--tx)}
+.tbtn.active{background:var(--bg-hover);color:var(--tx);border-color:var(--line-strong)}
+.tbtn.accent{border-color:var(--acc-blue);color:var(--acc-blue);background:rgba(47,140,255,.08)}
+.tbtn.accent:hover{background:rgba(47,140,255,.16)}
+/* 主操作按钮：右下 8px 斜切签名 —— 双层描边（复用统计块技法），斜边也保留 1px 蓝框，避免“豁口”观感 */
+.cut-frame{
+  flex:none;display:inline-flex;background:var(--acc-blue);
+  clip-path:polygon(0 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%);
+}
+.cut-frame .tbtn{
+  border:none;margin:1px;
+  /* 内层必须不透明，否则外层实心蓝会透上来糊成一块；面板底色 + 8% 蓝叠加，外观等同 .tbtn.accent 的半透明蓝 */
+  background:linear-gradient(rgba(47,140,255,.08),rgba(47,140,255,.08)),var(--bg-panel);
+  clip-path:polygon(0 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%);
+}
+.cut-frame:hover .tbtn{
+  background:linear-gradient(rgba(47,140,255,.16),rgba(47,140,255,.16)),var(--bg-panel);
+}
+
+/* ============ 主工作区 ============ */
+.workspace{
+  flex:1;position:relative;overflow:hidden;background:var(--bg-work);
+  /* 蓝图网格：1px 线 / 24px 格 / ~4% 透明度，零性能成本 */
+  background-image:
+    linear-gradient(rgba(128,128,128,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(128,128,128,.04) 1px,transparent 1px);
+  background-size:24px 24px;
+  display:flex;
+}
+/* 角落十字基准标记 */
+.workspace::before,.workspace::after{
+  content:'';position:absolute;width:13px;height:13px;opacity:.55;z-index:5;pointer-events:none;
+  background:
+    linear-gradient(var(--line-strong),var(--line-strong)) center/13px 1px no-repeat,
+    linear-gradient(var(--line-strong),var(--line-strong)) center/1px 13px no-repeat;
+}
+.workspace::before{top:9px;left:9px}
+.workspace::after{bottom:9px;right:9px}
+
+.view{display:none;flex:1;overflow:auto;padding:20px 22px;min-width:0}
+.view.active{display:block}
+#view-assets.active{display:flex;padding:0}
+
+/* 进场节奏：快速、克制 */
+@keyframes rise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+.view.enter .ani{opacity:0;animation:rise .34s cubic-bezier(.2,.7,.3,1) forwards}
+.view.enter .ani:nth-child(1){animation-delay:.00s}
+.view.enter .ani:nth-child(2){animation-delay:.03s}
+.view.enter .ani:nth-child(3){animation-delay:.06s}
+.view.enter .ani:nth-child(4){animation-delay:.09s}
+.view.enter .ani:nth-child(5){animation-delay:.12s}
+.view.enter .ani:nth-child(6){animation-delay:.15s}
+.view.enter .ani:nth-child(7){animation-delay:.18s}
+.view.enter .ani:nth-child(8){animation-delay:.21s}
+.view.enter .ani:nth-child(9){animation-delay:.24s}
+
+/* ============ 通用：区块标题 ============ */
+.sect{display:flex;align-items:baseline;gap:10px;margin:0 0 12px}
+.sect h2{font-size:15px;font-weight:600;color:var(--tx);letter-spacing:.04em}
+.sect .en{font-family:var(--font-mono);font-size:10px;color:var(--tx-dis);letter-spacing:.14em}
+.sect .rule{flex:1;height:1px;background:var(--line-weak);align-self:center}
+
+/* ============ 卡片网格 ============ */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--gap)}
+@media (max-width:1320px){.grid{grid-template-columns:repeat(2,1fr)}}
+
+.card{
+  position:relative;background:var(--bg-panel);border:1px solid var(--line);
+  padding:14px 16px 14px 20px;cursor:pointer;
+  transition:background .12s,border-color .12s;
+}
+.card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:var(--band);background:var(--line-strong)}
+.card:hover{background:var(--bg-panel2);border-color:var(--line-strong)}
+.card.st-progress::before{background:var(--acc-blue)}
+.card.st-review::before{background:var(--acc-amber)}
+.card.st-done::before{background:var(--acc-green)}
+.card.st-revision::before{background:var(--acc-red)}
+.card.st-idle{opacity:.62}
+.card.st-idle::before{background:var(--tx-dis)}
+.card.sel{
+  border-color:var(--acc-blue);
+  box-shadow:inset 0 var(--topline) 0 var(--acc-blue);
+}
+
+/* —— 项目卡片 —— */
+.pcard .row1{display:flex;align-items:center;gap:8px}
+.pcode{
+  font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--tx-3);
+  border:1px solid var(--line);padding:1px 6px;letter-spacing:.06em;flex:none;
+}
+.pname{font-size:14.5px;font-weight:600;color:var(--tx);letter-spacing:.02em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ppct{font-family:var(--font-mono);font-size:14px;font-weight:600;color:var(--tx)}
+.psub{font-size:11px;color:var(--tx-3);letter-spacing:.05em;margin-top:5px}
+.pmeta{
+  display:flex;gap:18px;margin-top:14px;
+  font-family:var(--font-mono);font-size:10.5px;color:var(--tx-3);letter-spacing:.05em;
+}
+.pmeta b{color:var(--tx-2);font-weight:500}
+.pmeta .ddl-warn b{color:var(--acc-amber)}
+.seg{display:flex;gap:2px;height:6px;margin-top:12px}
+.seg i{flex:1;background:var(--bg-hover);clip-path:polygon(2px 0,100% 0,calc(100% - 2px) 100%,0 100%)}
+/* 两端外缘保持竖直：首块不切左缘、末块不切右缘 */
+.seg i:first-child{clip-path:polygon(0 0,100% 0,calc(100% - 2px) 100%,0 100%)}
+.seg i:last-child{clip-path:polygon(2px 0,100% 0,100% 100%,0 100%)}
+.seg.blue  i.on{background:var(--acc-blue)}
+.seg.green i.on{background:var(--acc-green)}
+.seg.amber i.on{background:var(--acc-amber)}
+.seg.red   i.on{background:var(--acc-red)}
+.seg.gray  i.on{background:var(--tx-dis)}
+
+/* —— 状态标签：矩形，不做胶囊 —— */
+.tag{
+  display:inline-flex;align-items:center;height:20px;padding:0 8px;
+  font-family:var(--font-mono);font-size:10.5px;font-weight:500;letter-spacing:.08em;
+  border:1px solid;white-space:nowrap;
+}
+.tag.progress{color:var(--acc-blue); border-color:var(--acc-blue); background:rgba(47,140,255,.14)}
+.tag.review  {color:var(--acc-amber);border-color:var(--acc-amber);background:rgba(232,162,58,.13)}
+.tag.done    {color:var(--acc-green);border-color:var(--acc-green);background:rgba(54,194,117,.13)}
+.tag.revision{color:var(--acc-red);  border-color:var(--acc-red);  background:rgba(232,93,79,.13)}
+.tag.idle    {color:var(--tx-3);     border-color:var(--line);     background:rgba(73,85,97,.16)}
+.tag.neutral {color:var(--tx-2);     border-color:var(--line);     background:transparent}
+
+/* —— 任务卡片 —— */
+.tcard .row1{display:flex;align-items:center;gap:10px}
+.tname{font-size:14px;font-weight:600;color:var(--tx);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tcode{font-family:var(--font-mono);font-size:10px;color:var(--tx-dis);letter-spacing:.1em}
+.tcat{font-family:var(--font-mono);font-size:10.5px;color:var(--tx-3);margin-top:4px;letter-spacing:.04em}
+.trow2{display:flex;align-items:center;gap:10px;margin-top:13px}
+.tnum{margin-left:auto;font-family:var(--font-mono);font-size:10.5px;color:var(--tx-3)}
+.tnum b{color:var(--tx-2);font-weight:500}
+
+/* ============ 状态筛选条 ============ */
+.filters{display:flex;gap:2px;border-bottom:1px solid var(--line-weak);margin-bottom:18px}
+.chip{
+  position:relative;height:34px;padding:0 14px;
+  display:flex;align-items:center;gap:7px;
+  font-size:12px;letter-spacing:.05em;color:var(--tx-3);
+  transition:color .12s,background .12s;
+}
+.chip .n{font-family:var(--font-mono);font-size:11px;color:var(--tx-dis)}
+.chip:hover{color:var(--tx-2);background:rgba(45,58,71,.4)}
+.chip.on{color:var(--tx)}
+.chip.on .n{color:var(--tx-2)}
+.chip.on::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:var(--topline);background:var(--acc-blue)}
+.chip.c-review.on::after{background:var(--acc-amber)}
+.chip.c-done.on::after{background:var(--acc-green)}
+.chip.c-revision.on::after{background:var(--acc-red)}
+.chip.c-idle.on::after{background:var(--tx-dis)}
+
+/* ============ 素材页：网格 + Inspector ============ */
+.asset-zone{flex:1;overflow:auto;padding:20px 22px;min-width:0}
+.asset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:var(--gap)}
+.asset{
+  position:relative;background:var(--bg-panel);border:1px solid var(--line);
+  cursor:pointer;transition:background .12s,border-color .12s;
+}
+.asset:hover{border-color:var(--line-strong);background:var(--bg-panel2)}
+.asset.sel{border:2px solid var(--acc-blue);margin:-1px}
+/* 选中书签角 */
+.asset.sel::before{
+  content:'';position:absolute;top:0;left:0;width:17px;height:17px;z-index:2;
+  background:var(--acc-blue);clip-path:polygon(0 0,100% 0,0 100%);
+}
+.asset.sel::after{
+  content:'';position:absolute;top:6px;right:6px;width:14px;height:14px;z-index:2;
+  background:var(--acc-blue);
+  display:block;
+}
+.asset .chk{position:absolute;top:8px;right:8px;z-index:3;width:10px;height:10px;display:none;
+  stroke:#fff;stroke-width:2;fill:none}
+.asset.sel .chk{display:block}
+.thumb{
+  height:118px;background:var(--bg-thumb);
+  background-image:repeating-conic-gradient(#131B24 0% 25%,var(--bg-thumb) 0% 50%);
+  background-size:16px 16px;
+  border-bottom:1px solid var(--line-weak);
+  display:flex;align-items:center;justify-content:center;
+  position:relative;overflow:hidden;
+}
+.thumb svg{width:58px;height:58px}
+.fbadge{
+  position:absolute;right:6px;bottom:6px;
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;color:var(--tx-2);
+  background:rgba(11,15,20,.82);border:1px solid var(--line-weak);padding:1px 5px;
+}
+.ainfo{padding:9px 11px 10px}
+.aname{
+  font-family:var(--font-mono);font-size:11.5px;color:var(--tx);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.ameta{display:flex;align-items:center;gap:7px;margin-top:7px}
+.ameta .sz{margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--tx-3)}
+.updot{width:6px;height:6px;background:var(--acc-green);flex:none}
+.tag.mini{height:17px;padding:0 5px;font-size:9px}
+
+/* —— Inspector 360px —— */
+.inspector{
+  width:360px;flex:none;background:var(--bg-panel2);
+  border-left:1px solid var(--line);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.ins-head{
+  height:44px;flex:none;display:flex;align-items:center;gap:10px;
+  padding:0 8px 0 14px;border-bottom:1px solid var(--line);
+}
+.ins-name{flex:1;min-width:0;font-family:var(--font-mono);font-size:12px;color:var(--tx);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ins-close{width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:var(--tx-3)}
+.ins-close:hover{background:var(--bg-hover);color:var(--tx)}
+.ins-close svg{width:12px;height:12px;stroke:currentColor;stroke-width:1.6;fill:none}
+.ins-body{flex:1;overflow:auto;padding:14px}
+.ins-preview{
+  height:190px;background:var(--bg-thumb);
+  background-image:repeating-conic-gradient(#131B24 0% 25%,var(--bg-thumb) 0% 50%);
+  background-size:16px 16px;
+  border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;position:relative;
+}
+.ins-preview svg{width:96px;height:96px}
+.ins-label{
+  margin:16px 0 8px;font-family:var(--font-mono);font-size:10px;
+  letter-spacing:.14em;color:var(--tx-dis);
+}
+/* 进度链条 00→03 */
+.chain{display:flex;gap:2px}
+.chain .node{
+  flex:1;background:var(--bg-panel);border:1px solid var(--line-weak);
+  padding:7px 0 6px;text-align:center;position:relative;
+}
+.chain .node::before{content:'';position:absolute;top:0;left:0;right:0;height:var(--topline);background:transparent}
+.chain .node .no{font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--tx-3)}
+.chain .node .nm{font-family:var(--font-mono);font-size:8.5px;color:var(--tx-dis);margin-top:2px;letter-spacing:.04em}
+.chain .node.passed::before{background:var(--acc-green)}
+.chain .node.passed .no{color:var(--acc-green)}
+.chain .node.now{border-color:var(--acc-blue);background:rgba(47,140,255,.08)}
+.chain .node.now::before{background:var(--acc-blue)}
+.chain .node.now .no{color:var(--acc-blue)}
+.chain .node.now .nm{color:var(--tx-2)}
+/* 属性表 */
+.props{border-top:1px solid var(--line-weak)}
+.props .pr{
+  display:flex;align-items:center;height:34px;
+  border-bottom:1px solid var(--line-weak);gap:10px;
+}
+.props .pk{width:88px;flex:none;font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;color:var(--tx-dis)}
+.props .pv{flex:1;text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--tx)}
+.props .pv .tag{transform:translateY(1px)}
+/* 底部固定操作栏 */
+.ins-actions{
+  flex:none;border-top:1px solid var(--line);
+  display:grid;grid-template-columns:repeat(4,1fr);
+}
+.ins-actions button{
+  height:42px;font-size:11.5px;letter-spacing:.05em;color:var(--tx-2);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  transition:background .12s,color .12s;
+}
+.ins-actions button:last-child{border-right:none}
+.ins-actions button:hover{background:var(--bg-hover);color:var(--tx)}
+.ins-actions button.danger{color:var(--acc-red)}
+.ins-actions button.danger:hover{background:rgba(232,93,79,.12)}
+
+/* ============ 设计规范页 ============ */
+.style-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:1080px}
+.panel{background:var(--bg-panel);border:1px solid var(--line);padding:16px 18px}
+.panel h3{
+  font-size:12px;font-weight:600;color:var(--tx);letter-spacing:.08em;margin-bottom:14px;
+  display:flex;align-items:center;gap:8px;
+}
+.panel h3::before{content:'';width:10px;height:10px;background:var(--acc-blue);clip-path:polygon(0 0,100% 0,0 100%)}
+.swrow{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+.sw{width:96px}
+.sw .box{height:34px;border:1px solid var(--line-weak)}
+.sw .hx{font-family:var(--font-mono);font-size:9.5px;color:var(--tx-3);margin-top:4px;letter-spacing:.04em}
+.sw .nm{font-size:10px;color:var(--tx-2);letter-spacing:.03em}
+.sw-title{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.14em;color:var(--tx-dis);margin:2px 0 8px}
+.demo-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px}
+.btn{
+  height:30px;padding:0 16px;border:1px solid var(--line);font-size:12.5px;
+  letter-spacing:.04em;color:var(--tx-2);display:inline-flex;align-items:center;gap:6px;
+  transition:border-color .12s,color .12s,background .12s;
+}
+.btn:hover{border-color:var(--line-strong);color:var(--tx)}
+.btn.primary{
+  border-color:var(--acc-blue);color:var(--acc-blue);background:rgba(47,140,255,.10);
+  clip-path:polygon(0 0,100% 0,100% calc(100% - var(--cut)),calc(100% - var(--cut)) 100%,0 100%);
+}
+.btn.primary:hover{background:rgba(47,140,255,.18)}
+.btn.ghost{border-color:transparent;color:var(--tx-3)}
+.btn.ghost:hover{color:var(--tx);background:var(--bg-hover)}
+.btn.danger{border-color:var(--acc-red);color:var(--acc-red);background:rgba(232,93,79,.10)}
+.type-sample{border-bottom:1px solid var(--line-weak);padding:8px 0;display:flex;align-items:baseline;gap:14px}
+.type-sample:last-child{border-bottom:none}
+.type-sample .spec{width:150px;flex:none;font-family:var(--font-mono);font-size:9.5px;color:var(--tx-dis);letter-spacing:.06em}
+.gram{width:100%;border-collapse:collapse}
+.gram td{border-bottom:1px solid var(--line-weak);padding:8px 6px;font-size:11.5px;color:var(--tx-2)}
+.gram td:first-child{color:var(--tx);width:84px}
+.gram td:last-child{font-family:var(--font-mono);font-size:10px;color:var(--tx-3)}
+.gram tr:last-child td{border-bottom:none}
+.mini-nav{position:relative;width:46px;height:34px;background:#203044;display:inline-block;vertical-align:middle}
+.mini-nav::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--acc-blue)}
+.mini-card{position:relative;width:64px;height:34px;background:var(--bg-panel);border:1px solid var(--acc-blue);box-shadow:inset 0 3px 0 var(--acc-blue);display:inline-block;vertical-align:middle}
+.mini-chip{position:relative;width:54px;height:30px;display:inline-block;vertical-align:middle;border-bottom:3px solid var(--acc-blue);background:var(--bg-panel)}
+.mini-asset{position:relative;width:46px;height:34px;background:var(--bg-panel);border:2px solid var(--acc-blue);display:inline-block;vertical-align:middle}
+.mini-asset::before{content:'';position:absolute;top:0;left:0;width:11px;height:11px;background:var(--acc-blue);clip-path:polygon(0 0,100% 0,0 100%)}
+.note{font-size:11px;color:var(--tx-3);line-height:1.7;margin-top:10px;border-left:2px solid var(--line);padding-left:10px}
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <!-- ════ 左侧导航 ════ -->
+  <aside class="nav">
+    <div class="nav-logo" id="logoHome" title="返回主页">PG<b>▮</b></div>
+    <button class="lnch-add" title="添加快捷方式">＋</button>
+    <button class="lnch app"><span class="tile">AE</span><span class="nm">After FX</span></button>
+    <button class="lnch app"><span class="tile">Ps</span><span class="nm">Photoshop</span></button>
+    <button class="lnch app"><span class="tile">TP</span><span class="nm">TexturePk</span></button>
+    <div class="lnch-sep"></div>
+    <button class="lnch folder"><span class="tile">▤</span><span class="nm">项目目录</span></button>
+    <button class="lnch folder"><span class="tile">▤</span><span class="nm">导出</span></button>
+    <div class="lnch-sep"></div>
+    <button class="lnch web"><span class="tile">NC</span><span class="nm">Nextcloud</span></button>
+    <button class="lnch web"><span class="tile">GD</span><span class="nm">Drive</span></button>
+    <div class="nav-spacer"></div>
+    <div class="nav-foot">SHARP&nbsp;GRID<br>v1.1</div>
+  </aside>
+
+  <div class="col">
+
+    <!-- ════ 顶栏·第1行 标题栏（窗口名 + 窗口控制） ════ -->
+    <header class="titlebar">
+      <span class="tb-brand">PG&nbsp;ASSET&nbsp;CONTROL&nbsp;·&nbsp;<b>素材管理系统</b></span>
+      <div class="spacer"></div>
+      <div class="win-controls">
+        <button title="最小化"><svg viewBox="0 0 12 12"><path d="M1 6h10"/></svg></button>
+        <button title="最大化"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9"/></svg></button>
+        <button class="close" title="关闭"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
+      </div>
+    </header>
+
+    <!-- ════ 顶栏·第2行 导航栏：返回+标题 / 快捷功能区 / 更多 ════ -->
+    <div class="navbar">
+      <button class="back-btn" id="backBtn" disabled title="返回上一级">
+        <svg viewBox="0 0 14 14"><path d="M9 2 4 7l5 5"/></svg>
+      </button>
+      <span class="nav-title" id="pageTitle">我的项目</span>
+      <span class="nav-sub" id="pageSub">PROJECTS</span>
+      <div class="tools" id="tools"></div>
+      <div class="more-wrap">
+        <button class="more-btn" id="moreBtn">更多 <span class="car">▼</span></button>
+        <div class="more-menu" id="moreMenu"></div>
+      </div>
+    </div>
+
+    <!-- ════ 主工作区 ════ -->
+    <div class="workspace">
+
+      <!-- ──────── 视图 1：主页 / 项目总览 ──────── -->
+      <section class="view active enter" id="view-home">
+        <div class="sect ani"><h2>项目列表</h2><span class="en">PROJECTS</span><div class="rule"></div></div>
+
+        <div class="grid" id="projGrid">
+          <div class="card pcard st-progress sel ani" data-go="tasks">
+            <div class="row1"><span class="pcode">226</span><span class="pname">GrandTheftHeist</span><span class="ppct">72%</span></div>
+            <div class="psub">Slot · 1024 Ways · VFX 制作中</div>
+            <div class="pmeta">
+              <span class="ddl-warn">DEADLINE <b>2026/06/15</b></span>
+              <span>TASKS <b>3/4</b></span><span>ASSETS <b>2346</b></span>
+            </div>
+            <div class="seg blue" data-n="4" data-on="3"></div>
+          </div>
+          <div class="card pcard st-progress ani" data-go="tasks">
+            <div class="row1"><span class="pcode">231</span><span class="pname">DragonFortune</span><span class="ppct">45%</span></div>
+            <div class="psub">Slot · 5×4 · 序列帧产出阶段</div>
+            <div class="pmeta">
+              <span>DEADLINE <b>2026/06/28</b></span>
+              <span>TASKS <b>2/4</b></span><span>ASSETS <b>1027</b></span>
+            </div>
+            <div class="seg blue" data-n="4" data-on="2"></div>
+          </div>
+          <div class="card pcard st-review ani" data-go="tasks">
+            <div class="row1"><span class="pcode">218</span><span class="pname">NeonCarnival</span><span class="ppct">88%</span></div>
+            <div class="psub">Slot · 3×5 · 待美术总监确认</div>
+            <div class="pmeta">
+              <span class="ddl-warn">DEADLINE <b>2026/06/12</b></span>
+              <span>TASKS <b>3/4</b></span><span>ASSETS <b>3210</b></span>
+            </div>
+            <div class="seg amber" data-n="4" data-on="3"></div>
+          </div>
+          <div class="card pcard st-done ani" data-go="tasks">
+            <div class="row1"><span class="pcode">240</span><span class="pname">PirateGold</span><span class="ppct">100%</span></div>
+            <div class="psub">Slot · 1024 Ways · 已交付</div>
+            <div class="pmeta">
+              <span>DELIVERED <b>2026/05/30</b></span>
+              <span>TASKS <b>4/4</b></span><span>ASSETS <b>2871</b></span>
+            </div>
+            <div class="seg green" data-n="4" data-on="4"></div>
+          </div>
+          <div class="card pcard st-revision ani" data-go="tasks">
+            <div class="row1"><span class="pcode">235</span><span class="pname">MysticRunes</span><span class="ppct">64%</span></div>
+            <div class="psub">Slot · 5×3 · Big Win 返修中</div>
+            <div class="pmeta">
+              <span>DEADLINE <b>2026/06/20</b></span>
+              <span>TASKS <b>2/3</b></span><span>ASSETS <b>1764</b></span>
+            </div>
+            <div class="seg red" data-n="3" data-on="2"></div>
+          </div>
+          <div class="card pcard st-idle ani" data-go="tasks">
+            <div class="row1"><span class="pcode">229</span><span class="pname">JadeEmperor</span><span class="ppct">0%</span></div>
+            <div class="psub">Slot · 5×4 · 未开始</div>
+            <div class="pmeta">
+              <span>DEADLINE <b>2026/07/05</b></span>
+              <span>TASKS <b>0/3</b></span><span>ASSETS <b>0</b></span>
+            </div>
+            <div class="seg gray" data-n="3" data-on="0"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ──────── 视图 2：项目页 / 任务看板 ──────── -->
+      <section class="view" id="view-tasks">
+        <div class="filters" id="taskFilters">
+          <button class="chip on" data-f="all">全部 <span class="n">9</span></button>
+          <button class="chip" data-f="progress">进行中 <span class="n">3</span></button>
+          <button class="chip c-review" data-f="review">待确认 <span class="n">2</span></button>
+          <button class="chip c-done" data-f="done">已完成 <span class="n">2</span></button>
+          <button class="chip c-revision" data-f="revision">返修 <span class="n">1</span></button>
+          <button class="chip c-idle" data-f="idle">未开始 <span class="n">1</span></button>
+        </div>
+
+        <div class="grid" id="taskGrid">
+          <div class="card tcard st-progress task ani" data-st="progress" data-go="assets">
+            <div class="row1"><span class="tname">Free Spin</span><span class="tcode">T-02</span></div>
+            <div class="tcat">VFX / free_spin</div>
+            <div class="trow2"><span class="tag progress">进行中</span><span class="tnum">素材 <b>38</b> · 子任务 <b>5/8</b></span></div>
+            <div class="seg blue" data-n="8" data-on="5"></div>
+          </div>
+          <div class="card tcard st-progress task ani" data-st="progress" data-go="assets">
+            <div class="row1"><span class="tname">Big Win</span><span class="tcode">T-01</span></div>
+            <div class="tcat">Prototype / big_win</div>
+            <div class="trow2"><span class="tag progress">进行中</span><span class="tnum">素材 <b>52</b> · 子任务 <b>3/6</b></span></div>
+            <div class="seg blue" data-n="6" data-on="3"></div>
+          </div>
+          <div class="card tcard st-review task ani" data-st="review" data-go="assets">
+            <div class="row1"><span class="tname">Symbol Wild</span><span class="tcode">T-05</span></div>
+            <div class="tcat">VFX / symbol</div>
+            <div class="trow2"><span class="tag review">待确认</span><span class="tnum">素材 <b>24</b> · 子任务 <b>4/4</b></span></div>
+            <div class="seg amber" data-n="4" data-on="4"></div>
+          </div>
+          <div class="card tcard st-done task ani" data-st="done" data-go="assets">
+            <div class="row1"><span class="tname">Main UI</span><span class="tcode">T-03</span></div>
+            <div class="tcat">Prototype / main_ui</div>
+            <div class="trow2"><span class="tag done">已完成</span><span class="tnum">素材 <b>67</b> · 子任务 <b>6/6</b></span></div>
+            <div class="seg green" data-n="6" data-on="6"></div>
+          </div>
+          <div class="card tcard st-done task ani" data-st="done" data-go="assets">
+            <div class="row1"><span class="tname">Spin Button</span><span class="tcode">T-04</span></div>
+            <div class="tcat">Prototype / spinbutton</div>
+            <div class="trow2"><span class="tag done">已完成</span><span class="tnum">素材 <b>18</b> · 子任务 <b>3/3</b></span></div>
+            <div class="seg green" data-n="3" data-on="3"></div>
+          </div>
+          <div class="card tcard st-revision task ani" data-st="revision" data-go="assets">
+            <div class="row1"><span class="tname">Loading Bonus</span><span class="tcode">T-06</span></div>
+            <div class="tcat">Prototype / loading_bonus</div>
+            <div class="trow2"><span class="tag revision">返修</span><span class="tnum">素材 <b>12</b> · 子任务 <b>2/4</b></span></div>
+            <div class="seg red" data-n="4" data-on="2"></div>
+          </div>
+          <div class="card tcard st-progress task ani" data-st="progress" data-go="assets">
+            <div class="row1"><span class="tname">Total Win</span><span class="tcode">T-07</span></div>
+            <div class="tcat">Prototype / total_win</div>
+            <div class="trow2"><span class="tag progress">进行中</span><span class="tnum">素材 <b>21</b> · 子任务 <b>2/5</b></span></div>
+            <div class="seg blue" data-n="5" data-on="2"></div>
+          </div>
+          <div class="card tcard st-review task ani" data-st="review" data-go="assets">
+            <div class="row1"><span class="tname">Transition</span><span class="tcode">T-08</span></div>
+            <div class="tcat">VFX / transition</div>
+            <div class="trow2"><span class="tag review">待确认</span><span class="tnum">素材 <b>9</b> · 子任务 <b>2/2</b></span></div>
+            <div class="seg amber" data-n="2" data-on="2"></div>
+          </div>
+          <div class="card tcard st-idle task ani" data-st="idle" data-go="assets">
+            <div class="row1"><span class="tname">Info Board</span><span class="tcode">T-09</span></div>
+            <div class="tcat">Prototype / infoboard</div>
+            <div class="trow2"><span class="tag idle">未开始</span><span class="tnum">素材 <b>0</b> · 子任务 <b>0/3</b></span></div>
+            <div class="seg gray" data-n="3" data-on="0"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ──────── 视图 3：任务页 / 素材 + Inspector ──────── -->
+      <section class="view" id="view-assets">
+        <div class="asset-zone">
+          <div class="asset-grid" id="assetGrid">
+
+            <div class="asset sel ani" data-name="freespin_glow_[an-0-23].png" data-type="序列帧 PNG" data-size="38.2 MB" data-frames="24 F / 24 FPS" data-thumb="t-ring">
+              <svg class="chk" viewBox="0 0 10 10"><path d="M1.5 5.5l2.5 2.5 4.5-5"/></svg>
+              <div class="thumb"><svg viewBox="0 0 64 64" id="t-ring"><circle cx="32" cy="32" r="13" fill="none" stroke="#2F8CFF" stroke-width="3"/><circle cx="32" cy="32" r="21" fill="none" stroke="#2F8CFF" stroke-width="1" opacity=".35"/><path d="M32 6v7M32 51v7M6 32h7M51 32h7" stroke="#2F8CFF" stroke-width="1.5" opacity=".5"/></svg>
+                <span class="fbadge">24F</span></div>
+              <div class="ainfo">
+                <div class="aname">freespin_glow_[an-0-23]</div>
+                <div class="ameta"><span class="tag neutral mini">序列帧</span><span class="sz">38.2 MB</span></div>
+              </div>
+            </div>
+
+            <div class="asset ani" data-name="freespin_trigger.png" data-type="静帧 PNG" data-size="2.4 MB" data-frames="—" data-thumb="t-star">
+              <svg class="chk" viewBox="0 0 10 10"><path d="M1.5 5.5l2.5 2.5 4.5-5"/></svg>
+              <div class="thumb"><svg viewBox="0 0 64 64" id="t-star"><path d="M32 8 38 26 56 32 38 38 32 56 26 38 8 32 26 26Z" fill="none" stroke="#20C7B5" stroke-width="2"/></svg></div>
+              <div class="ainfo">
+                <div class="aname">freespin_trigger</div>
+                <div class="ameta"><span class="tag neutral mini">静帧</span><span class="updot" title="已上传"></span><span class="sz">2.4 MB</span></div>
+              </div>
+            </div>
+
+            <div class="asset ani" data-name="freespin_num_[an-0-11].png" data-type="序列帧 PNG" data-size="18.6 MB" data-frames="12 F / 24 FPS" data-thumb="t-num">
+              <svg class="chk" viewBox="0 0 10 10"><path d="M1.5 5.5l2.5 2.5 4.5-5"/></svg>
+              <div class="thumb"><svg viewBox="0 0 64 64" id="t-num"><text x="32" y="40" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="22" font-weight="600" fill="#E8A23A">888</text><path d="M12 50h40" stroke="#E8A23A" stroke-width="1.5" opacity=".4"/></svg>
+                <span class="fbadge">12F</span></div>
+              <div class="ainfo">
+                <div class="aname">freespin_num_[an-0-11]</div>
+                <div class="ameta"><span class="tag neutral mini">序列帧</span><span class="sz">18.6 MB</span></div>
+              </div>
+            </div>
+
+            <div class="asset ani" data-name="freespin_bg.png" data-type="静帧 PNG" data-size="5.1 MB" data-frames="—" data-thumb="t-bg">
+              <svg class="chk" viewBox="0 0 10 10"><path d="M1.5 5.5l2.5 2.5 4.5-5"/></svg>
+              <div class="thumb"><svg viewBox="0 0 64 64" id="t-bg"><rect x="9" y="14" width="46" height="36" fill="none" stroke="#8B6CFF" stroke-width="2"/><path d="M9 40 22 28l10 9 9-12 14 15" fill="none" stroke="#8B6CFF" stroke-width="1.5" opacity=".7"/></svg></div>
+              <div class="ainfo">
+                <div class="aname">freespin_bg</div>
+                <div class="ameta"><span class="tag neutral mini">静帧</span><span class="updot" title="已上传"></span><span class="sz">5.1 MB</span></div>
+              </div>
+            </div>
+
+            <div class="asset ani" data-name="freespin_preview_v03.mp4" data-type="预览视频 MP4" data-size="24.8 MB" data-frames="00:12 / 30 FPS" data-thumb="t-play">
+              <svg class="chk" viewBox="0 0 10 10"><path d="M1.5 5.5l2.5 2.5 4.5-5"/></svg>
+              <div class="thumb"><svg viewBox="0 0 64 64" id="t-play"><rect x="10" y="12" width="44" height="40" fill="none" stroke="#AAB5C0" stroke-width="1.5"/><path d="M27 23v18l15-9z" fill="#AAB5C0"/></svg>
+                <span class="fbadge">V03</span></div>
+              <div class="ainfo">
+                <div class="aname">freespin_preview_v03</div>
+                <div class="ameta"><span class="tag neutral mini">视频</span><span class="sz">24.8 MB</span></div>
+              </div>
+            </div>
+
+            <div class="asset ani" data-name="freespin_text.psd" data-type="源文件 PSD" data-size="86.3 MB" data-frames="—" data-thumb="t-psd">
+              <svg class="chk" viewBox="0 0 10 10"><path d="M1.5 5.5l2.5 2.5 4.5-5"/></svg>
+              <div class="thumb"><svg viewBox="0 0 64 64" id="t-psd"><rect x="10" y="16" width="34" height="32" fill="none" stroke="#6F7C88" stroke-width="1.5"/><rect x="20" y="10" width="34" height="32" fill="#0F151C" stroke="#AAB5C0" stroke-width="1.5"/><path d="M27 33l5-9 5 9M28.5 30h7" stroke="#AAB5C0" stroke-width="1.3" fill="none"/></svg></div>
+              <div class="ainfo">
+                <div class="aname">freespin_text</div>
+                <div class="ameta"><span class="tag neutral mini">源文件</span><span class="sz">86.3 MB</span></div>
+              </div>
+            </div>
+
+            <div class="asset ani" data-name="freespin_coin_[an-0-15].png" data-type="序列帧 PNG" data-size="22.4 MB" data-frames="16 F / 24 FPS" data-thumb="t-coin">
+              <svg class="chk" viewBox="0 0 10 10"><path d="M1.5 5.5l2.5 2.5 4.5-5"/></svg>
+              <div class="thumb"><svg viewBox="0 0 64 64" id="t-coin"><circle cx="24" cy="36" r="11" fill="none" stroke="#E8A23A" stroke-width="2"/><circle cx="40" cy="24" r="8" fill="none" stroke="#E8A23A" stroke-width="1.5" opacity=".7"/><circle cx="44" cy="42" r="6" fill="none" stroke="#E8A23A" stroke-width="1.2" opacity=".45"/></svg>
+                <span class="fbadge">16F</span></div>
+              <div class="ainfo">
+                <div class="aname">freespin_coin_[an-0-15]</div>
+                <div class="ameta"><span class="tag neutral mini">序列帧</span><span class="sz">22.4 MB</span></div>
+              </div>
+            </div>
+
+            <div class="asset ani" data-name="freespin_frame.png" data-type="静帧 PNG" data-size="3.8 MB" data-frames="—" data-thumb="t-frame">
+              <svg class="chk" viewBox="0 0 10 10"><path d="M1.5 5.5l2.5 2.5 4.5-5"/></svg>
+              <div class="thumb"><svg viewBox="0 0 64 64" id="t-frame"><rect x="12" y="12" width="40" height="40" fill="none" stroke="#36C275" stroke-width="2"/><path d="M12 20h8M12 12v8M52 44v8M44 52h8" stroke="#36C275" stroke-width="3"/></svg></div>
+              <div class="ainfo">
+                <div class="aname">freespin_frame</div>
+                <div class="ameta"><span class="tag neutral mini">静帧</span><span class="sz">3.8 MB</span></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Inspector -->
+        <aside class="inspector">
+          <div class="ins-head">
+            <span class="ins-name" id="insName">freespin_glow_[an-0-23].png</span>
+            <button class="ins-close" title="关闭"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
+          </div>
+          <div class="ins-body">
+            <div class="ins-preview" id="insPreview"></div>
+
+            <div class="ins-label">PIPELINE / 进度链条</div>
+            <div class="chain">
+              <div class="node passed"><div class="no">00</div><div class="nm">original</div></div>
+              <div class="node passed"><div class="no">01</div><div class="nm">scale</div></div>
+              <div class="node now"><div class="no">02</div><div class="nm">done</div></div>
+              <div class="node"><div class="no">03</div><div class="nm">preview</div></div>
+            </div>
+
+            <div class="ins-label">PROPERTIES / 属性</div>
+            <div class="props">
+              <div class="pr"><span class="pk">TYPE</span><span class="pv" id="pvType">序列帧 PNG</span></div>
+              <div class="pr"><span class="pk">FRAMES</span><span class="pv" id="pvFrames">24 F / 24 FPS</span></div>
+              <div class="pr"><span class="pk">SIZE</span><span class="pv" id="pvSize">38.2 MB</span></div>
+              <div class="pr"><span class="pk">SCALE</span><span class="pv">50%</span></div>
+              <div class="pr"><span class="pk">STAGE</span><span class="pv">02_done</span></div>
+              <div class="pr"><span class="pk">STATUS</span><span class="pv"><span class="tag progress">进行中</span></span></div>
+              <div class="pr"><span class="pk">UPLOAD</span><span class="pv" style="color:var(--tx-3)">未上传</span></div>
+              <div class="pr"><span class="pk">UPDATED</span><span class="pv">2026/06/08 17:42</span></div>
+            </div>
+
+            <div class="ins-label">NOTE / 笔记</div>
+            <div style="border:1px solid var(--line-weak);background:var(--bg-panel);padding:10px 12px;font-size:11.5px;line-height:1.7;color:var(--tx-3)">
+              光效整体提亮 10%，第 12 帧拖影已修。等 Big Win 定稿后统一出 preview。
+            </div>
+          </div>
+          <div class="ins-actions">
+            <button>打开目录</button>
+            <button>打开工程</button>
+            <button>重命名</button>
+            <button class="danger">删除</button>
+          </div>
+        </aside>
+      </section>
+
+      <!-- ──────── 视图 4：设计规范 ──────── -->
+      <section class="view" id="view-style">
+        <div class="sect"><h2>Sharp Grid 设计规范</h2><span class="en">DESIGN TOKENS</span><div class="rule"></div></div>
+        <div class="style-grid">
+
+          <div class="panel ani" id="palette">
+            <h3>色板 / PALETTE</h3>
+            <div class="note" style="margin-top:0;margin-bottom:12px">色值从 <span class="mono">:root</span> 实时读取，与界面同源——改 token 此处自动同步，不会再出现文档与实现不一致。</div>
+            <div class="sw-title">BACKGROUND / 背景层（由深到浅）</div>
+            <div class="swrow">
+              <div class="sw" data-var="--bg-work"><div class="box"></div><div class="nm">主工作区</div><div class="hx"></div></div>
+              <div class="sw" data-var="--bg-nav"><div class="box"></div><div class="nm">左侧导航</div><div class="hx"></div></div>
+              <div class="sw" data-var="--bg-panel"><div class="box"></div><div class="nm">面板/卡片</div><div class="hx"></div></div>
+              <div class="sw" data-var="--bg-panel2"><div class="box"></div><div class="nm">二级面板</div><div class="hx"></div></div>
+              <div class="sw" data-var="--bg-raise"><div class="box"></div><div class="nm">三级浮层</div><div class="hx"></div></div>
+              <div class="sw" data-var="--bg-hover"><div class="box"></div><div class="nm">选中底</div><div class="hx"></div></div>
+              <div class="sw" data-var="--bg-thumb"><div class="box"></div><div class="nm">缩略图井</div><div class="hx"></div></div>
+            </div>
+            <div class="sw-title">LINES / 线框</div>
+            <div class="swrow">
+              <div class="sw" data-var="--line-weak"><div class="box"></div><div class="nm">弱分割线</div><div class="hx"></div></div>
+              <div class="sw" data-var="--line"><div class="box"></div><div class="nm">普通边框</div><div class="hx"></div></div>
+              <div class="sw" data-var="--line-strong"><div class="box"></div><div class="nm">强边框</div><div class="hx"></div></div>
+            </div>
+            <div class="sw-title">TEXT / 文字（四级明度阶梯）</div>
+            <div class="swrow">
+              <div class="sw" data-var="--tx"><div class="box"></div><div class="nm">主文字</div><div class="hx"></div></div>
+              <div class="sw" data-var="--tx-2"><div class="box"></div><div class="nm">次级文字</div><div class="hx"></div></div>
+              <div class="sw" data-var="--tx-3"><div class="box"></div><div class="nm">弱文字</div><div class="hx"></div></div>
+              <div class="sw" data-var="--tx-dis"><div class="box"></div><div class="nm">禁用/最弱</div><div class="hx"></div></div>
+            </div>
+            <div class="sw-title">ACCENT / 强调（仅用于状态与选中）</div>
+            <div class="swrow">
+              <div class="sw" data-var="--acc-blue"><div class="box"></div><div class="nm">进行中/选中</div><div class="hx"></div></div>
+              <div class="sw" data-var="--acc-teal"><div class="box"></div><div class="nm">辅助青</div><div class="hx"></div></div>
+              <div class="sw" data-var="--acc-green"><div class="box"></div><div class="nm">完成/已上传</div><div class="hx"></div></div>
+              <div class="sw" data-var="--acc-amber"><div class="box"></div><div class="nm">待确认</div><div class="hx"></div></div>
+              <div class="sw" data-var="--acc-red"><div class="box"></div><div class="nm">返修/危险</div><div class="hx"></div></div>
+              <div class="sw" data-var="--acc-purple"><div class="box"></div><div class="nm">备用紫</div><div class="hx"></div></div>
+            </div>
+          </div>
+
+          <div class="panel ani">
+            <h3>选中态语法 / SELECTION GRAMMAR</h3>
+            <table class="gram">
+              <tr><td>导航项</td><td><span class="mini-nav"></span>&nbsp; 左侧 4px 竖条 + 底色提亮</td><td>band-4</td></tr>
+              <tr><td>卡片</td><td><span class="mini-card"></span>&nbsp; 1px 蓝边框 + 顶部 3px 色线</td><td>border+topline-3</td></tr>
+              <tr><td>筛选项</td><td><span class="mini-chip"></span>&nbsp; 底部 3px 色线</td><td>underline-3</td></tr>
+              <tr><td>素材</td><td><span class="mini-asset"></span>&nbsp; 2px 蓝外框 + 左上书签角</td><td>border-2+bookmark</td></tr>
+            </table>
+            <div class="note">
+              规则：一个元素只用一种选中表达，严禁发光（box-shadow blur = 0）。<br>
+              状态色带统一 4px / 选中线统一 3px / 标签边框统一 1px。
+            </div>
+            <h3 style="margin-top:18px">字体 / TYPE</h3>
+            <div class="type-sample"><span class="spec">Chakra Petch 600 · 15px</span><span style="font-size:15px;font-weight:600;color:var(--tx)">界面标题 INTERFACE TITLE</span></div>
+            <div class="type-sample"><span class="spec">UI 400 · 13px</span><span style="color:var(--tx-2)">正文与说明：清楚、硬朗、有秩序的深色生产工具。</span></div>
+            <div class="type-sample"><span class="spec">IBM Plex Mono · 12px</span><span class="mono" style="color:var(--tx)">226_GrandTheftHeist / 38.2 MB / [an-0-23]</span></div>
+            <div class="type-sample"><span class="spec">MONO CAPS · 10px</span><span class="mono" style="font-size:10px;letter-spacing:.14em;color:var(--tx-dis)">SECTION LABEL · DEADLINE · ASSETS</span></div>
+            <div class="note">所有数字、路径、文件名、编号一律等宽字体 —— 对齐即秩序。中文回退系统黑体，禁用圆体。</div>
+          </div>
+
+          <div class="panel ani">
+            <h3>按钮 / BUTTONS</h3>
+            <div class="demo-row">
+              <button class="btn primary">规范化</button>
+              <button class="btn">缩放</button>
+              <button class="btn">转换</button>
+              <button class="btn ghost">取消</button>
+              <button class="btn danger">删除</button>
+            </div>
+            <div class="note">主操作 = 蓝边框 + 8px 切角（全局唯一切角元素：主按钮与统计块），不做实心大蓝按钮。次级 = 1px 灰边框。危险 = 红边框。</div>
+            <h3 style="margin-top:18px">状态标签 / TAGS</h3>
+            <div class="demo-row">
+              <span class="tag progress">进行中</span>
+              <span class="tag review">待确认</span>
+              <span class="tag done">已完成</span>
+              <span class="tag revision">返修</span>
+              <span class="tag idle">未开始</span>
+              <span class="tag neutral">序列帧</span>
+            </div>
+            <div class="note">高 20px / 字 10.5px 等宽 / 1px 边框 / 14% 透明底。类型标签（序列帧、静帧…）一律中性灰，颜色只留给状态。</div>
+          </div>
+
+          <div class="panel ani">
+            <h3>进度与色带 / PROGRESS &amp; BANDS</h3>
+            <div class="sw-title">分段式进度条（管线刻度感）</div>
+            <div class="seg blue" data-n="8" data-on="5" style="margin-bottom:8px"></div>
+            <div class="seg green" data-n="6" data-on="6" style="margin-bottom:8px"></div>
+            <div class="seg red" data-n="5" data-on="2" style="margin-bottom:14px"></div>
+            <div class="sw-title">状态色带语义（左缘 4px）</div>
+            <table class="gram">
+              <tr><td style="color:var(--acc-blue)">█ 蓝</td><td>进行中 / 当前选中</td><td>#2F8CFF</td></tr>
+              <tr><td style="color:var(--acc-amber)">█ 黄</td><td>待确认 / 截止临近</td><td>#E8A23A</td></tr>
+              <tr><td style="color:var(--acc-green)">█ 绿</td><td>已完成 / 已上传</td><td>#36C275</td></tr>
+              <tr><td style="color:var(--acc-red)">█ 红</td><td>返修 / 错误</td><td>#E85D4F</td></tr>
+              <tr><td style="color:var(--tx-dis)">█ 灰</td><td>未开始（整卡降透明度至 62%）</td><td>#495561</td></tr>
+            </table>
+            <div class="note">强调色永远不大面积铺底 —— 只允许出现在 2~6px 的线、带、角标和文字上。</div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<script>
+/* ════ 数据：路径条与工具栏按视图渲染 ════ */
+/* 当前页标题（不用面包屑；标题只显示当前层级，靠返回按钮逐级返回） */
+const TITLES = {
+  home:  ['我的项目', 'PROJECTS'],
+  tasks: ['226_GrandTheftHeist', 'TASKS'],
+  assets:['Free Spin', '02_done · ASSETS'],
+  style: ['设计规范', 'SHARP GRID v1.1'],
+};
+/* 中部「快捷功能区」—— 严格对齐 界面设计.md 各页定义 */
+const TOOLS = {
+  home:  '<span class="cut-frame"><button class="tbtn accent">＋ 新建项目</button></span>',
+  tasks: '<button class="tbtn">游戏介绍</button><button class="tbtn">项目素材</button><button class="tbtn">AE工程</button><button class="tbtn">任务列表</button>',
+  assets:'<button class="tbtn active">树形</button><button class="tbtn">名称</button><span class="tsep"></span><button class="tbtn accent">规范化</button><button class="tbtn">缩放</button><button class="tbtn">转换</button><span class="tsep"></span><button class="tbtn">刷新</button><button class="tbtn">多选</button>',
+  style: '',
+};
+/* 右上「更多菜单」—— 不常用操作各回各的入口 */
+const MORE = {
+  home:  '<button data-act="checkin">日报打卡</button><button data-act="settings">程序设置</button><button data-act="style">设计规范</button>',
+  tasks: '<button data-act="checkin">日报打卡</button><button data-act="settings">程序设置</button>',
+  assets:'<button data-act="settings">程序设置</button>',
+  style: '<button data-act="home">返回主页</button>',
+};
+const PARENT = { tasks:'home', assets:'tasks' };
+
+let current = 'home';
+
+function go(view){
+  current = view;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active','enter'));
+  const el = document.getElementById('view-' + view);
+  el.classList.add('active');
+  void el.offsetWidth;          // 重置进场动画
+  el.classList.add('enter');
+
+  // 标题（返回 + 当前页名 + 英文副标）
+  const [t, sub] = TITLES[view];
+  document.getElementById('pageTitle').textContent = t;
+  document.getElementById('pageSub').textContent = sub;
+
+  // 中部快捷功能区
+  document.getElementById('tools').innerHTML = TOOLS[view];
+
+  // 右上更多菜单
+  const menu = document.getElementById('moreMenu');
+  menu.innerHTML = MORE[view];
+  menu.classList.remove('open');
+  menu.querySelectorAll('button').forEach(b => {
+    b.onclick = () => {
+      menu.classList.remove('open');
+      const act = b.dataset.act;
+      if (act === 'style') go('style');
+      else if (act === 'home') go('home');
+      // checkin / settings：示意稿占位，演示入口位置，不做实页
+    };
+  });
+
+  // 返回按钮
+  const back = document.getElementById('backBtn');
+  if (PARENT[view]) back.removeAttribute('disabled'); else back.setAttribute('disabled','');
+}
+
+document.getElementById('backBtn').onclick = () => { if (PARENT[current]) go(PARENT[current]); };
+document.getElementById('logoHome').onclick = () => go('home');
+
+/* 更多菜单开合（点空白处关闭） */
+const moreMenu = document.getElementById('moreMenu');
+document.getElementById('moreBtn').onclick = e => { e.stopPropagation(); moreMenu.classList.toggle('open'); };
+document.addEventListener('click', () => moreMenu.classList.remove('open'));
+
+/* 卡片钻取：项目卡 → 任务页，任务卡 → 素材页 */
+document.querySelectorAll('[data-go]').forEach(c => {
+  c.addEventListener('click', () => go(c.dataset.go));
+});
+
+/* ════ 分段进度条：一格 = 一个真实子单位（项目→任务 / 任务→子任务） ════ */
+document.querySelectorAll('.seg').forEach(s => {
+  const n = +s.dataset.n || 10;
+  // 优先用 data-on（已完成格数）；缺省时退回百分比换算
+  const on = s.dataset.on !== undefined ? +s.dataset.on : Math.round((+s.dataset.pct || 0) / 100 * n);
+  for (let i = 0; i < n; i++) {
+    const b = document.createElement('i');
+    if (i < on) b.classList.add('on');
+    s.appendChild(b);
+  }
+});
+
+/* ════ 任务状态筛选 ════ */
+document.querySelectorAll('#taskFilters .chip').forEach(chip => {
+  chip.onclick = () => {
+    document.querySelectorAll('#taskFilters .chip').forEach(c => c.classList.remove('on'));
+    chip.classList.add('on');
+    const f = chip.dataset.f;
+    document.querySelectorAll('#taskGrid .task').forEach(t => {
+      t.style.display = (f === 'all' || t.dataset.st === f) ? '' : 'none';
+    });
+  };
+});
+
+/* ════ 素材选中 → 更新 Inspector ════ */
+function syncInspector(card){
+  document.getElementById('insName').textContent = card.dataset.name;
+  document.getElementById('pvType').textContent = card.dataset.type;
+  document.getElementById('pvSize').textContent = card.dataset.size;
+  document.getElementById('pvFrames').textContent = card.dataset.frames;
+  const src = card.querySelector('.thumb svg');
+  const pv = document.getElementById('insPreview');
+  pv.innerHTML = src ? src.outerHTML : '';
+}
+document.querySelectorAll('.asset').forEach(a => {
+  a.addEventListener('click', e => {
+    e.stopPropagation();
+    document.querySelectorAll('.asset.sel').forEach(x => x.classList.remove('sel'));
+    a.classList.add('sel');
+    syncInspector(a);
+  });
+});
+syncInspector(document.querySelector('.asset.sel'));
+
+/* ════ 设计规范页·色板：从 :root 实时读取真实 token，杜绝文档与实现脱节 ════ */
+(() => {
+  const root = getComputedStyle(document.documentElement);
+  document.querySelectorAll('#palette .sw').forEach(sw => {
+    const name = sw.dataset.var;
+    sw.querySelector('.box').style.background = `var(${name})`;
+    sw.querySelector('.hx').textContent = root.getPropertyValue(name).trim().toUpperCase();
+  });
+})();
+
+go('home');
+</script>
+</body>
+</html>

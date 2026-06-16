@@ -1,11 +1,11 @@
 {
-  "version": "2.8.16",
-  "notes": "修复 TexturePacker 序列帧的「打开工程文件」：此前转换完成后点击修改/打开工程文件会提示素材缺失（工程文件被移入子目录后素材相对路径错位一级），现已修复；打开时还会自动修复历史上已转换的旧工程文件。",
-  "pub_date": "2026-06-04T07:49:53Z",
+  "version": "2.8.17",
+  "notes": "序列帧识别更精准：帧编号必须紧跟混合模式（add/screen/normal）才判定为序列帧，消除静帧变体（如 _seed_01/02）被误并为序列帧的问题，规范化页同步同一规则；新增侧边栏「非序列帧」手动排除，被误判的素材可一键移出（记录在 00_original/非序列帧.txt，删除对应行即可恢复）。另含若干内部优化：Prototype 素材扫描提速、归档/时光机恢复大目录提速、刷新更快。",
+  "pub_date": "2026-06-16T03:30:52Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.16/PGB1_2.8.16_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkQzbHNWZEFmQVpmdk54STFMQ096TXRZZ3hmeE1TOHJUWlNPeGZIYllJaWNPK3JSVU9FREpsQU5qM3N4UDFGTkZ6eHFYblJiNlMwRGtCcG01SFdwc3dRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNTU5Mzc5CWZpbGU6UEdCMV8yLjguMTZfeDY0LXNldHVwLmV4ZQp1ajIycDVoYWtqc2h5cDhFeWhuZENWK2prb3B6aTBnMEtZdElyVjJxWHFPZnhQc3AzYklaL2dWRTF0aGtNaExTZEtTYjVOcUo1d3VHOGdoU2RTR2FCUT09Cg=="
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.17/PGB1_2.8.17_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkViRWhxSENIeEVXQTV0QUp0eWhkNGZROHIzT0ZTbjZOZDVPQVJDOURkVnVIdUNWYjUvbEFDcTJzeWozaDlFamppNHEzdStPeTVkaTE4M3U2dTBtRXc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgxNTgwNjUyCWZpbGU6UEdCMV8yLjguMTdfeDY0LXNldHVwLmV4ZQpEWVE0L0M3NkRPOHR6NjFQcXpBOE94MGwyM1FEWFFDUkJOSGJFdWwzYkgrZjVKQVBydVZEU3J5d293ay8yc1ZvRU9PWVV3ZTFWUzZkUk05QlY4T3ZCZz09Cg=="
     }
   }
 }

@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite",
     "check:css-tokens": "node scripts/check-css-tokens.mjs",
+    "check:sharp-grid": "node scripts/check-sharp-grid-coverage.mjs",
     "check:version-sync": "node scripts/check-version-sync.mjs",
     "check:silent-catch": "node scripts/check-silent-catch.mjs",
     "check:rust-silent-fail": "node scripts/check-rust-silent-fail.mjs",
     "check:i18n-parity": "node scripts/check-i18n-parity.mjs",
-    "check:all": "npm run check:css-tokens && npm run check:version-sync && npm run check:silent-catch && npm run check:rust-silent-fail && npm run check:i18n-parity",
+    "check:all": "npm run check:css-tokens && npm run check:sharp-grid && npm run check:version-sync && npm run check:silent-catch && npm run check:rust-silent-fail && npm run check:i18n-parity",
     "build": "vue-tsc --noEmit && npm run check:all && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

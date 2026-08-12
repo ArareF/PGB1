@@ -151,10 +151,11 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | `docs/打包发布指南.md` | Agent 的完整打包手册，**打包前必读** |
 | `docs/文档组织规范.md` | 文档目录结构、命名、维护规则 |
 | `docs/设计风格.md` | 视觉风格参考（毛玻璃·现行版） |
-| `docs/新设计风格.md` | Sharp Grid 新风格草案（深色工业锐角，§12 Tech Lead 修订 + §13 产品评审二次裁决：左栏=启动台/取消面包屑/顶栏两行/去统计块/文字提亮/进度条平行四边形） |
+| `docs/新设计风格.md` | Sharp Grid 深色工业锐角规范；§14 质感精装层定稿，§15 全应用深色实装（2026-07-28） |
 | `docs/新设计风格示意.html` | Sharp Grid 可交互网页示意稿（三级钻取 + 设计规范页，浏览器直接打开） |
+| `docs/新设计风格-精装样板.html` | §14 质感精装层 canonical 参考：主页项目卡 + 组件样板，含 `原版⇄精装` 对比开关 + 点阵光照控制台（可调参） |
 | `docs/code/` | CODE_INDEX 二级详情（components/composables/views/rust-backend/styles-system） |
-| `docs/plans/` | 实施方案草案（进行中的方案放这里；当前暂空，软件已进入维护期） |
+| `docs/plans/` | 实施方案草案（进行中的方案放这里）。当前：`2026-07-28-sharp-grid-global-dark-design.md` + `2026-07-28-sharp-grid-global-dark-ui.md`（全应用深色统一升级） |
 | `docs/archive/plans/` | 已归档的历史方案（42 份：Phase 1~7 + 功能特性 + 2026-04 代码优化 + v2.8.13/15/17 已发版方案） |
 | `docs/archive/调研工作台/` | 历史代码审查报告（2026-04，含 `old/` 旧版） |
 | `docs/archive/MIGRATION_CHECKLIST.md` | 旧架构迁移检查清单（历史） |
@@ -245,4 +246,4 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 ---
 
-**最后更新**：2026-06-16
+**最后更新**：2026-07-28

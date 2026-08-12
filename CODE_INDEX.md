@@ -2,7 +2,7 @@
 
 > 全量源代码文件职责目录视图。新会话快速了解代码现状用。
 > 详细信息（Props / 状态 / 防火手记 / 架构决策）见 [`docs/code/*.md`](docs/code/)。
-> 最后更新: 2026-06-16
+> 最后更新: 2026-08-12
 
 ---
 
@@ -10,18 +10,18 @@
 
 | 目录 | 文件数 | 总行数 | 说明 |
 |------|--------|--------|------|
-| `src/components/` | 30 | 9489 | Vue UI 组件 |
+| `src/components/` | 30 | 9548 | Vue UI 组件 |
 | `src/composables/` | 23 | 3175 | 组合式函数（逻辑复用） |
-| `src/views/` | 19 | 9485 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
+| `src/views/` | 19 | 9556 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
 | `src/styles/` | 4 | 1836 | CSS 设计系统 |
 | `src/layouts/` | 1 | 321 | 主布局 |
 | `src/types/` | 2 | 57 | TypeScript 类型定义 |
-| `src/utils/` | 1 | 23 | 工具函数 |
+| `src/utils/` | 2 | 224 | 工具函数 |
 | `src/config/` | 6 | 170 | 配置 SSOT（app/onboarding/fileTypes/pinboard/priority/projectPaths） |
 | `src/i18n/` + `src/locales/` | 3 | 1396 | 国际化（vue-i18n + zh-CN + en） |
 | `src/router/` + 入口 | 5 | 204 | 路由 + main/App/vite-env/vite.config |
 | `src-tauri/src/` | 25 | 10208 | Rust 后端 |
-| **合计** | **119** | **36364** | |
+| **合计** | **120** | **36629** | |
 
 > 行数口径 = 文件总行数（含空行），与历史版本一致。
 
@@ -52,6 +52,7 @@
 | **转换流程** | 静帧监控 `01_scale/` → Imagine webp → 移 `02_done/[img-XX]/`；序列帧走 TP CLI |
 | **考勤调度** | `scheduler.rs` 常驻 3 定时任务（出勤/退勤/日报）+ 临时加班；WebView 自动化 |
 | **翻译系统** | `hotkey.rs` 独立线程 Win32 消息循环 + SSE 流式 Gemini API |
+| **素材系列合并** | 项目素材页按 `{基础名}_{YYMMDD}` 前端聚合成卡（`utils/materialSeries.ts`），目录与无日期文件不参与；词形差异（winscreen/winscreens）靠用户改名收敛，不引入分组配置文件 |
 
 ---
 
@@ -90,12 +91,12 @@
 | `ProjectCard.vue` | 490 | 项目卡片（图标 / 截止 / 进度 / 优先度 / 笔记 / ··· 菜单） |
 | `TaskCard.vue` | 271 | 任务卡片（子任务进度标签 / 优先度 / 笔记） |
 | `MaterialCard.vue` | 283 | 素材卡片（序列帧预览 + fps 角标 / 笔记） |
-| `NormalCard.vue` | 324 | 通用文件卡片（视频截帧 / PSD 缩略图 / PDF） |
+| `NormalCard.vue` | 366 | 通用文件卡片（视频截帧 / PSD 缩略图 / PDF；可选 displayName/subLabel/versionCount/formatLabel/selectionPath 覆盖，供素材系列合并卡使用） |
 | `SequencePreview.vue` | 115 | Canvas 序列帧动画播放器 + LRU 缓存 |
 | `ImageViewer.vue` | 127 | 可缩放/拖拽图片查看器（滚轮 + 鼠标拖拽） |
 | `FolderBrowserDialog.vue` | 425 | 文件夹浏览弹窗（路径栈 + 8 方向拖拽调宽） |
 | `SidebarShell.vue` | 371 | 侧边栏外壳（拖拽调宽 + 全屏 FLIP + 进出场动画） |
-| `FileDetailSidebar.vue` | 597 | 文件详情侧边栏（图/视/TXT/PSD/PDF + 版本历史 + 重命名删除） |
+| `FileDetailSidebar.vue` | 619 | 文件详情侧边栏（图/视/TXT/PSD/PDF + 版本历史 + 重命名删除；`versionLabelOf` 可覆盖版本条目标题） |
 | `VideoPlayer.vue` | 272 | 视频播放器（自定义控制条） |
 | `PdfPreviewSection.vue` | 235 | PDF iframe 预览 + 翻译 UI 集成 |
 | `TitleBar.vue` | 422 | 顶部标题栏（返回 + 动态按钮 + 嵌入 StatusBar） |
@@ -163,7 +164,7 @@
 | `ScalePage.vue` | 406 | 素材缩放执行页面（Phase 5c + 进度反馈） |
 | `ConvertPage.vue` | 737 | 格式转换执行页面（Phase 5d + TP 预设折叠面板） |
 | `GameIntroPage.vue` | 448 | 00_Game 浏览 + 游戏原型启动按钮 |
-| `MaterialsPage.vue` | 655 | 项目素材页面（4 分组浏览 + 多目录笔记管理） |
+| `MaterialsPage.vue` | 726 | 项目素材页面（4 分组浏览 + 同系列多版本合并成卡 + 多目录笔记管理） |
 | `SettingsPage.vue` | 590 | 设置页父组件（5 Tab 导航 + 保存闭环） |
 | `settings/AboutSettings.vue` | 32 | 关于 Tab（版本 / 检查更新） |
 | `settings/WorkflowSettings.vue` | 45 | 工作流 Tab（三个工具路径） |
@@ -192,6 +193,7 @@
 | 文件 | 行数 | 关键导出 |
 |------|------|---------|
 | `src/utils/format.ts` | 23 | `formatSize(bytes)`, `normalizeDeadline(raw)` |
+| `src/utils/materialSeries.ts` | 201 | **素材系列聚合 SSOT**：`parseSeriesName()` / `seriesKey()` / `groupIntoSeries()` / `flattenVersions()`，把 `{基础名}_{YYMMDD}` 同系列多版本合成一张卡（项目素材页用） |
 | `src/types/task.ts` | 27 | `GlobalTask*` / `ApplyTaskResult` / `ArchivedVersion` |
 | `src/types/material.ts` | 19 | `PreviewVideoEntry` / `MaterialVersion` |
 

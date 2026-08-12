@@ -12,6 +12,16 @@ const props = defineProps<{
   checked?: boolean
   hasNote?: boolean
   notePreview?: string
+  /** 覆盖卡片显示名（素材系列合并时显示基础名而非完整文件名） */
+  displayName?: string
+  /** 名称下方的副标题（如「最新 260807」） */
+  subLabel?: string
+  /** 版本数，>1 时右上角显示角标 */
+  versionCount?: number
+  /** 覆盖右下角格式标签（如多格式时的「PSD·JPG」） */
+  formatLabel?: string
+  /** 覆盖 data-path（多选 / 框选的身份标识），默认取 file.path */
+  selectionPath?: string
 }>()
 
 const cardRef = ref<HTMLElement | null>(null)
@@ -105,7 +115,7 @@ onUnmounted(() => {
   <button
     ref="cardRef"
     class="normal-card"
-    :data-path="file.path"
+    :data-path="selectionPath ?? file.path"
     @click="$emit('click', file)"
   >
     <!-- 多选复选框 -->
@@ -114,6 +124,8 @@ onUnmounted(() => {
         <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
       </svg>
     </span>
+    <!-- 版本数角标（素材系列合并时显示） -->
+    <span v-if="versionCount && versionCount > 1" class="version-badge">{{ versionCount }}</span>
     <!-- 预览区域 -->
     <div class="preview-wrapper">
       <div class="card-preview">
@@ -180,16 +192,17 @@ onUnmounted(() => {
 
       <!-- 格式标签（右下角，独立于预览容器） -->
       <span class="format-tag">
-        {{ file.extension ? file.extension.toUpperCase() : 'DIR' }}
+        {{ formatLabel ?? (file.extension ? file.extension.toUpperCase() : 'DIR') }}
       </span>
     </div>
 
     <!-- 文件信息 -->
     <div class="card-info">
       <div class="card-name-row">
-        <span class="card-name">{{ file.name }}</span>
+        <span class="card-name">{{ displayName ?? file.name }}</span>
         <svg v-if="hasNote" class="note-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       </div>
+      <span v-if="subLabel" class="card-sub-label">{{ subLabel }}</span>
     </div>
 
     <NoteTooltip
@@ -270,9 +283,38 @@ onUnmounted(() => {
 .card-info {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-3);
+  gap: var(--spacing-1);
   padding-top: var(--card-material-gap);
   min-width: 0;
+}
+
+/* 版本数角标（右上角，与左上角多选框对称） */
+.version-badge {
+  position: absolute;
+  top: var(--spacing-2);
+  right: var(--spacing-2);
+  min-width: var(--card-version-badge-size);
+  height: var(--card-version-badge-size);
+  padding: 0 var(--spacing-1);
+  border-radius: var(--radius-full);
+  background: var(--card-version-badge-bg);
+  color: var(--card-version-badge-text);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-heading);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+}
+
+/* 副标题（最新版本日期） */
+.card-sub-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .card-name-row {

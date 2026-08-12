@@ -364,6 +364,11 @@
   --card-normal-gap:          var(--spacing-2);
   --card-normal-preview-height: 150px;
 
+  /* 素材系列版本角标（同系列多版本合并为一张卡时显示版本数） */
+  --card-version-badge-size:  22px;
+  --card-version-badge-bg:    var(--color-primary-500);
+  --card-version-badge-text:  var(--color-neutral-0);
+
   /* 卡片网格 */
   --card-grid-gap:            var(--spacing-4);
   --card-grid-gap-large:      var(--spacing-6);

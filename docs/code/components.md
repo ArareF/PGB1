@@ -48,9 +48,15 @@
 
 **架构决策**：手动 `glass-subtle`（不用 backdrop-filter），避免大量卡片创建独立合成层。
 
-### NormalCard.vue（324 行）
+### NormalCard.vue（366 行）
 
 **Props**：`file: FileEntry`, `hasNote?`, `notePreview?`
+
+**素材系列合并用的覆盖 Props**（全部可选，不传即原行为）：`displayName?`（覆盖卡片名）、
+`subLabel?`（名称下方副标题，如「最新 260807」）、`versionCount?`（>1 时右上角角标，
+与左上角多选框对称）、`formatLabel?`（覆盖右下角格式标签，如 `PSD·JPG`）、
+`selectionPath?`（覆盖 `data-path`，让合并卡以最新版 PSD 作为多选 / 框选身份）。
+角标配色走 `--card-version-badge-*` token。
 
 **多类型支持**：
 - 视频：`onMounted` canvas 截帧
@@ -90,9 +96,9 @@ Canvas 序列帧动画播放器，`mount` 后自动循环播放，LRU 缓存。`
 - 手动 `glass-strong`（避免 backdrop-filter 兄弟冲突）
 - 通用信息展示样式（`sidebar-section` / `info-list` / `version-card`）内置
 
-### FileDetailSidebar.vue（597 行）
+### FileDetailSidebar.vue（619 行）
 
-**Props**：`file: FileEntry | null`, `widthPercent?`, `versions?: FileEntry[]`, `allowActions?`, `note?`, `teleportTarget?`, `teleportDisabled?`
+**Props**：`file: FileEntry | null`, `widthPercent?`, `versions?: FileEntry[]`, `versionLabelOf?`, `allowActions?`, `note?`, `teleportTarget?`, `teleportDisabled?`
 
 **使用 SidebarShell 作外壳**。支持多类型预览：
 - 图片：ImageViewer，`aspect-ratio: 4/3` 自适应
@@ -103,6 +109,10 @@ Canvas 序列帧动画播放器，`mount` 后自动循环播放，LRU 缓存。`
 - 其他：图标占位
 
 **版本历史**：`versions` prop 传入多版本列表，点击 emit `select-version` 切换播放。版本卡片式布局：左列版本标签 + 文件大小，右侧扩展名 + 打开文件夹按钮。
+
+**`versionLabelOf?: (file, index) => string`**：覆盖版本条目标题。不传时按「最新版本 / 版本 N」编号，
+**该编号假设 versions 是旧→新**（预览视频如此）。MaterialsPage 的素材系列是新→旧，必须传此函数
+（传日期 + 尾缀），否则「最新版本」会标在最旧那一行。
 
 **`allowActions=true`**：底部显示重命名/删除按钮，内联弹窗 overlay。emit `rename(newName)` / `delete()` 由父页面执行 invoke + 刷新。
 

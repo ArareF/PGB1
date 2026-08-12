@@ -540,6 +540,8 @@ export default {
     materialFolders: '素材文件夹',
     noMaterials: '暂无素材',
     dropHint: '将文件拖入此处',
+    /** 合并卡副标题：最新版本日期 */
+    latestDate: '最新 {date}',
   },
 
   layout: {

@@ -520,6 +520,8 @@ export default {
     materialFolders: 'Material Folders',
     noMaterials: 'No materials',
     dropHint: 'Drop files here',
+    /** 合并卡副标题：最新版本日期 */
+    latestDate: 'Latest {date}',
   },
 
   layout: {

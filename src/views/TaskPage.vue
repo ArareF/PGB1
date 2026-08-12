@@ -15,6 +15,7 @@ import { useMultiSelect } from '../composables/useMultiSelect'
 import { createDragHandler } from '../composables/useDragIntent'
 import { usePreviewVideos, type PreviewVideoGroup } from '../composables/usePreviewVideos'
 import { useMaterialSidebar } from '../composables/useMaterialSidebar'
+import { clearMediaCaches } from '../composables/useMediaCache'
 import type { GlobalTaskConfig } from '../types/task'
 import type { MaterialVersion } from '../types/material'
 import MaterialCard from '../components/MaterialCard.vue'
@@ -130,6 +131,7 @@ const {
   refresh: () => refresh(),
   onPreviewSelectionCleared: () => clearPreviewSelection(),
   formatResetNote: buildResetNote,
+  texturePackerGuiPathRef: computed(() => settings.value?.workflow.texturePackerGuiPath ?? ''),
 })
 
 // ─── 多选（allPaths 合并 materials + previewGroups；onEnter 互斥关闭两个侧边栏） ──
@@ -701,6 +703,13 @@ function checkSubtaskAutoPrompt() {
   }
 }
 
+/** 手动刷新按钮专用：先清前端媒体缓存（序列帧/PSD），再走常规刷新。
+ *  失焦/自动刷新不走这里——避免每次切回窗口都重解码上百帧图片。 */
+function manualRefresh() {
+  clearMediaCaches()
+  return refresh()
+}
+
 async function refresh() {
   if (!taskFolderPathRef.value) return
   // 刷新规范化按钮高亮态（与 materials 解耦，独立 invoke，不阻塞主刷新）
@@ -824,7 +833,7 @@ onUnmounted(() => {
           >
             {{ $t('task.nameView') }}
           </button>
-          <button class="view-btn" @click="refresh">
+          <button class="view-btn" @click="manualRefresh">
             {{ $t('common.refresh') }}
           </button>
           <button

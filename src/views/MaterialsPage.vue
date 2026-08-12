@@ -10,6 +10,7 @@ import { useDirectoryFiles, type FileEntry } from '../composables/useDirectoryFi
 import { useNotes, usePageNote } from '../composables/useNotes'
 import { useMultiSelect } from '../composables/useMultiSelect'
 import { createDragHandler } from '../composables/useDragIntent'
+import { clearMediaCaches } from '../composables/useMediaCache'
 import NormalCard from '../components/NormalCard.vue'
 import NoteDialog from '../components/NoteDialog.vue'
 import NoteRenderer from '../components/NoteRenderer.vue'
@@ -248,7 +249,7 @@ setNavigation({
     { id: 'game-intro', label: t('project.gameIntro'), handler: () => router.push({ name: 'gameIntro', params: { projectId } }) },
   ],
   moreMenuItems: [
-    { id: 'refresh', label: t('common.refresh'), handler: refreshAll },
+    { id: 'refresh', label: t('common.refresh'), handler: manualRefreshAll },
     { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
   ],
 })
@@ -260,6 +261,12 @@ const DIR_CONFIG = [
   { label: '03_Render_VFX / VFX / PSD', subPath: PSD_SUBPATH, flatten: true },
   { label: '05_Outside', subPath: '05_Outside', flatten: false },
 ]
+
+/** 手动刷新（按钮 / 更多菜单）专用：先清前端媒体缓存（PSD 缩略图等），再走常规刷新。 */
+function manualRefreshAll() {
+  clearMediaCaches()
+  return refreshAll()
+}
 
 async function refreshAll() {
   if (!projectPath) return
@@ -453,7 +460,7 @@ onUnmounted(() => {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h6"/></svg>
       </button>
       <div class="view-buttons">
-        <button class="view-btn" @click="refreshAll">{{ $t('common.refresh') }}</button>
+        <button class="view-btn" @click="manualRefreshAll">{{ $t('common.refresh') }}</button>
         <button
           class="view-btn"
           :class="{ active: isMultiSelect }"

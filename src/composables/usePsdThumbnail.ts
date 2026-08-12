@@ -14,6 +14,16 @@ export function invalidatePsdCache(path: string, maxSize: number): void {
   // pending 不清除：若有进行中的请求，完成后会以最新 Rust 结果覆盖缓存
 }
 
+/**
+ * 清空整个 PSD 缩略图 JS 缓存——手动刷新时调用。
+ * JS Map 只按 path+maxSize 缓存不含 mtime，清掉后会重新 invoke；Rust 侧按 mtime 决定复用/重生，
+ * 缓存文件名含 mtime 哈希，故素材更新后拿到的是新路径新图，不会再吃旧缓存。
+ * pending 同 invalidatePsdCache：不清除，进行中请求完成后以最新 Rust 结果覆盖。
+ */
+export function clearPsdThumbnailCache(): void {
+  cache.clear()
+}
+
 export async function getPsdThumbnail(path: string, maxSize: number): Promise<string | null> {
   const key = `${path}@${maxSize}`
 

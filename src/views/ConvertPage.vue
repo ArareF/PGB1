@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
 import { useMaterials } from '../composables/useMaterials'
 import { useSettings } from '../composables/useSettings'
+import { clearMediaCaches } from '../composables/useMediaCache'
 import MaterialCard from '../components/MaterialCard.vue'
 import { useMultiSelect } from '../composables/useMultiSelect'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
@@ -231,6 +232,8 @@ async function handleFinish() {
     isConverting.value = false
     if (unlistenOrganized) { unlistenOrganized(); unlistenOrganized = null }
     if (unlistenFailed) { unlistenFailed(); unlistenFailed = null }
+    // 重转同尺寸会覆盖 02_done 下的同名目录——路径不变、内容已变，返回任务页前必须清缓存
+    clearMediaCaches()
     router.back()
   }
 }

@@ -4,6 +4,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { formatSize } from '../utils/format'
 import { useSettings } from '../composables/useSettings'
+import { mediaVersion } from '../composables/useMediaCache'
 import type { MaterialInfo } from '../composables/useMaterials'
 import SequencePreview from './SequencePreview.vue'
 import NoteTooltip from './NoteTooltip.vue'
@@ -71,7 +72,7 @@ function progressLabel(progress: string): string {
         <!-- 静帧/其他：图片预览 -->
         <img
           v-else-if="material.preview_path"
-          :src="`${convertFileSrc(material.preview_path)}?v=${material.preview_version}`"
+          :src="`${convertFileSrc(material.preview_path)}?v=${material.preview_version}-${mediaVersion}`"
           :alt="material.name"
           class="preview-img"
           loading="lazy"

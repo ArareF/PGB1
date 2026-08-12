@@ -10,25 +10,25 @@ const MAX_CACHED = 10
 const MAX_FRAMES = 120
 const cache: CachedSequence[] = []
 
-/**
- * 媒体缓存代次：手动刷新时 +1，作为 `?v=` 追加到帧图 asset URL，破除 webview 对同路径旧图的缓存
- * （与静帧预览的 `?v=preview_version` 同理；序列帧无后端 mtime 版本号，故用刷新代次兜底）。
- */
-let mediaVersion = 0
-
-/** 清空序列帧 LRU 缓存并递增代次——手动刷新时调用，强制重新解码 + 破浏览器缓存 */
+/** 清空序列帧 LRU 缓存——手动刷新时由 `clearMediaCaches` 调用，强制重新解码 */
 export function clearSequenceCache(): void {
   cache.length = 0
-  mediaVersion++
 }
 
-/** 加载序列帧图片（带 LRU 缓存） */
+/**
+ * 加载序列帧图片（带 LRU 缓存）。
+ *
+ * `version` 传 `useMediaCache` 的刷新代次：既进缓存 key（防同代次内错拿旧帧），
+ * 也作为 `?v=` 追加到 asset URL 破除 webview 对同路径旧图的缓存
+ * （与静帧预览的 `?v=preview_version` 同理；序列帧无后端 mtime 版本号，故用刷新代次兜底）。
+ */
 export async function loadSequenceFrames(
   folderPath: string,
   framePaths: string[],
   maxWidth: number,
+  version: number,
 ): Promise<HTMLImageElement[]> {
-  const key = `${folderPath}:${maxWidth}`
+  const key = `${folderPath}:${maxWidth}:${version}`
 
   // 命中缓存
   const existing = cache.find(c => c.key === key)
@@ -46,7 +46,7 @@ export async function loadSequenceFrames(
 
   // 并行加载图片（追加刷新代次破 webview 缓存，避免同路径素材更新后仍显示旧帧）
   const frames = await Promise.all(
-    paths.map(p => loadImage(`${convertFileSrc(p)}?v=${mediaVersion}`))
+    paths.map(p => loadImage(`${convertFileSrc(p)}?v=${version}`))
   )
 
   // LRU 淘汰

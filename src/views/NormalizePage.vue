@@ -5,6 +5,7 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
+import { clearMediaCaches } from '../composables/useMediaCache'
 
 interface NormalizeItem {
   base_name: string
@@ -139,6 +140,9 @@ async function handleExecute() {
     }))
 
     await invoke('execute_normalize_v2', { requests, backup: gBackup.value })
+    // 规范化是原地改 00_original 的文件（自适应画布 / 加黑底），路径完全不变——
+    // 不清缓存的话返回任务页，序列帧 LRU 与静帧 URL 都会命中改之前的旧图
+    clearMediaCaches()
     router.back()
   } catch (e) {
     error.value = String(e)
@@ -155,6 +159,8 @@ async function handleRestore(it: NormalizeItem) {
   if (!it.paths[0]) return
   try {
     await invoke('restore_normalize_backup', { currentPath: it.paths[0], backupName: it.target_name })
+    // 恢复原件同样是原地覆盖，先清缓存再重新盘点
+    clearMediaCaches()
     await loadItems()
   } catch (e) {
     error.value = String(e)

@@ -15,7 +15,7 @@ import { useMultiSelect } from '../composables/useMultiSelect'
 import { createDragHandler } from '../composables/useDragIntent'
 import { usePreviewVideos, type PreviewVideoGroup } from '../composables/usePreviewVideos'
 import { useMaterialSidebar } from '../composables/useMaterialSidebar'
-import { clearMediaCaches } from '../composables/useMediaCache'
+import { clearMediaCaches, mediaVersion } from '../composables/useMediaCache'
 import type { GlobalTaskConfig } from '../types/task'
 import type { MaterialVersion } from '../types/material'
 import MaterialCard from '../components/MaterialCard.vue'
@@ -128,6 +128,8 @@ const {
   materials,
   getNote,
   saveNote: saveTaskNote,
+  // 普通刷新即可：侧边栏的重命名 / 删除 / 更新 / 改帧率 / 非序列帧都会改变素材路径或阶段，
+  // 卡片 key 变化自然重挂载。唯一路径不变的「修改 .tps」由 useMaterialSidebar 内部自行清缓存
   refresh: () => refresh(),
   onPreviewSelectionCleared: () => clearPreviewSelection(),
   formatResetNote: buildResetNote,
@@ -992,8 +994,8 @@ onUnmounted(() => {
         />
         <ImageViewer
           v-else-if="selectedMaterial.preview_path"
-          :key="selectedMaterial.preview_path"
-          :src="convertFileSrc(selectedMaterial.preview_path)"
+          :key="`${selectedMaterial.preview_path}@${selectedMaterial.preview_version}-${mediaVersion}`"
+          :src="`${convertFileSrc(selectedMaterial.preview_path)}?v=${selectedMaterial.preview_version}-${mediaVersion}`"
           :alt="selectedMaterial.name"
         />
         <div v-else class="sidebar-no-preview">{{ $t('common.noPreview') }}</div>

@@ -1,5 +1,6 @@
 import { ref, computed, type Ref } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { mediaVersion } from './useMediaCache'
 import type { PreviewVideoEntry } from '../types/material'
 import type { FileEntry } from './useDirectoryFiles'
 
@@ -31,6 +32,8 @@ export function usePreviewVideos(opts: UsePreviewVideosOptions) {
   const previewGroups = ref<PreviewVideoGroup[]>([])
   /** 缩略图缓存：文件 path → canvas dataURL */
   const videoThumbnails = ref<Map<string, string>>(new Map())
+  /** 上次截帧所处的刷新代次，与 mediaVersion 不一致时整表作废 */
+  let capturedVersion = mediaVersion.value
   const selectedPreviewVideo = ref<PreviewVideoEntry | null>(null)
   const selectedPreviewGroup = ref<PreviewVideoGroup | null>(null)
   const showPreviewUploadConfirm = ref(false)
@@ -87,6 +90,13 @@ export function usePreviewVideos(opts: UsePreviewVideosOptions) {
    *      SecurityError。asset 响应带 Access-Control-Allow-Origin:*，匿名模式可通过。
    */
   function captureGroupThumbnails(groups: PreviewVideoGroup[]) {
+    // 手动刷新：整表作废重截。截帧缓存按 path 命中，同名覆盖的新版本视频路径不变，
+    // 不作废的话下面的 has(path) 会一直短路，预览视频永远停在旧首帧
+    if (capturedVersion !== mediaVersion.value) {
+      capturedVersion = mediaVersion.value
+      videoThumbnails.value = new Map()
+    }
+
     // GC：丢弃不在当前 groups 里的缩略图缓存（切换任务/刷新后旧 dataURL 不再需要）
     const currentPaths = new Set(groups.map(g => g.versions[g.versions.length - 1].path))
     const cached = videoThumbnails.value
@@ -106,7 +116,7 @@ export function usePreviewVideos(opts: UsePreviewVideosOptions) {
       video.crossOrigin = 'anonymous'
       video.preload = 'metadata'
       video.muted = true
-      video.src = convertFileSrc(latest.path)
+      video.src = `${convertFileSrc(latest.path)}?v=${capturedVersion}`
       // currentTime 必须在 loadedmetadata 后设置，否则在 metadata 未就绪时会静默失败
 
       let settled = false

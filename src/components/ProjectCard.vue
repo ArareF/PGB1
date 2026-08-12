@@ -3,6 +3,7 @@ import { computed, ref, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
+import { mediaVersion } from '../composables/useMediaCache'
 import NoteTooltip from './NoteTooltip.vue'
 import type { ProjectInfo } from '../composables/useProjects'
 
@@ -86,7 +87,8 @@ async function loadIcon() {
   }
   const ext = iconPath.split('.').pop()?.toLowerCase() ?? ''
   if (ext === 'png') {
-    iconSrc.value = convertFileSrc(iconPath)
+    // 带刷新代次：同名替换项目图标后，不破缓存的话 webview 会一直给旧图
+    iconSrc.value = `${convertFileSrc(iconPath)}?v=${mediaVersion.value}`
   } else if (ext === 'psd' || ext === 'psb') {
     iconSrc.value = await getPsdThumbnail(iconPath, 128)
   } else {

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { IMAGE_EXTS_BROWSE as IMAGE_EXTS, VIDEO_EXTS, PSD_EXTS, PDF_EXTS } from '../config/fileTypes'
 import { getPsdThumbnail, invalidatePsdCache } from '../composables/usePsdThumbnail'
+import { mediaVersion } from '../composables/useMediaCache'
 import NoteTooltip from './NoteTooltip.vue'
 
 const props = defineProps<{
@@ -53,7 +54,8 @@ function generateVideoThumbnail() {
   const video = document.createElement('video')
   video.crossOrigin = 'anonymous'
   video.preload = 'metadata'
-  video.src = convertFileSrc(props.file.path)
+  // 带刷新代次：同名覆盖的新视频若走 webview 缓存，截出来还是旧首帧
+  video.src = `${convertFileSrc(props.file.path)}?v=${mediaVersion.value}`
   video.currentTime = 0.1
 
   video.addEventListener('seeked', () => {
@@ -73,7 +75,13 @@ function generateVideoThumbnail() {
   }, { once: true })
 }
 
-onMounted(() => {
+/** 建立视频截帧 / PSD 缩略图的懒加载观察器（挂载 + 手动刷新后各跑一次） */
+function setupThumbnailObservers() {
+  videoObserver?.disconnect()
+  videoObserver = null
+  psdObserver?.disconnect()
+  psdObserver = null
+
   if (isVideo.value && cardRef.value) {
     videoObserver = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting) {
@@ -101,6 +109,21 @@ onMounted(() => {
     }, { threshold: 0 })
     psdObserver.observe(cardRef.value)
   }
+}
+
+onMounted(setupThumbnailObservers)
+
+/**
+ * 手动刷新（mediaVersion +1）→ 丢弃本实例的截帧/缩略图重新生成。
+ *
+ * 观察器是一次性的（触发即 disconnect），卡片 key 又是稳定的文件/系列标识，
+ * 不在这里重建的话：视频永远停在旧首帧；PSD 改动后 Rust 返回 thumbnail_path=null，
+ * 模板会退回到还握着旧 URL 的 psdThumbnail，且再也不会重新请求。
+ */
+watch(mediaVersion, () => {
+  videoThumbnail.value = null
+  psdThumbnail.value = null
+  setupThumbnailObservers()
 })
 
 onUnmounted(() => {
@@ -132,7 +155,7 @@ onUnmounted(() => {
         <!-- 图片预览 -->
         <img
           v-if="isImage"
-          :src="convertFileSrc(file.path)"
+          :src="`${convertFileSrc(file.path)}?v=${mediaVersion}`"
           :alt="file.name"
           class="preview-img"
           loading="lazy"

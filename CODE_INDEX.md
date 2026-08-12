@@ -52,6 +52,7 @@
 | **转换流程** | 静帧监控 `01_scale/` → Imagine webp → 移 `02_done/[img-XX]/`；序列帧走 TP CLI |
 | **考勤调度** | `scheduler.rs` 常驻 3 定时任务（出勤/退勤/日报）+ 临时加班；WebView 自动化 |
 | **翻译系统** | `hotkey.rs` 独立线程 Win32 消息循环 + SSE 流式 Gemini API |
+| **媒体缓存失效** | 手动刷新 / 原地改文件的操作调 `clearMediaCaches()`：清模块级缓存 + `mediaVersion` 代次 +1。代次同时进 asset URL 的 `?v=`（破 WebView 缓存）和被媒体组件 watch（SequencePreview / NormalCard / FileDetailSidebar / usePreviewVideos 丢弃自己 ref 里的解码结果重取）。**卡片 key 是稳定路径，只清缓存不涨代次 = 屏幕上什么都不会变** |
 | **素材系列合并** | 项目素材页按 `{基础名}_{YYMMDD}` 前端聚合成卡（`utils/materialSeries.ts`），目录与无日期文件不参与；词形差异（winscreen/winscreens）靠用户改名收敛，不引入分组配置文件 |
 
 ---
@@ -148,7 +149,7 @@
 | `useMaterialSidebar.ts` | 262 | 素材侧边栏（选中 / 重命名 / 删除 / preserveCardPosition） |
 | `useArchivedMaterials.ts` | 45 | 素材归档时光机数据源（list / restore / delete） |
 | `useUpdater.ts` | 127 | 自动更新检查 / 下载 / 安装 |
-| `useMediaCache.ts` | 22 | 手动刷新清前端媒体缓存 SSOT（`clearMediaCaches` → 序列帧帧图 + PSD 缩略图） |
+| `useMediaCache.ts` | 34 | 媒体刷新 SSOT：`clearMediaCaches()` 清模块级缓存 + `mediaVersion` 代次（破 URL 缓存 & 触发组件自失效） |
 
 ---
 

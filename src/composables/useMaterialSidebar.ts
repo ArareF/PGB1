@@ -1,5 +1,6 @@
 import { ref, watch, nextTick, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { clearMediaCaches } from './useMediaCache'
 import type { MaterialInfo } from './useMaterials'
 import type { MaterialVersion } from '../types/material'
 
@@ -325,6 +326,9 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
         tpsPath,
         guiPath: opts.texturePackerGuiPathRef.value,
       })
+      // TP 里只改了非尺寸参数（padding / 算法等）时目录名不变，帧图是同路径新内容——
+      // 这是侧边栏唯一路径不变的操作，必须清媒体缓存，否则预览还是改之前的帧
+      clearMediaCaches()
       // 尺寸可能已变——刷新重新归类，并把侧边栏选中同步到刷新后的素材
       await opts.refresh()
       const updated = opts.materials.value.find(m => m.name === mat.name)

@@ -10,6 +10,7 @@ import { useDirectoryFiles, type FileEntry } from '../composables/useDirectoryFi
 import { useNotes, usePageNote } from '../composables/useNotes'
 import { useMultiSelect } from '../composables/useMultiSelect'
 import { createDragHandler } from '../composables/useDragIntent'
+import { clearMediaCaches } from '../composables/useMediaCache'
 import NormalCard from '../components/NormalCard.vue'
 import NoteDialog from '../components/NoteDialog.vue'
 import NoteRenderer from '../components/NoteRenderer.vue'
@@ -175,6 +176,13 @@ async function scanGameExe() {
   }
 }
 
+/** 手动刷新（更多菜单 / 页内按钮）专用：先清前端媒体缓存（PSD 缩略图 / 视频截帧），再重扫目录 */
+function manualRefresh() {
+  if (!dirPath) return
+  clearMediaCaches()
+  return loadFiles(dirPath)
+}
+
 /** 注册/更新顶部导航配置 */
 function refreshNav() {
   const actions = [
@@ -190,7 +198,7 @@ function refreshNav() {
     onBack: () => router.push({ name: 'project', params: { projectId } }),
     actions,
     moreMenuItems: [
-      { id: 'refresh', label: t('common.refresh'), handler: () => { if (dirPath) loadFiles(dirPath) } },
+      { id: 'refresh', label: t('common.refresh'), handler: manualRefresh },
       { id: 'page-guide', label: t('common.pageGuide'), handler: () => { showGuide.value = true } },
     ],
   })
@@ -267,7 +275,7 @@ onUnmounted(() => {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h6"/></svg>
       </button>
       <div class="view-buttons">
-        <button class="view-btn" @click="() => { if (dirPath) loadFiles(dirPath) }">{{ $t('common.refresh') }}</button>
+        <button class="view-btn" @click="manualRefresh">{{ $t('common.refresh') }}</button>
         <button
           class="view-btn"
           :class="{ active: isMultiSelect }"

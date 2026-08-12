@@ -318,6 +318,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 | `find_game_exe` | `root_dir` | `Option<String>` | Unity/Godot 原型检测 |
 | `open_file` | `path` | `()` | `ShellExecuteW "open"` 系统关联 |
 | `rename_sequence_fps` | `task_path, base_name, old_fps, new_fps` | `()` | 序列帧帧率重命名目录 |
+| `edit_sequence_tps` | `tps_path, gui_path` | `()` | 序列帧「修改」：阻塞打开 TP GUI，关闭后重解析 scale，变了就把 `[an-旧-fps]` 重命名为 `[an-新-fps]`（gui_path 空则退回系统关联打开、不重整理）。定义在 `conversion.rs` |
 | `set_default_ae_file` | `project_path, file_name` | `()` | 默认 AE 工程名 |
 | `copy_preview_to_nextcloud` | `file_path, nextcloud_preview_path` | `()` | 预览视频复制（breakdown 自动路由） |
 | `extract_psd_thumbnail` | `app_handle, path, max_size` | `Option<String>` | PSD 图层合并 + PSB 内嵌 JPEG，磁盘缓存 |

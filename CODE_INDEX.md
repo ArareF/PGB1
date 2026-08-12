@@ -88,7 +88,7 @@
 
 | 文件 | 行数 | 一句话职责 |
 |------|------|-----------|
-| `ProjectCard.vue` | 490 | 项目卡片（图标 / 截止 / 进度 / 优先度 / 笔记 / ··· 菜单） |
+| `ProjectCard.vue` | 553 | 项目卡片（浅色保留原版菜单，深色精装为分段进度 + 飘带按钮 + 满卡抽屉） |
 | `TaskCard.vue` | 271 | 任务卡片（子任务进度标签 / 优先度 / 笔记） |
 | `MaterialCard.vue` | 283 | 素材卡片（序列帧预览 + fps 角标 / 笔记） |
 | `NormalCard.vue` | 366 | 通用文件卡片（视频截帧 / PSD 缩略图 / PDF；可选 displayName/subLabel/versionCount/formatLabel/selectionPath 覆盖，供素材系列合并卡使用） |
@@ -131,7 +131,7 @@
 | `useMaterials.ts` | 40 | `scan_materials` 数据加载 |
 | `useDirectoryFiles.ts` | 41 | 通用目录扫描 + `openInExplorer` |
 | `useFrameCache.ts` | 57 | 序列帧 LRU 缓存（max 10 序列 / 120 帧） |
-| `useTheme.ts` | 30 | 明暗主题切换 + localStorage |
+| `useTheme.ts` | 30 | 明暗主题切换 + localStorage（无历史偏好时默认深色） |
 | `useScale.ts` | 28 | UI 全局缩放模块级单例（按设置页传入档位直接应用） |
 | `useSettings.ts` | 126 | 应用设置 CRUD（JSON 深拷贝脱壳 Vue Proxy） |
 | `usePsdThumbnail.ts` | 41 | PSD 缩略图并发去重缓存 |
@@ -148,6 +148,7 @@
 | `useMaterialSidebar.ts` | 262 | 素材侧边栏（选中 / 重命名 / 删除 / preserveCardPosition） |
 | `useArchivedMaterials.ts` | 45 | 素材归档时光机数据源（list / restore / delete） |
 | `useUpdater.ts` | 127 | 自动更新检查 / 下载 / 安装 |
+| `useMediaCache.ts` | 22 | 手动刷新清前端媒体缓存 SSOT（`clearMediaCaches` → 序列帧帧图 + PSD 缩略图） |
 
 ---
 
@@ -155,7 +156,7 @@
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `HomePage.vue` | 448 | 项目列表 + 新建 + 三档排序 + 加班按钮 |
+| `HomePage.vue` | 449 | 项目列表 + 新建 + 三档排序 + 加班按钮（按全局主题选择项目卡形态） |
 | `ProjectPage.vue` | 528 | 任务列表 + 快捷功能（游戏介绍/项目素材/AE/任务列表）+ 两档排序 |
 | `TaskListPage.vue` | 600 | 任务管理页面（启用 / 模板 双 Tab；时光机已抽为独立页面） |
 | `TimeMachinePage.vue` | 545 | 时光机独立页面（任务归档 / 素材归档 双 Tab） |
@@ -181,7 +182,8 @@
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `styles/design-system.css` | 1585 | **SSOT**：颜色 / 间距 / 排版 / 圆角 / 阴影 / 过渡 / 毛玻璃变量 / 优先度 token / 公共类 |
+| `styles/design-system.css` | 1660 | **SSOT**：颜色 / 间距 / 排版 / 圆角 / 阴影 / 过渡 / Sharp Grid 深色 token / 公共类 |
+| `styles/sharp-grid.css` | 936 | Sharp Grid 全应用深色组件配方（主布局 / 页面 / 卡片 / 弹窗 / 独立窗口） |
 | `styles/glass.css` | 86 | 毛玻璃工具类（subtle/medium/strong） + backdrop-filter 兄弟冲突规则 |
 | `styles/dialog.css` | 120 | 弹窗公共样式（overlay / content / btn 变体 / 进出场动画） |
 | `styles/reset.css` | 45 | 基础重置 + 字体引用 |

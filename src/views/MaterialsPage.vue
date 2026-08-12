@@ -19,6 +19,7 @@ import { useI18n } from 'vue-i18n'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 import { PSD_SUBPATH } from '../config/projectPaths'
+import { groupIntoSeries, flattenVersions, parseSeriesName, type MaterialSeries } from '../utils/materialSeries'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -34,14 +35,14 @@ const projectId = route.params.projectId as string
 interface SubGroup {
   label: string
   dirPath: string
-  files: FileEntry[]
+  series: MaterialSeries[]
 }
 
 /** 素材分组 */
 interface MaterialGroup {
   label: string
   dirPath: string
-  files: FileEntry[]
+  series: MaterialSeries[]
   subGroups?: SubGroup[]
 }
 
@@ -72,22 +73,28 @@ const groupNotesMap = ref<Record<string, Record<string, string>>>({})
 const showFolderBrowser = ref(false)
 const folderBrowserPath = ref('')
 
-/** 侧边栏选中文件 */
+/** 侧边栏选中的系列（卡片身份）与当前预览的具体版本文件 */
+const selectedSeries = ref<MaterialSeries | null>(null)
 const selectedFile = ref<FileEntry | null>(null)
 const sidebarWidth = ref(30)
 
 const scrollRef = ref<HTMLElement | null>(null)
 
-// 从所有分组中收集所有文件（用于全选，排除目录）
-const allFiles = computed(() => {
-  const result: FileEntry[] = []
+/** 遍历所有分组的系列（含子分组），供全选 / 笔记查找复用 */
+function* iterateSeries(): Generator<{ dirPath: string; series: MaterialSeries }> {
   for (const g of groups.value) {
-    result.push(...g.files.filter(f => !f.is_dir))
-    if (g.subGroups) {
-      for (const sg of g.subGroups) {
-        result.push(...sg.files.filter(f => !f.is_dir))
-      }
+    for (const s of g.series) yield { dirPath: g.dirPath, series: s }
+    for (const sg of g.subGroups ?? []) {
+      for (const s of sg.series) yield { dirPath: sg.dirPath, series: s }
     }
+  }
+}
+
+// 全选范围 = 每个系列的主文件（合并卡代表最新版本，旧版本要单独操作请进侧边栏）
+const allSelectablePaths = computed(() => {
+  const result: string[] = []
+  for (const { series } of iterateSeries()) {
+    if (!series.primary.is_dir) result.push(series.primary.path)
   }
   return result
 })
@@ -97,59 +104,101 @@ const {
   toggleMultiSelect, toggleSelection, toggleSelectAll,
   isSelecting, selectionRect, justFinished, onContainerMouseDown, onContainerScroll,
 } = useMultiSelect({
-  allPaths: computed(() => allFiles.value.map(f => f.path)),
-  onEnter: () => { selectedFile.value = null },
+  allPaths: allSelectablePaths,
+  onEnter: () => { clearSelection() },
   rubberBand: { containerRef: scrollRef, cardSelector: '.normal-card[data-path]' },
 })
 
-function onCardClick(file: FileEntry) {
-  if (file.is_dir) {
-    folderBrowserPath.value = file.path
+function clearSelection() {
+  selectedSeries.value = null
+  selectedFile.value = null
+}
+
+function onCardClick(series: MaterialSeries) {
+  if (series.primary.is_dir) {
+    folderBrowserPath.value = series.primary.path
     showFolderBrowser.value = true
     return
   }
   if (isMultiSelect.value) {
-    toggleSelection(file.path)
+    toggleSelection(series.primary.path)
     return
   }
-  if (selectedFile.value?.path === file.path) {
-    selectedFile.value = null
+  if (selectedSeries.value?.key === series.key) {
+    clearSelection()
   } else {
-    selectedFile.value = file
+    selectedSeries.value = series
+    selectedFile.value = series.primary
   }
 }
 
 function onMainClick(e: MouseEvent) {
   if (justFinished.value) return
   if (!(e.target as HTMLElement).closest('.normal-card')) {
-    selectedFile.value = null
+    clearSelection()
   }
+}
+
+/** 侧边栏版本列表：单文件系列不显示版本区 */
+const sidebarVersions = computed(() =>
+  selectedSeries.value && selectedSeries.value.fileCount > 1
+    ? flattenVersions(selectedSeries.value)
+    : undefined
+)
+
+/**
+ * 版本条目标题：显示日期（格式由版本卡右侧的扩展名标签负责）。
+ * 带尾缀的文件（如 `..._260706_---.psd`）附上尾缀，否则同日同格式的两行无法区分。
+ */
+function versionLabel(file: FileEntry): string {
+  const parsed = parseSeriesName(file)
+  if (!parsed) return file.name
+  return parsed.date + parsed.suffix
+}
+
+/**
+ * 卡片格式标签：最新版本包含多个格式时列出全部（如 PSD·JPG）。
+ * 单格式返回 undefined，交回 NormalCard 默认逻辑（目录会显示 DIR）。
+ */
+function seriesFormatLabel(series: MaterialSeries): string | undefined {
+  const exts = [...new Set(series.versions[0].files.map(f => f.extension).filter(Boolean))]
+  return exts.length > 1 ? exts.map(e => e.toUpperCase()).join('·') : undefined
 }
 
 /** 查找文件所在分组 dirPath */
 function findGroupDirForFile(filePath: string): string | null {
-  for (const g of groups.value) {
-    if (g.files.some(f => f.path === filePath)) return g.dirPath
-    if (g.subGroups) {
-      for (const sg of g.subGroups) {
-        if (sg.files.some(f => f.path === filePath)) return sg.dirPath
-      }
-    }
+  for (const { dirPath, series } of iterateSeries()) {
+    if (flattenVersions(series).some(f => f.path === filePath)) return dirPath
   }
   return null
 }
 
-function groupHasNote(dirPath: string, fileName: string): boolean {
-  return !!(groupNotesMap.value[dirPath]?.['card:' + fileName.toLowerCase()])
+function noteOf(dirPath: string, fileName: string): string {
+  return groupNotesMap.value[dirPath]?.['card:' + fileName.toLowerCase()] ?? ''
 }
 
-function groupNotePreview(dirPath: string, fileName: string): string {
-  return groupNotesMap.value[dirPath]?.['card:' + fileName.toLowerCase()] ?? ''
+/**
+ * 系列笔记：主文件优先，否则取系列内第一条有笔记的版本。
+ * 这样给旧版本写的笔记不会因为合并而在卡片上消失。
+ */
+function seriesNotePreview(dirPath: string, series: MaterialSeries): string {
+  const primaryNote = noteOf(dirPath, series.primary.name)
+  if (primaryNote) return primaryNote
+  for (const file of flattenVersions(series)) {
+    const note = noteOf(dirPath, file.name)
+    if (note) return note
+  }
+  return ''
+}
+
+function seriesHasNote(dirPath: string, series: MaterialSeries): boolean {
+  return !!seriesNotePreview(dirPath, series)
 }
 
 function getFileNote(file: FileEntry): string | undefined {
   const dir = findGroupDirForFile(file.path)
   if (!dir) return undefined
+  // 保持 ?? 语义：key 不存在才返回 undefined，空串仍需显示笔记编辑区
   return groupNotesMap.value[dir]?.['card:' + file.name.toLowerCase()] ?? undefined
 }
 
@@ -171,7 +220,7 @@ async function onSidebarRename(newName: string) {
   if (!file) return
   try {
     await invoke('rename_file', { path: file.path, newName })
-    selectedFile.value = null
+    clearSelection()
     await refreshAll()
   } catch (e) {
     console.error('重命名失败:', e)
@@ -183,7 +232,7 @@ async function onSidebarDelete() {
   if (!file) return
   try {
     await invoke('delete_file', { path: file.path })
-    selectedFile.value = null
+    clearSelection()
     await refreshAll()
   } catch (e) {
     console.error('删除失败:', e)
@@ -232,21 +281,21 @@ async function refreshAll() {
             try {
               const subFiles = await invoke<FileEntry[]>('scan_directory', { dirPath: f.path })
               if (subFiles.length > 0) {
-                subGroups.push({ label: f.name, dirPath: f.path, files: subFiles })
+                subGroups.push({ label: f.name, dirPath: f.path, series: groupIntoSeries(subFiles) })
               }
             } catch { /* 子目录扫描失败跳过 */ }
           } else {
             rootFiles.push(f)
           }
         }
-        result.push({ label: config.label, dirPath, files: rootFiles, subGroups })
+        result.push({ label: config.label, dirPath, series: groupIntoSeries(rootFiles), subGroups })
       } else {
-        result.push({ label: config.label, dirPath, files })
+        result.push({ label: config.label, dirPath, series: groupIntoSeries(files) })
       }
     } catch (e) {
       // 目录不存在（如深层子目录）是合法场景，debug 级记录即可——拖入时 import_files 会自动创建
       console.debug(`[MaterialsPage] 分组目录扫描失败（可能尚未创建） ${dirPath}:`, e)
-      result.push({ label: config.label, dirPath, files: [] })
+      result.push({ label: config.label, dirPath, series: [] })
     }
   }
 
@@ -282,23 +331,24 @@ const isDragOver = ref(false)
 const dropTargetLabel = ref('')
 let unlistenDragDrop: (() => void) | null = null
 
-/** 卡片拖出 */
-function onCardMouseDown(e: MouseEvent, file: FileEntry) {
+/** 卡片拖出：拖的是系列主文件（最新版本的 PSD），旧版本请从侧边栏版本列表拖 */
+function onCardMouseDown(e: MouseEvent, series: MaterialSeries) {
+  const primary = series.primary
   createDragHandler(
     () => {
       if (isMultiSelect.value) {
-        if (!selectedPaths.value.has(file.path)) {
-          toggleSelection(file.path)
+        if (!selectedPaths.value.has(primary.path)) {
+          toggleSelection(primary.path)
         }
         const paths = [...selectedPaths.value]
         if (paths.length > 0) {
           startDrag({ item: paths, icon: '' }).catch(err => console.error('拖拽失败:', err))
         }
       } else {
-        startDrag({ item: [file.path], icon: '' }).catch(err => console.error('拖拽失败:', err))
+        startDrag({ item: [primary.path], icon: '' }).catch(err => console.error('拖拽失败:', err))
       }
     },
-    (ev) => ev.button !== 0 || file.is_dir,
+    (ev) => ev.button !== 0 || primary.is_dir,
   )(e)
 }
 
@@ -453,25 +503,30 @@ onUnmounted(() => {
           </div>
 
           <!-- 普通文件（根级） -->
-          <TransitionGroup v-if="group.files.length > 0" name="card" tag="div" class="card-grid">
+          <TransitionGroup v-if="group.series.length > 0" name="card" tag="div" class="card-grid">
             <NormalCard
-              v-for="(file, i) in group.files"
-              :key="file.name"
+              v-for="(s, i) in group.series"
+              :key="s.key"
               :style="{ '--delay': i * 40 + 'ms' }"
-              :file="file"
+              :file="s.cover"
+              :selection-path="s.primary.path"
+              :display-name="s.fileCount > 1 ? s.label : undefined"
+              :sub-label="s.fileCount > 1 ? $t('materialsPage.latestDate', { date: s.versions[0].date }) : undefined"
+              :version-count="s.versions.length"
+              :format-label="seriesFormatLabel(s)"
               :multi-select="isMultiSelect"
-              :checked="selectedPaths.has(file.path)"
-              :has-note="groupHasNote(group.dirPath, file.name)"
-              :note-preview="groupNotePreview(group.dirPath, file.name)"
-              :class="{ selected: !isMultiSelect && selectedFile?.path === file.path, 'multi-checked': isMultiSelect && selectedPaths.has(file.path) }"
-              @click="onCardClick(file)"
-              @mousedown="onCardMouseDown($event, file)"
+              :checked="selectedPaths.has(s.primary.path)"
+              :has-note="seriesHasNote(group.dirPath, s)"
+              :note-preview="seriesNotePreview(group.dirPath, s)"
+              :class="{ selected: !isMultiSelect && selectedSeries?.key === s.key, 'multi-checked': isMultiSelect && selectedPaths.has(s.primary.path) }"
+              @click="onCardClick(s)"
+              @mousedown="onCardMouseDown($event, s)"
             />
           </TransitionGroup>
 
           <!-- 空分组提示（新项目或目录为空时） -->
           <p
-            v-if="group.files.length === 0 && !group.subGroups?.length"
+            v-if="group.series.length === 0 && !group.subGroups?.length"
             class="drop-hint"
           >{{ $t('materialsPage.dropHint') }}</p>
 
@@ -492,17 +547,22 @@ onUnmounted(() => {
               </div>
               <TransitionGroup name="card" tag="div" class="card-grid">
                 <NormalCard
-                  v-for="(file, i) in sub.files"
-                  :key="file.name"
+                  v-for="(s, i) in sub.series"
+                  :key="s.key"
                   :style="{ '--delay': i * 40 + 'ms' }"
-                  :file="file"
+                  :file="s.cover"
+                  :selection-path="s.primary.path"
+                  :display-name="s.fileCount > 1 ? s.label : undefined"
+                  :sub-label="s.fileCount > 1 ? $t('materialsPage.latestDate', { date: s.versions[0].date }) : undefined"
+                  :version-count="s.versions.length"
+                  :format-label="seriesFormatLabel(s)"
                   :multi-select="isMultiSelect"
-                  :checked="selectedPaths.has(file.path)"
-                  :has-note="groupHasNote(sub.dirPath, file.name)"
-                  :note-preview="groupNotePreview(sub.dirPath, file.name)"
-                  :class="{ selected: !isMultiSelect && selectedFile?.path === file.path, 'multi-checked': isMultiSelect && selectedPaths.has(file.path) }"
-                  @click="onCardClick(file)"
-                  @mousedown="onCardMouseDown($event, file)"
+                  :checked="selectedPaths.has(s.primary.path)"
+                  :has-note="seriesHasNote(sub.dirPath, s)"
+                  :note-preview="seriesNotePreview(sub.dirPath, s)"
+                  :class="{ selected: !isMultiSelect && selectedSeries?.key === s.key, 'multi-checked': isMultiSelect && selectedPaths.has(s.primary.path) }"
+                  @click="onCardClick(s)"
+                  @mousedown="onCardMouseDown($event, s)"
                 />
               </TransitionGroup>
             </div>
@@ -516,9 +576,12 @@ onUnmounted(() => {
       :file="selectedFile"
       :width-percent="sidebarWidth"
       allow-actions
+      :versions="sidebarVersions"
+      :version-label-of="versionLabel"
       :note="selectedFile ? getFileNote(selectedFile) : undefined"
-      @close="selectedFile = null"
+      @close="clearSelection"
       @update:width-percent="sidebarWidth = $event"
+      @select-version="selectedFile = $event"
       @rename="onSidebarRename"
       @delete="onSidebarDelete"
       @save-note="onSidebarNoteSave"

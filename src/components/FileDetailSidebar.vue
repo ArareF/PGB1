@@ -18,6 +18,11 @@ const props = withDefaults(defineProps<{
   file: FileEntry | null
   widthPercent?: number
   versions?: FileEntry[]
+  /**
+   * 自定义版本条目标题。不传时按「最新版本 / 版本 N」编号（预览视频用，versions 为旧→新）。
+   * 素材系列传入日期标签，因为它的 versions 是新→旧，编号会反。
+   */
+  versionLabelOf?: (file: FileEntry, index: number) => string
   /** 是否显示重命名/删除按钮（游戏介绍/项目素材页使用；预览视频侧边栏不显示） */
   allowActions?: boolean
   /** 笔记文本（有值时显示编辑区） */
@@ -328,7 +333,9 @@ function confirmDelete() {
           >
             <div class="version-card-left">
               <span class="version-name">
-                {{ i === versions.length - 1 ? $t('fileDetail.latestVersion') : $t('fileDetail.versionN', { n: i + 1 }) }}
+                {{ versionLabelOf
+                  ? versionLabelOf(v, i)
+                  : (i === versions.length - 1 ? $t('fileDetail.latestVersion') : $t('fileDetail.versionN', { n: i + 1 })) }}
               </span>
               <span class="version-meta">{{ formatSize(v.size_bytes) }}</span>
             </div>

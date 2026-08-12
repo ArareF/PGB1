@@ -198,18 +198,34 @@
 
 **笔记系统**：NormalCard 传 `:has-note` / `:note-preview`；FileDetailSidebar 传 `:note` / `@save-note`；sub-title-bar 旁 `.note-btn` + 可折叠页面笔记（`page` key）。
 
-### MaterialsPage.vue（655 行）
+### MaterialsPage.vue（726 行）
 
-**职责**：4 个分组素材库。
+**职责**：4 个分组素材库，每个分组内按素材系列聚合成卡。
 
 **分组**：`01_Preproduction` / `02_Production` / `03_Render_VFX/VFX/PSD` / `05_Outside`
 
+**素材系列合并（v2.8.18）**：`scan_directory` 结果过 `groupIntoSeries()`（`utils/materialSeries.ts`），
+`MaterialGroup.files` → `MaterialGroup.series`。四个分组统一启用同一套规则 —— `02` / `05` 里的文件
+（`Snipaste_2025-10-08_14-40-51`、`AP_1`、`ChatGPT Image 2026年7月21日 …`）不含 `_YYMMDD` token，
+天然不触发合并，已用真实数据验证零误伤。
+
+- **卡片身份**：`series.key`（归一化基础名）；`data-path` / 多选键走 `series.primary.path`（最新版 PSD）
+- **cover vs primary**：缩略图用 `cover`（图片格式优先，jpg 秒出），点击 / 拖出 / 重命名用 `primary`（PSD 优先）
+- **全选范围**：每个系列的 `primary`，不是全部文件 —— 合并卡代表最新版，旧版走侧边栏
+- **侧边栏**：`selectedSeries`（卡片身份） + `selectedFile`（当前预览的具体版本）双 ref；
+  `versions` 传 `flattenVersions()`，`versionLabelOf` 传 `versionLabel()`（日期 + 尾缀）。
+  系列版本是**新→旧**，与预览视频的旧→新相反，所以必须覆盖标题，否则「最新版本」标在最旧那行
+- **重命名 / 删除**：仍是单文件 `rename_file` / `delete_file`，作用于 `selectedFile`，不做整组改名
+
 **特殊行为**：
 - **空目录也渲染分组**（显示"将文件拖入此处"提示），新建项目时可直接拖入；目录不存在时 `import_files` 自动创建
-- 多选：跨 group/subGroup 收集 `allFiles`
+- 多选：`iterateSeries()` 生成器跨 group/subGroup 遍历，全选 / 笔记查找共用
 - 分组标题旁文件夹按钮：`.folder-btn` 公共类，每个 group/subGroup 标题后各一个
 
-**笔记系统**：多目录笔记管理 `groupNotesMap: Record<string, Record<string, string>>`，`refreshAll` 加载各分组笔记；`groupHasNote` / `groupNotePreview` 辅助函数；页面级笔记 `useNotes(projectPathRef)` key `page:materials`。
+**笔记系统**：多目录笔记管理 `groupNotesMap: Record<string, Record<string, string>>`，`refreshAll` 加载各分组笔记；
+`seriesHasNote` / `seriesNotePreview` 按系列聚合（主文件优先，否则取系列内第一条有笔记的版本，
+避免旧版笔记因合并而消失）；`getFileNote` 保持 `?? undefined` 语义 —— 空串要显示笔记编辑区，
+不能改成 `||`；页面级笔记 `useNotes(projectPathRef)` key `page:materials`。
 
 ---
 

@@ -32,6 +32,17 @@ $KeyPath       = Join-Path $env:USERPROFILE '.tauri\PGB1.key'
 $BundleDir     = 'src-tauri\target\release\bundle\nsis'
 $LatestJson    = 'latest.json'
 
+# PS 5.1 坑：$ErrorActionPreference = 'Stop' 时，只要重定向原生命令的 stderr
+# （2>$null / 2>&1），PowerShell 就把 stderr 包成 NativeCommandError 抛出 ——
+# 重定向本身触发异常，而不是命令真的失败了。凡是需要吞掉 stderr 或读退出码的
+# 原生调用，都走这个包装：临时把 EAP 降回 Continue，退出码自己判。
+function Invoke-Native {
+    param([Parameter(Mandatory)][scriptblock]$Command)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Command } finally { $ErrorActionPreference = $prev }
+}
+
 function Step($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
 function Ok($msg)   { Write-Host "  [OK] $msg" -ForegroundColor Green }
 function Die($msg)  { Write-Host "  [失败] $msg" -ForegroundColor Red; exit 1 }
@@ -57,9 +68,12 @@ $Version = (Get-Content 'package.json' -Raw | ConvertFrom-Json).version
 $Tag     = "v$Version"
 Ok "目标版本：$Tag"
 
-if (gh release view $Tag --repo $RepoSlug 2>$null) {
+# 退出码 0 = Release 已存在；非 0（含 "release not found"）= 可以发
+$releaseExitCode = Invoke-Native { gh release view $Tag --repo $RepoSlug 2>&1 | Out-Null; $LASTEXITCODE }
+if ($releaseExitCode -eq 0) {
     Die "Release $Tag 已存在。要重发请先 gh release delete $Tag --repo $RepoSlug --cleanup-tag"
 }
+Ok "Release $Tag 尚未创建，可以发布"
 
 # ── 2. 构建 ────────────────────────────────────────────────────────────
 $SetupExe = Join-Path $BundleDir "PGB1_${Version}_x64-setup.exe"
@@ -127,8 +141,10 @@ if ($DryRun) {
 
 # ── 4. 提交 latest.json（仓库惯例：build: update latest.json for vX） ──
 Step '提交 latest.json'
-git add $LatestJson
-git commit -m "build: update latest.json for $Tag" 2>&1 | Out-Host
+Invoke-Native {
+    git add $LatestJson
+    git commit -m "build: update latest.json for $Tag" 2>&1 | Out-Host
+}
 $Target = (git rev-parse HEAD).Trim()
 Ok "Release 目标提交：$Target"
 
@@ -145,7 +161,9 @@ Ok 'Release 已创建'
 
 # ── 6. 校验更新链路 ────────────────────────────────────────────────────
 Step '校验更新链路'
-$assets = (gh release view $Tag --repo $RepoSlug --json assets | ConvertFrom-Json).assets
+$assetsRaw = Invoke-Native { gh release view $Tag --repo $RepoSlug --json assets 2>&1 }
+if (-not $assetsRaw) { Die '读取 Release 资产清单失败' }
+$assets = ($assetsRaw | ConvertFrom-Json).assets
 $names  = $assets | ForEach-Object { $_.name }
 Write-Host "  资产清单：$($names -join ', ')"
 

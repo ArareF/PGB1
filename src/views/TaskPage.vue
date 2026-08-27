@@ -375,12 +375,12 @@ function cancelUpload() {
   draggedPreviewGroupsForUpload.value = []
 }
 
-/** 原件直传：把"仅原件静帧"直接标记已上传（00_original 原件 → nextcloud，复用 copy_to_nextcloud 兜底）。
+/** Spine：把仅有原件的静帧或序列帧直接标记已上传（00_original 原件 → nextcloud/original）。
  *  失败处理与 confirmUpload 对齐：console.error 留痕 + 保持侧边栏打开，按钮仍在可重试。 */
 const markBusy = ref(false)
-async function markOriginalUploaded() {
+async function markSpineUploaded() {
   const mat = selectedMaterial.value
-  if (!mat || mat.material_type !== 'image' || mat.progress !== 'original' || markBusy.value) return
+  if (!mat || !['image', 'sequence'].includes(mat.material_type) || mat.progress !== 'original' || markBusy.value) return
   markBusy.value = true
   try {
     const result = await invoke<{ copied_count: number; errors: string[] }>('copy_to_nextcloud', {
@@ -388,13 +388,13 @@ async function markOriginalUploaded() {
       materialNames: [{ name: mat.name, material_type: mat.material_type }],
     })
     if (result.errors.length > 0 || result.copied_count === 0) {
-      console.error('标记原件已上传失败:', result.errors)
+      console.error('Spine 标记已上传失败:', result.errors)
       return
     }
     closeSidebar()
     await refresh()
   } catch (err) {
-    console.error('标记原件已上传失败:', err)
+    console.error('Spine 标记已上传失败:', err)
   } finally {
     markBusy.value = false
   }
@@ -1112,11 +1112,11 @@ onUnmounted(() => {
 
     <template #actions>
       <button
-        v-if="selectedMaterial?.material_type === 'image' && selectedMaterial?.progress === 'original'"
+        v-if="(selectedMaterial?.material_type === 'image' || selectedMaterial?.material_type === 'sequence') && selectedMaterial?.progress === 'original'"
         class="sidebar-action-btn"
         :disabled="markBusy"
-        @click="markOriginalUploaded"
-      >{{ $t('task.markUploadedOriginal') }}</button>
+        @click="markSpineUploaded"
+      >{{ $t('task.markSpine') }}</button>
       <button
         v-if="selectedMaterial?.material_type === 'sequence' && versions.some(v => v.stage === '02_done')"
         class="sidebar-action-btn"

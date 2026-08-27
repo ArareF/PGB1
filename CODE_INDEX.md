@@ -16,7 +16,7 @@
 | `src/styles/` | 4 | 1836 | CSS 设计系统 |
 | `src/layouts/` | 1 | 321 | 主布局 |
 | `src/types/` | 2 | 57 | TypeScript 类型定义 |
-| `src/utils/` | 2 | 224 | 工具函数 |
+| `src/utils/` | 3 | 255 | 工具函数 |
 | `src/config/` | 6 | 170 | 配置 SSOT（app/onboarding/fileTypes/pinboard/priority/projectPaths） |
 | `src/i18n/` + `src/locales/` | 3 | 1396 | 国际化（vue-i18n + zh-CN + en） |
 | `src/router/` + 入口 | 5 | 204 | 路由 + main/App/vite-env/vite.config |
@@ -161,8 +161,8 @@
 | `ProjectPage.vue` | 528 | 任务列表 + 快捷功能（游戏介绍/项目素材/AE/任务列表）+ 两档排序 |
 | `TaskListPage.vue` | 600 | 任务管理页面（启用 / 模板 双 Tab；时光机已抽为独立页面） |
 | `TimeMachinePage.vue` | 545 | 时光机独立页面（任务归档 / 素材归档 双 Tab） |
-| `TaskPage.vue` | 1530 | 素材浏览主页面（树形/名称双视图 + Phase 5a–5d + 预览视频） |
-| `NormalizePage.vue` | 601 | 规范化执行页面（全量盘点 + 命名/自适应画布/加黑底 三操作 + 列对齐预览 + 备份恢复） |
+| `TaskPage.vue` | 1558 | 素材浏览主页面（树形/名称双视图 + Phase 5a–5d + 预览视频 + 静帧/序列帧 Spine 直传） |
+| `NormalizePage.vue` | 715 | 规范化执行页面（全量盘点 + 待处理置顶/已规范化折叠 + 命名/自适应画布/加黑底 三操作 + 列对齐预览 + 备份恢复） |
 | `ScalePage.vue` | 406 | 素材缩放执行页面（Phase 5c + 进度反馈） |
 | `ConvertPage.vue` | 737 | 格式转换执行页面（Phase 5d + TP 预设折叠面板） |
 | `GameIntroPage.vue` | 448 | 00_Game 浏览 + 游戏原型启动按钮 |
@@ -197,6 +197,7 @@
 |------|------|---------|
 | `src/utils/format.ts` | 23 | `formatSize(bytes)`, `normalizeDeadline(raw)` |
 | `src/utils/materialSeries.ts` | 201 | **素材系列聚合 SSOT**：`parseSeriesName()` / `seriesKey()` / `groupIntoSeries()` / `flattenVersions()`，把 `{基础名}_{YYMMDD}` 同系列多版本合成一张卡（项目素材页用） |
+| `src/utils/normalizeItems.ts` | 31 | 规范化页展示分组：按 `needs_rename` 稳定拆分待处理/已规范化素材并保留原始索引，防止 `selections[]` 错位 |
 | `src/types/task.ts` | 27 | `GlobalTask*` / `ApplyTaskResult` / `ArchivedVersion` |
 | `src/types/material.ts` | 19 | `PreviewVideoEntry` / `MaterialVersion` |
 
@@ -222,9 +223,9 @@
 |------|------|------|
 | `commands/mod.rs` | 27 | 子模块 `pub use` 重导出 |
 | `commands/workflow_paths.rs` | 72 | **工作流目录命名 SSOT**（00_original/01_scale/02_done/nextcloud 等常量 + 路径构造函数，与前端 `projectPaths.ts` 对齐） |
-| `commands/scanning.rs` | 1316 | 扫描命令（`scan_projects`/`scan_tasks`/`scan_materials` 等 + DirSnapshot 缓存；Prototype 走 `from_dir_subcat` 快照与普通任务共用判定函数） |
+| `commands/scanning.rs` | 1363 | 扫描命令（`scan_projects`/`scan_tasks`/`scan_materials` 等 + DirSnapshot 缓存；Prototype 共用判定；区分识别 Spine `original/` 文件/目录） |
 | `commands/attendance.rs` | 1138 | 考勤命令（打卡 / 日报 / 提醒 / Credential Manager） |
-| `commands/conversion.rs` | 1319 | 转换 / 缩放 / 规范化命令（Phase 5b+/c/d；普通/Prototype 共用 `Option<&str>` 子分类参数收集函数） |
+| `commands/conversion.rs` | 1518 | 转换 / 缩放 / 规范化 / nextcloud 复制（含静帧与序列帧 Spine 原件直传；普通/Prototype 共用路径） |
 | `commands/projects.rs` | 707 | 项目管理命令（`mutate_project_config` 原子 helper 统一读改写） |
 | `commands/shortcuts.rs` | 591 | 快捷方式命令（图标提取 / favicon / find_game_exe） |
 | `commands/helpers.rs` | 606 | 公共辅助（扩展名常量 SSOT / matches_base_name / mutate_project_config / move_dir rename-first） |
@@ -233,7 +234,7 @@
 | `commands/translation/pdf_reflow.rs` | 450 | PDF 内容流提取 + 流式排版 |
 | `commands/translation/pdf_font.rs` | 212 | CJK 字体处理（微软雅黑 Type0） |
 | `commands/translation/pdf_cmds.rs` | 194 | PDF 命令整合（`build_translated_pdf`） |
-| `commands/files.rs` | 734 | 文件操作（重命名 / 删除 / 回收站）+ 素材归档（archive/list/restore/delete 四命令 + 60 天 GC） |
+| `commands/files.rs` | 787 | 文件操作（重命名 / 删除 / 回收站）+ 素材归档；同步维护 nextcloud `original/` Spine 文件/目录 |
 | `commands/pinboard.rs` | 184 | 贴图板 CRUD（RGBA→PNG） |
 | `commands/holiday.rs` | 148 | 外部 API 代理（IP 检测 / 节假日） |
 | `commands/settings.rs` | 69 | 设置 CRUD |

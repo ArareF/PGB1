@@ -145,8 +145,21 @@ Invoke-Native {
     git add $LatestJson
     git commit -m "build: update latest.json for $Tag" 2>&1 | Out-Host
 }
+$Branch = (git rev-parse --abbrev-ref HEAD).Trim()
 $Target = (git rev-parse HEAD).Trim()
-Ok "Release 目标提交：$Target"
+
+# gh release create --target 要求目标提交在远端已存在，本地 commit 不推上去
+# 会导致打标签失败 —— 而这一步在构建之后，失败等于白等一轮编译。
+Step "推送 $Branch"
+Invoke-Native { git push origin $Branch 2>&1 | Out-Host }
+if ($LASTEXITCODE -ne 0) {
+    Invoke-Native { Start-Sleep -Seconds 3; git push origin $Branch 2>&1 | Out-Host }
+    if ($LASTEXITCODE -ne 0) { Die "推送失败。Release 的目标提交必须已存在于远端，请手动 git push origin $Branch 后加 -SkipBuild 重跑" }
+}
+# 回读远端，确认目标提交真的到了 GitHub
+$remoteSha = Invoke-Native { (git ls-remote origin $Branch 2>&1) -split '\s+' | Select-Object -First 1 }
+if ($remoteSha -ne $Target) { Die "远端 $Branch 指向 $remoteSha，与本地 HEAD $Target 不一致，Release 会打错标签" }
+Ok "Release 目标提交：$Target（远端已确认）"
 
 # ── 5. 创建 Release ────────────────────────────────────────────────────
 Step "创建 Release $Tag"

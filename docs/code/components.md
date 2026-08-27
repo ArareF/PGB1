@@ -1,7 +1,7 @@
 # 组件详情
 
-> `src/components/` 下 31 个 Vue 组件的 Props、职责细节、架构决策。
-> 顶层索引见 [CODE_INDEX.md](../../CODE_INDEX.md#3-组件31)。
+> `src/components/` 下 29 个 Vue 组件的 Props、职责细节、架构决策。
+> 顶层索引见 [CODE_INDEX.md](../../CODE_INDEX.md#3-组件29)。
 
 ---
 
@@ -225,17 +225,10 @@ Canvas 序列帧动画播放器，`mount` 后自动循环播放，LRU 缓存。`
 
 通用页面指引遮罩。Teleport to body，全屏半透明遮罩 + fixed 定位批注气泡（支持上下左右箭头），点击任意处关闭。`white-space: pre` 支持 `\n` 手动换行。
 
-### NormalizationDialog.vue（455 行）
-
-**Props**：`taskPath`
-
-规范化预览弹窗（Phase 5b）。扫描并识别静帧（去 `_01`）与序列帧（归类），展示变更预览，支持一键执行。
-
-### ConversionDialog.vue（389 行）
-
-**Props**：`taskPath`, `materials`
-
-格式转换选择弹窗（Phase 5d）。分区列出未转换的静帧与序列帧，序列帧强制要求输入帧率，提交后开启后端转换会话。
+> **已删除的两个弹窗**（勿再按旧文档找）：
+> - `NormalizationDialog.vue` — v2.8.15 规范化升级为独立页面后由 [NormalizePage.vue](views.md) 取代
+> - `ConversionDialog.vue` — 2026-02-19 转换独立成页后由 [ConvertPage.vue](views.md) 取代，
+>   组件文件当时漏删，作为死代码留存至 2026-08-06 才清理
 
 ### SubtaskDialog.vue（251 行）
 

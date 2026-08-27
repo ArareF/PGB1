@@ -4,7 +4,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { formatSize } from '../utils/format'
 import { useSettings } from '../composables/useSettings'
-import type { MaterialInfo } from '../composables/useMaterials'
+import { materialUid, type MaterialInfo } from '../composables/useMaterials'
 import SequencePreview from './SequencePreview.vue'
 import NoteTooltip from './NoteTooltip.vue'
 
@@ -45,7 +45,7 @@ function progressLabel(progress: string): string {
   <button
     ref="cardRef"
     class="material-card"
-    :data-path="material.path"
+    :data-path="materialUid(material)"
     @click="$emit('click', material)"
   >
     <!-- 多选复选框 -->

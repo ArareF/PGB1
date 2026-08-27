@@ -10,13 +10,20 @@ const MAX_CACHED = 10
 const MAX_FRAMES = 120
 const cache: CachedSequence[] = []
 
-/** 加载序列帧图片（带 LRU 缓存） */
+/**
+ * 加载序列帧图片（带 LRU 缓存）
+ *
+ * 缓存 key 必须包含 baseName：未规范化的 00_original 里序列帧是平铺的，
+ * 同一目录下的多个序列 MaterialInfo.path 完全相同，只有基础名不同。
+ * 只用 folderPath 做 key 会让它们互相串帧（切换视图后全变成同一个序列）。
+ */
 export async function loadSequenceFrames(
   folderPath: string,
+  baseName: string,
   framePaths: string[],
   maxWidth: number,
 ): Promise<HTMLImageElement[]> {
-  const key = `${folderPath}:${maxWidth}`
+  const key = `${folderPath}:${baseName}:${maxWidth}`
 
   // 命中缓存
   const existing = cache.find(c => c.key === key)

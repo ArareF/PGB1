@@ -9,7 +9,7 @@ import { useProjects } from '../composables/useProjects'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import { useMaterials } from '../composables/useMaterials'
 import { useSettings } from '../composables/useSettings'
-import type { MaterialInfo } from '../composables/useMaterials'
+import { materialUid, type MaterialInfo } from '../composables/useMaterials'
 import { useNotes, toggleCheckbox, usePageNote } from '../composables/useNotes'
 import { useMultiSelect } from '../composables/useMultiSelect'
 import { createDragHandler } from '../composables/useDragIntent'
@@ -138,8 +138,9 @@ const {
   toggleMultiSelect: _toggleMultiSelect, toggleSelection, toggleSelectAll,
   isSelecting, selectionRect, justFinished, onContainerMouseDown, onContainerScroll,
 } = useMultiSelect({
+  // 素材走 materialUid（path 不唯一），预览视频用最新版本文件路径（本身唯一）
   allPaths: computed(() => [
-    ...materials.value.map(m => m.path),
+    ...materials.value.map(materialUid),
     ...previewGroups.value.map(previewGroupKey),
   ]),
   onEnter: () => {
@@ -155,7 +156,7 @@ const {
 function toggleMultiSelect() { _toggleMultiSelect() }
 
 const selectedMaterials = computed(() =>
-  materials.value.filter(m => selectedPaths.value.has(m.path))
+  materials.value.filter(m => selectedPaths.value.has(materialUid(m)))
 )
 
 const selectedPreviewGroups = computed(() =>
@@ -165,7 +166,7 @@ const selectedPreviewGroups = computed(() =>
 /** 卡片点击处理：多选模式下切换选中，否则打开侧边栏 */
 function onCardClick(material: MaterialInfo) {
   if (isMultiSelect.value) {
-    toggleSelection(material.path)
+    toggleSelection(materialUid(material))
   } else {
     selectMaterial(material)
   }
@@ -229,8 +230,9 @@ function onCardMouseDown(e: MouseEvent, material: MaterialInfo) {
   createDragHandler(
     () => {
       if (isMultiSelect.value) {
-        if (!selectedPaths.value.has(material.path)) {
-          toggleSelection(material.path)
+        const uid = materialUid(material)
+        if (!selectedPaths.value.has(uid)) {
+          toggleSelection(uid)
         }
         if (selectedPaths.value.size > 0) {
           performDrag(selectedMaterials.value, selectedPreviewGroups.value)
@@ -872,15 +874,15 @@ onUnmounted(() => {
             <div v-if="group.items.length > 0" class="card-grid">
               <MaterialCard
                 v-for="m in group.items"
-                :key="m.path"
+                :key="materialUid(m)"
                 :material="m"
                 :multi-select="isMultiSelect"
-                :checked="selectedPaths.has(m.path)"
+                :checked="selectedPaths.has(materialUid(m))"
                 :has-note="hasNote('card:' + m.name.toLowerCase())"
                 :note-preview="getNote('card:' + m.name.toLowerCase()) ?? ''"
                 :class="{
-                  selected: !isMultiSelect && selectedMaterial?.path === m.path,
-                  'multi-checked': isMultiSelect && selectedPaths.has(m.path),
+                  selected: !isMultiSelect && selectedMaterial && materialUid(selectedMaterial) === materialUid(m),
+                  'multi-checked': isMultiSelect && selectedPaths.has(materialUid(m)),
                 }"
                 @click="onCardClick"
                 @mousedown="(e: MouseEvent) => onCardMouseDown(e, m)"
@@ -894,15 +896,15 @@ onUnmounted(() => {
           <div class="card-grid">
             <MaterialCard
               v-for="m in materials"
-              :key="m.path"
+              :key="materialUid(m)"
               :material="m"
               :multi-select="isMultiSelect"
-              :checked="selectedPaths.has(m.path)"
+              :checked="selectedPaths.has(materialUid(m))"
               :has-note="hasNote('card:' + m.name.toLowerCase())"
               :note-preview="getNote('card:' + m.name.toLowerCase()) ?? ''"
               :class="{
-                selected: !isMultiSelect && selectedMaterial?.path === m.path,
-                'multi-checked': isMultiSelect && selectedPaths.has(m.path),
+                selected: !isMultiSelect && selectedMaterial && materialUid(selectedMaterial) === materialUid(m),
+                'multi-checked': isMultiSelect && selectedPaths.has(materialUid(m)),
               }"
               @click="onCardClick"
               @mousedown="(e: MouseEvent) => onCardMouseDown(e, m)"

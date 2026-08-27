@@ -27,7 +27,12 @@ async function init() {
   })
   if (filePaths.length === 0) return
 
-  frames = await loadSequenceFrames(props.folderPath, filePaths, props.maxWidth ?? 200)
+  frames = await loadSequenceFrames(
+    props.folderPath,
+    props.baseName ?? '',
+    filePaths,
+    props.maxWidth ?? 200,
+  )
   loaded.value = true
   play()
 }

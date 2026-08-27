@@ -2,7 +2,10 @@ import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import { useRubberBandSelect, type RubberBandRect } from './useRubberBandSelect'
 
 interface UseMultiSelectOptions {
-  /** 获取全部可选项的 path 列表 */
+  /**
+   * 全部可选项的「选中标识」列表，必须与卡片 data-path 同源。
+   * 文件类卡片用真实路径；素材卡片用 `materialUid()`（path 对平铺序列帧不唯一）。
+   */
   allPaths: ComputedRef<string[]>
   /** 进入多选时的额外副作用 */
   onEnter?: () => void

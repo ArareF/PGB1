@@ -21,7 +21,7 @@
 | `CLAUDE.md` | 角色定义、协作契约、沟通协议、绝对红线 | 每次会话必读（自动加载） |
 | `项目指南.md` | 核心原则（SSOT、模块化、防御性思维）、业务规则概要、沟通示例 | 每次会话必读 |
 | `开发规范.md` | 代码规范、目录结构、质量检查清单（框架版，编程阶段补充） | 编程阶段 |
-| `CODE_INDEX.md` | 全量源代码文件职责索引（111 个文件，~34329 行，顶层骨架） | 编程阶段，了解代码现状 |
+| `CODE_INDEX.md` | 全量源代码文件职责索引（119 个文件，~36364 行，顶层骨架） | 编程阶段，了解代码现状 |
 | `docs/code/*.md` | 代码索引二级详情（components/composables/views/rust-backend/styles-system） | 需要 Props / 架构决策 / 防火手记 |
 
 ---
@@ -154,8 +154,9 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | `docs/新设计风格.md` | Sharp Grid 新风格草案（深色工业锐角，§12 Tech Lead 修订 + §13 产品评审二次裁决：左栏=启动台/取消面包屑/顶栏两行/去统计块/文字提亮/进度条平行四边形） |
 | `docs/新设计风格示意.html` | Sharp Grid 可交互网页示意稿（三级钻取 + 设计规范页，浏览器直接打开） |
 | `docs/code/` | CODE_INDEX 二级详情（components/composables/views/rust-backend/styles-system） |
-| `docs/plans/` | 实施方案草案（进行中的方案放这里；当前暂空） |
-| `docs/archive/plans/` | 已归档的历史方案（39 份：Phase 1~7 + 功能特性 + 2026-04-02 代码优化 + 2026-04-03 SidebarShell 抽取） |
+| `docs/plans/` | 实施方案草案（进行中的方案放这里）。当前 1 份：`2026-08-06-素材身份收口与遗留.md`（materialUid 身份 SSOT 已落地 + 命名债待裁决 + 合并注意事项） |
+| `docs/archive/plans/` | 已归档的历史方案（42 份：Phase 1~7 + 功能特性 + 2026-04 代码优化 + v2.8.13/15/17 已发版方案） |
+| `docs/archive/调研工作台/` | 历史代码审查报告（2026-04，含 `old/` 旧版） |
 | `docs/archive/MIGRATION_CHECKLIST.md` | 旧架构迁移检查清单（历史） |
 | `docs/archive/README-v0.6-design-phase.md` | v0.6 设计阶段说明（历史） |
 
@@ -179,7 +180,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | **打包格式** | NSIS only（`"targets": "nsis"`） | WiX 3 不支持中文 productName，会直接报错 |
 | **关闭行为** | 最小化到系统托盘，不退出 | lib.rs CloseRequested 拦截 + hide() |
 | **UI 缩放** | 固定值，默认 100%，无自动模式 | 自动模式（按窗口宽度缩放）效果差，已移除 |
-| **软件名称** | PG素材管理系统，V2.0.0，开发者 Fuchikami | `src/config/app.ts` 为 SSOT |
+| **软件名称** | PG素材管理系统，V2.8.17，开发者 Fuchikami | `src/config/app.ts` 为 SSOT |
 | **CSP media-src** | 必须单独声明，含 asset:／blob:／data: | `<video>` 不继承 img-src，缺失打包后视频全灭 |
 | 技术栈 | Tauri 2.x（不用 Electron） | Electron 不支持拖拽文件到外部浏览器 |
 | UI 风格 | 毛玻璃（Glassmorphism），明暗双主题 | — |

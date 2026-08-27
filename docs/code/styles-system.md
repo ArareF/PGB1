@@ -5,7 +5,7 @@
 
 ---
 
-## design-system.css（1538 行）—— SSOT
+## design-system.css（1585 行）—— SSOT
 
 **地位**：所有视觉参数的唯一真相源。组件只用 `var(--*)`，严禁硬编码。
 

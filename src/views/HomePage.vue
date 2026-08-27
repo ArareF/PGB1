@@ -8,7 +8,6 @@ import { useNavigation } from '../composables/useNavigation'
 import { useProjects } from '../composables/useProjects'
 import { useSettings } from '../composables/useSettings'
 import { useStatusBar } from '../composables/useStatusBar'
-import { useTheme } from '../composables/useTheme'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import { useNotes, usePageNote } from '../composables/useNotes'
 import type { ProjectInfo } from '../composables/useProjects'
@@ -28,7 +27,6 @@ const { projects, loading, loadProjects } = useProjects()
 const { loadSettings } = useSettings()
 const { openInExplorer } = useDirectoryFiles()
 const { isOvertime, startOvertime, endOvertime } = useStatusBar()
-const { theme } = useTheme()
 
 const showCreateDialog = ref(false)
 const showGuide = ref(false)
@@ -335,7 +333,6 @@ function onProjectCreated(projectName: string) {
           :key="project.name"
           :style="{ '--delay': i * 40 + 'ms' }"
           :project="project"
-          :craft="theme === 'dark'"
           @click="openProject"
           @action="onProjectAction"
           @refresh="onProjectRefresh"

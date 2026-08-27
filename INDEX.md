@@ -151,7 +151,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | `docs/打包发布指南.md` | Agent 的完整打包手册，**打包前必读** |
 | `docs/文档组织规范.md` | 文档目录结构、命名、维护规则 |
 | `docs/设计风格.md` | 视觉风格参考（毛玻璃·现行版） |
-| `docs/新设计风格.md` | Sharp Grid 深色工业锐角规范；§14 质感精装层定稿，§15 全应用深色方案（2026-07-28）。⚠️ **仅设计稿，代码未实装** —— v2.8.18 有意剥离 UI 改动，实装代码留在 `claude/media-cache-invalidation` 分支的 362cd3f |
+| `docs/新设计风格.md` | Sharp Grid 深色工业锐角规范；§14 质感精装层定稿，§15 全应用深色方案（2026-07-28）。⚠️ **仅设计稿，master 上未实装** —— v2.8.18 有意剥离 UI 改动；实装代码 362cd3f 曾合入 master，已被显式 revert，完整版本保留在 `claude/media-cache-invalidation` 分支。要恢复：revert 那个 revert 提交，或从该分支重新 cherry-pick 362cd3f |
 | `docs/新设计风格示意.html` | Sharp Grid 可交互网页示意稿（三级钻取 + 设计规范页，浏览器直接打开） |
 | `docs/新设计风格-精装样板.html` | §14 质感精装层 canonical 参考：主页项目卡 + 组件样板，含 `原版⇄精装` 对比开关 + 点阵光照控制台（可调参） |
 | `docs/code/` | CODE_INDEX 二级详情（components/composables/views/rust-backend/styles-system） |

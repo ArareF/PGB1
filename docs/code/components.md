@@ -9,7 +9,7 @@
 
 ### ProjectCard.vue（492 行）
 
-**Props**：`project: ProjectInfo`，`craft?: boolean`（由 HomePage 按全局主题传入：深色精装、浅色原版）
+**Props**：`project: ProjectInfo`
 
 **功能**：
 - 图标 + 名称 + 截止日期 + 进度条 + 优先度圆点 + ··· 菜单 + 笔记图标
@@ -17,14 +17,10 @@
 - 进度条分母 = 无子任务父任务数 + 所有子任务数
 - 优先度四档：`急` / `高` / `普`（= null）/ `停`，圆点 9px 实色无文字
 - 菜单项：重命名 / 修改截止日期 / 删除 / 批注 / 优先度四档
-- **更多菜单双形态**（`craft` 分流，模板内 `v-if="!craft"` / `v-else`，共用 `showMenu` 状态与 `setPriority`/`action` emit）：
-  - 原版：右上角 `···` 按钮 hover 显示，点击弹出 `Teleport to body` 的下拉菜单
-  - 深色精装（2026-07-28 全局启用）：卡片右侧居中飘带按钮（`assets/Sash_tool.png`），点击后满卡覆盖式抽屉从右向左展开；抽屉纯色面板不用 `backdrop-filter`，结构留在 ProjectCard.vue，皮肤/动效全在 `sharp-grid.css`（`.sg-drawer*` 选择器）
 
 **架构决策（防火手记）**：
 - 根元素用 `<div>` 而非 `<button>`，避免嵌套 button
-- 原版 ··· 菜单 `Teleport to body`：父级 `glass-subtle` 的 `backdrop-filter` 会创建合成层导致子级毛玻璃失效；菜单用 `position: fixed` + `getBoundingClientRect()` 动态锚定
-- craft 抽屉不 Teleport：满卡覆盖层本就在 `.project-card`（`position: relative`）内部，无需 viewport 定位；`toggleMenu()` 用 `!props.craft` 跳过 `getBoundingClientRect()` 计算
+- ··· 菜单 `Teleport to body`：父级 `glass-subtle` 的 `backdrop-filter` 会创建合成层导致子级毛玻璃失效；菜单用 `position: fixed` + `getBoundingClientRect()` 动态锚定
 - `@note-save` 处理 NoteTooltip checkbox 切换（乐观更新 `project.note`）
 
 ### TaskCard.vue（271 行）

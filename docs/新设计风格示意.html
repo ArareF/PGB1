@@ -50,18 +50,6 @@
 
   --font-disp:'Chakra Petch','Microsoft YaHei UI','PingFang SC',sans-serif;
   --font-mono:'IBM Plex Mono','Cascadia Mono',Consolas,monospace;
-
-  /* —— §14 质感精装层「原料」（craft 专用，对应 docs/新设计风格.md §14） —— */
-  /* 顶边高光线：1px 实线高光（blur=0，非发光，不破禁令） */
-  --edge-hi:   inset 0 1px 0 0 rgba(255,255,255,.045);
-  --edge-lo:   inset 0 -1px 0 0 rgba(0,0,0,.45);
-  /* 磨砂噪点：SVG feTurbulence，~3.5% 不透明，模拟金属漆面颗粒 */
-  --noise:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  /* 点阵光照·定稿值（与样板控制台默认一致） */
-  --dot-gap:8.5px;   /* 点间距 */
-  --dot-r:.8px;      /* 点半径 */
-  --dot-fade:45%;    /* 渐隐范围（对角 mask 透明位） */
-  --dot-alpha:.18;   /* 点亮度 */
 }
 
 *{margin:0;padding:0;box-sizing:border-box}
@@ -277,25 +265,18 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
   position:relative;background:var(--bg-panel);border:1px solid var(--line);
   padding:14px 16px 14px 20px;cursor:pointer;
   transition:background .12s,border-color .12s;
-  --sel:var(--acc-blue);   /* 选中色默认蓝，下方按状态覆盖（§14.3 选中=状态色 SSOT） */
 }
 .card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:var(--band);background:var(--line-strong)}
 .card:hover{background:var(--bg-panel2);border-color:var(--line-strong)}
-.card.st-progress{--sel:var(--acc-blue)}
-.card.st-review  {--sel:var(--acc-amber)}
-.card.st-done    {--sel:var(--acc-green)}
-.card.st-revision{--sel:var(--acc-red)}
-.card.st-idle    {--sel:var(--tx-dis)}
 .card.st-progress::before{background:var(--acc-blue)}
 .card.st-review::before{background:var(--acc-amber)}
 .card.st-done::before{background:var(--acc-green)}
 .card.st-revision::before{background:var(--acc-red)}
 .card.st-idle{opacity:.62}
 .card.st-idle::before{background:var(--tx-dis)}
-/* 选中 = 状态色（框 + 顶 3px 线），明暗两态共用；craft 另加内描边与书签角 */
 .card.sel{
-  border-color:var(--sel);
-  box-shadow:inset 0 var(--topline) 0 var(--sel);
+  border-color:var(--acc-blue);
+  box-shadow:inset 0 var(--topline) 0 var(--acc-blue);
 }
 
 /* —— 项目卡片 —— */
@@ -522,229 +503,9 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .mini-asset{position:relative;width:46px;height:34px;background:var(--bg-panel);border:2px solid var(--acc-blue);display:inline-block;vertical-align:middle}
 .mini-asset::before{content:'';position:absolute;top:0;left:0;width:11px;height:11px;background:var(--acc-blue);clip-path:polygon(0 0,100% 0,0 100%)}
 .note{font-size:11px;color:var(--tx-3);line-height:1.7;margin-top:10px;border-left:2px solid var(--line);padding-left:10px}
-
-/* ════════════════════════════════════════════════════════════
-   §14 质感精装层（craft）—— body.craft 门控，顶栏开关可切「原版 ⇄ 精装」
-   CSS 整段移植自 docs/新设计风格-精装样板.html（canonical 实现）。
-   选择器已对齐本文件命名：.nav/.lnch/.tbtn/.more-menu/.chip/.cbody/.asset。
-   三铁律恪守：无 backdrop-filter / 所有 box-shadow blur=0 / 无大圆角。
-   ════════════════════════════════════════════════════════════ */
-
-/* —— 顶栏「原版 ⇄ 精装」对比开关（始终可见，不受 craft 门控） —— */
-.toggle{display:flex;border:1px solid var(--line-strong);margin-right:6px}
-.toggle button{
-  font-family:var(--font-mono);font-size:10.5px;letter-spacing:.08em;
-  height:24px;padding:0 12px;color:var(--tx-3);
-  transition:background .12s,color .12s;
-}
-.toggle button + button{border-left:1px solid var(--line-strong)}
-.toggle button.on{background:rgba(47,140,255,.12);color:var(--acc-blue)}
-
-/* —— 卡片内层：承载点阵 / 文字 / 小料，padding SSOT（明暗两态共用） —— */
-.cbody{position:relative;z-index:1;padding:14px 16px 14px 20px}
-.pcard,.tcard{padding:0}   /* 内容已交给 .cbody，避免与 .card 基础 padding 叠加 */
-/* 精装专属小料：默认隐藏，仅 craft 显示 */
-.craft-only{display:none}
-body.craft .craft-only{display:block}
-
-/* —— 区块标题切角签名 + 蚀刻分隔线 —— */
-body.craft .sect h2::before{
-  content:'';display:inline-block;width:8px;height:8px;margin-right:8px;
-  background:var(--acc-blue);clip-path:polygon(0 0,100% 0,0 100%);vertical-align:1px;
-}
-body.craft .sect .rule{box-shadow:0 1px 0 rgba(255,255,255,.03)}
-
-/* —— 卡片表面三件套：微渐变 + 顶光/底暗 + 噪点 —— */
-body.craft .card{
-  padding:0;border-color:var(--line);
-  background:linear-gradient(180deg,#1e1e1e 0%,#181818 100%);
-  /* 末两层为「透明占位」：与选中态层数一致，box-shadow 才能平滑过渡 */
-  box-shadow:var(--edge-hi),var(--edge-lo),inset 0 var(--topline) 0 transparent,inset 0 0 0 1px transparent;
-  transition:background .14s,border-color .16s,box-shadow .2s ease,
-             transform .16s cubic-bezier(.2,.7,.3,1);
-}
-body.craft .card:hover{
-  background:linear-gradient(180deg,#262626 0%,#1f1f1f 100%);
-  border-color:var(--line-strong);
-  transform:translateY(-2px);
-}
-/* 磨砂噪点层 */
-body.craft .card::after{
-  content:'';position:absolute;inset:0;pointer-events:none;
-  background:var(--noise);background-size:120px 120px;
-  opacity:.035;mix-blend-mode:overlay;
-}
-/* 点阵光照：从左上密集渐疏到右下隐去，z-index:-1 落在文字之下、底色之上 */
-body.craft .cbody::after{
-  content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;
-  background-image:radial-gradient(circle, rgba(255,255,255,var(--dot-alpha)) var(--dot-r), transparent calc(var(--dot-r) + .2px));
-  background-size:var(--dot-gap) var(--dot-gap);
-  -webkit-mask-image:linear-gradient(135deg,#000 0%,rgba(0,0,0,.55) 16%,transparent var(--dot-fade));
-          mask-image:linear-gradient(135deg,#000 0%,rgba(0,0,0,.55) 16%,transparent var(--dot-fade));
-}
-/* 左色带升级：有厚度（内嵌高光 + 暗边），hover「通电点亮」 */
-body.craft .card::before{
-  box-shadow:inset 1px 0 0 rgba(255,255,255,.10),inset -1px 0 0 rgba(0,0,0,.35);
-  transition:filter .16s ease;
-}
-body.craft .card:hover::before{filter:brightness(1.4) saturate(1.1)}
-
-/* —— 选中 = 状态色（--sel）：craft 下加内描边 1px，层数对齐占位层 —— */
-body:not(.craft) .card.sel{box-shadow:inset 0 var(--topline) 0 var(--sel)}
-body.craft .card.sel{
-  border-color:var(--sel);
-  box-shadow:var(--edge-hi),var(--edge-lo),inset 0 var(--topline) 0 var(--sel),inset 0 0 0 1px var(--sel);
-}
-/* 书签角 = 选中标记：恒蓝（蓝=选中全局一致，状态色由色带/标签承载）。
-   缩放弹入（轻微过冲的「锁定」感），仅选中出现——不挂 craft-only（坑1）。 */
-.bookmark{
-  position:absolute;top:0;left:0;width:27px;height:27px;z-index:3;pointer-events:none;
-  background:var(--acc-blue);clip-path:polygon(0 0,100% 0,0 100%);
-  opacity:0;transform:scale(0);transform-origin:top left;
-  transition:opacity .14s ease,transform .2s cubic-bezier(.34,1.45,.5,1);
-}
-body.craft .card.sel .bookmark{opacity:1;transform:scale(1)}
-
-/* —— 工业小料：右上编号角标 + 登记十字 / 四角铆钉 —— */
-.corner-idx{
-  position:absolute;top:0;right:0;z-index:2;display:none;
-  font-family:var(--font-mono);font-size:9px;letter-spacing:.1em;color:var(--tx-dis);padding:4px 8px;
-}
-body.craft .corner-idx{display:flex;align-items:center;gap:6px}
-.corner-idx .tick{width:9px;height:9px;opacity:.6;
-  background:
-    linear-gradient(var(--line-strong),var(--line-strong)) center/9px 1px no-repeat,
-    linear-gradient(var(--line-strong),var(--line-strong)) center/1px 9px no-repeat;}
-.rivet{position:absolute;width:2px;height:2px;background:rgba(0,0,0,.5);
-  box-shadow:0 1px 0 rgba(255,255,255,.05);z-index:2;display:none}
-body.craft .rivet{display:block}
-.rivet.tl{top:6px;left:8px}.rivet.bl{bottom:6px;left:8px}.rivet.br{bottom:6px;right:8px}
-
-/* —— 排版重音：名/百分比成 hero，meta 退后压暗 —— */
-body.craft .pname{font-size:17px;letter-spacing:.01em}
-body.craft .ppct{font-size:22px;font-weight:700;color:var(--tx);line-height:1}
-body.craft .pcode{
-  color:var(--tx-2);border-color:var(--line-strong);
-  background:linear-gradient(180deg,#202020,#171717);box-shadow:var(--edge-hi);
-}
-body.craft .psub{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--tx-dis);margin-top:7px}
-/* meta → 仪表读数块（标签在上 / 等宽数值在下，竖线分栏） */
-body.craft .pmeta{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:16px}
-body.craft .pmeta > span{display:flex;flex-direction:column;gap:3px;position:relative;padding-left:11px}
-body.craft .pmeta > span::before{content:'';position:absolute;left:0;top:1px;bottom:1px;width:1px;background:var(--line)}
-body.craft .pmeta .k{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.12em;color:var(--tx-dis)}
-body.craft .pmeta b{font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--tx-2)}
-body.craft .pmeta .ddl-warn b{color:var(--acc-amber)}
-.pmeta .stack{display:none}
-body.craft .pmeta .inline{display:none}
-body.craft .pmeta .stack{display:flex}
-/* 进度条 → 管线刻度仪（刻度短线 + 等宽读数） */
-.seg-wrap{display:none}
-body.craft .seg-wrap{display:block;margin-top:15px}
-body.craft .seg-wrap .ticks{display:flex;gap:2px;height:4px;margin-bottom:3px}
-body.craft .seg-wrap .ticks i{flex:1;border-left:1px solid var(--line);height:4px}
-body.craft .seg-wrap .ticks i:first-child{border-left:none}
-body.craft .seg-row{display:flex;align-items:center;gap:9px}
-body.craft .seg-row .seg{flex:1;margin-top:0}
-body.craft .seg-row .rd{font-family:var(--font-mono);font-size:10px;color:var(--tx-3);letter-spacing:.04em;flex:none}
-body.craft .seg-row .rd b{color:var(--tx-2);font-weight:600}
-body.craft .card > .cbody > .seg{display:none}   /* 精装下裸 seg 隐藏，用 seg-wrap 内的代替 */
-
-/* 任务卡：任务名为 hero，分类行等宽弱化退后 */
-body.craft .tname{font-size:15px;letter-spacing:.01em}
-body.craft .tcat{letter-spacing:.1em;text-transform:uppercase;color:var(--tx-dis)}
-
-/* —— 未开始卡：斜纹「停用」纹理（深底上须用微亮线，坑2） —— */
-body.craft .card.st-idle .cbody::before{
-  content:'';position:absolute;inset:0;pointer-events:none;z-index:0;
-  background:repeating-linear-gradient(45deg,transparent 0 7px,rgba(255,255,255,.055) 7px 8px);
-}
-
-/* —— 共享外壳：侧边栏启动台图标块金属化 —— */
-body.craft .nav{box-shadow:var(--edge-hi)}
-body.craft .lnch .tile{
-  position:relative;
-  background:linear-gradient(180deg,#1f1f1f,#171717);
-  box-shadow:var(--edge-hi),var(--edge-lo);
-  transition:border-color .14s,transform .14s,box-shadow .14s;
-}
-body.craft .lnch .tile::after{
-  content:'';position:absolute;inset:0;background:var(--noise);background-size:120px 120px;
-  opacity:.04;mix-blend-mode:overlay;pointer-events:none;
-}
-body.craft .lnch:hover .tile{transform:translateY(-2px);border-color:var(--line-strong)}
-
-/* —— 共享外壳：工具/更多/规范页按钮金属漆面 + hover 抬起 —— */
-body.craft .tbtn,
-body.craft .more-btn,
-body.craft .back-btn,
-body.craft .btn{
-  background:linear-gradient(180deg,#202020,#181818);
-  box-shadow:var(--edge-hi),var(--edge-lo);
-  transition:border-color .14s,color .14s,background .14s,transform .14s,box-shadow .14s;
-}
-body.craft .tbtn:hover,
-body.craft .more-btn:hover,
-body.craft .back-btn:hover,
-body.craft .btn:hover{transform:translateY(-1px);background:linear-gradient(180deg,#272727,#1d1d1d)}
-body.craft .tbtn.active{background:var(--bg-hover);transform:none}
-body.craft .tbtn.accent,
-body.craft .btn.primary{background:linear-gradient(180deg,rgba(47,140,255,.18),rgba(47,140,255,.08));box-shadow:var(--edge-hi)}
-body.craft .tbtn.accent:hover{background:linear-gradient(180deg,rgba(47,140,255,.26),rgba(47,140,255,.12))}
-body.craft .btn.ghost{background:none;box-shadow:none}
-body.craft .btn.ghost:hover{background:var(--bg-hover)}
-body.craft .btn.danger{background:linear-gradient(180deg,rgba(232,93,79,.18),rgba(232,93,79,.08));box-shadow:var(--edge-hi)}
-/* cut-frame 内层 tbtn：保留其不透明蓝叠底，勿被金属漆面覆盖 */
-body.craft .cut-frame .tbtn{
-  background:linear-gradient(rgba(47,140,255,.08),rgba(47,140,255,.08)),var(--bg-panel);
-  box-shadow:none;transform:none;
-}
-body.craft .cut-frame:hover .tbtn{
-  background:linear-gradient(rgba(47,140,255,.16),rgba(47,140,255,.16)),var(--bg-panel);
-}
-
-/* —— 共享外壳：更多菜单浮层加顶光 —— */
-body.craft .more-menu{box-shadow:var(--edge-hi)}
-
-/* —— 筛选 chip：下划线从左 scaleX 生长（替换基础的硬切下划线） —— */
-body.craft .chip::after{
-  content:'';position:absolute;left:0;right:0;bottom:-1px;height:var(--topline);
-  background:var(--acc-blue);transform:scaleX(0);transform-origin:left;
-  transition:transform .2s cubic-bezier(.2,.7,.3,1);
-}
-body.craft .chip.on::after{transform:scaleX(1)}
-
-/* —— 素材卡：顶光 + 噪点；选中仍恒蓝（§14.3 末行 / 坑6），书签角缩放弹入，hover 抬起 —— */
-body.craft .asset{box-shadow:var(--edge-hi),var(--edge-lo);
-  transition:background .12s,border-color .12s,transform .16s cubic-bezier(.2,.7,.3,1)}
-body.craft .asset:hover{transform:translateY(-2px)}
-body.craft .asset .ainfo{position:relative}
-body.craft .asset .ainfo::after{
-  content:'';position:absolute;inset:0;pointer-events:none;
-  background:var(--noise);background-size:120px 120px;opacity:.03;mix-blend-mode:overlay;
-}
-body.craft .asset::before{
-  content:'';position:absolute;top:0;left:0;width:17px;height:17px;z-index:2;
-  background:var(--acc-blue);clip-path:polygon(0 0,100% 0,0 100%);
-  opacity:0;transform:scale(0);transform-origin:top left;
-  transition:opacity .14s ease,transform .2s cubic-bezier(.34,1.45,.5,1);
-}
-body.craft .asset.sel::before{opacity:1;transform:scale(1)}
-
-/* —— Inspector：面板顶光 / 行蚀刻弱线 / 动作按钮金属化 —— */
-body.craft .inspector{box-shadow:var(--edge-hi)}
-body.craft .props .pr{box-shadow:0 1px 0 rgba(255,255,255,.02)}
-body.craft .ins-actions button{
-  background:linear-gradient(180deg,#202020,#181818);box-shadow:var(--edge-hi);
-  transition:background .12s,color .12s;
-}
-body.craft .ins-actions button:hover{background:linear-gradient(180deg,#2a2a2a,#1f1f1f);transform:none}
-
-/* —— 设计规范页面板：顶光 + 微渐变 —— */
-body.craft .panel{background:linear-gradient(180deg,#1c1c1c,#181818);box-shadow:var(--edge-hi)}
 </style>
 </head>
-<body class="craft">
+<body>
 <div class="frame">
 
   <!-- ════ 左侧导航 ════ -->
@@ -770,9 +531,6 @@ body.craft .panel{background:linear-gradient(180deg,#1c1c1c,#181818);box-shadow:
     <header class="titlebar">
       <span class="tb-brand">PG&nbsp;ASSET&nbsp;CONTROL&nbsp;·&nbsp;<b>素材管理系统</b></span>
       <div class="spacer"></div>
-      <div class="toggle" title="对比：原版结构 ⇄ 精装质感层">
-        <button id="btnPlain">原版</button><button id="btnCraft" class="on">精装</button>
-      </div>
       <div class="win-controls">
         <button title="最小化"><svg viewBox="0 0 12 12"><path d="M1 6h10"/></svg></button>
         <button title="最大化"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9"/></svg></button>
@@ -803,124 +561,58 @@ body.craft .panel{background:linear-gradient(180deg,#1c1c1c,#181818);box-shadow:
 
         <div class="grid" id="projGrid">
           <div class="card pcard st-progress sel ani" data-go="tasks">
-            <span class="bookmark"></span>
-            <span class="corner-idx craft-only">N°226 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="pcode">226</span><span class="pname">GrandTheftHeist</span><span class="ppct">72%</span></div>
-              <div class="psub">Slot · 1024 Ways · VFX 制作中</div>
-              <div class="pmeta">
-                <span class="inline ddl-warn">DEADLINE <b>2026/06/15</b></span><span class="inline">TASKS <b>3/4</b></span><span class="inline">ASSETS <b>2346</b></span>
-                <span class="stack ddl-warn"><span class="k">DEADLINE</span><b>06/15</b></span>
-                <span class="stack"><span class="k">ASSETS</span><b>2346</b></span>
-                <span class="stack"><span class="k">TASKS</span><b>3/4</b></span>
-              </div>
-              <div class="seg blue" data-n="4" data-on="3"></div>
-              <div class="seg-wrap craft-only">
-                <div class="ticks" data-n="4"></div>
-                <div class="seg-row"><div class="seg blue" data-n="4" data-on="3"></div><span class="rd">任务 <b>3</b>/4</span></div>
-              </div>
+            <div class="row1"><span class="pcode">226</span><span class="pname">GrandTheftHeist</span><span class="ppct">72%</span></div>
+            <div class="psub">Slot · 1024 Ways · VFX 制作中</div>
+            <div class="pmeta">
+              <span class="ddl-warn">DEADLINE <b>2026/06/15</b></span>
+              <span>TASKS <b>3/4</b></span><span>ASSETS <b>2346</b></span>
             </div>
+            <div class="seg blue" data-n="4" data-on="3"></div>
           </div>
           <div class="card pcard st-progress ani" data-go="tasks">
-            <span class="bookmark"></span>
-            <span class="corner-idx craft-only">N°231 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="pcode">231</span><span class="pname">DragonFortune</span><span class="ppct">45%</span></div>
-              <div class="psub">Slot · 5×4 · 序列帧产出阶段</div>
-              <div class="pmeta">
-                <span class="inline">DEADLINE <b>2026/06/28</b></span><span class="inline">TASKS <b>2/4</b></span><span class="inline">ASSETS <b>1027</b></span>
-                <span class="stack"><span class="k">DEADLINE</span><b>06/28</b></span>
-                <span class="stack"><span class="k">ASSETS</span><b>1027</b></span>
-                <span class="stack"><span class="k">TASKS</span><b>2/4</b></span>
-              </div>
-              <div class="seg blue" data-n="4" data-on="2"></div>
-              <div class="seg-wrap craft-only">
-                <div class="ticks" data-n="4"></div>
-                <div class="seg-row"><div class="seg blue" data-n="4" data-on="2"></div><span class="rd">任务 <b>2</b>/4</span></div>
-              </div>
+            <div class="row1"><span class="pcode">231</span><span class="pname">DragonFortune</span><span class="ppct">45%</span></div>
+            <div class="psub">Slot · 5×4 · 序列帧产出阶段</div>
+            <div class="pmeta">
+              <span>DEADLINE <b>2026/06/28</b></span>
+              <span>TASKS <b>2/4</b></span><span>ASSETS <b>1027</b></span>
             </div>
+            <div class="seg blue" data-n="4" data-on="2"></div>
           </div>
           <div class="card pcard st-review ani" data-go="tasks">
-            <span class="bookmark"></span>
-            <span class="corner-idx craft-only">N°218 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="pcode">218</span><span class="pname">NeonCarnival</span><span class="ppct">88%</span></div>
-              <div class="psub">Slot · 3×5 · 待美术总监确认</div>
-              <div class="pmeta">
-                <span class="inline ddl-warn">DEADLINE <b>2026/06/12</b></span><span class="inline">TASKS <b>3/4</b></span><span class="inline">ASSETS <b>3210</b></span>
-                <span class="stack ddl-warn"><span class="k">DEADLINE</span><b>06/12</b></span>
-                <span class="stack"><span class="k">ASSETS</span><b>3210</b></span>
-                <span class="stack"><span class="k">TASKS</span><b>3/4</b></span>
-              </div>
-              <div class="seg amber" data-n="4" data-on="3"></div>
-              <div class="seg-wrap craft-only">
-                <div class="ticks" data-n="4"></div>
-                <div class="seg-row"><div class="seg amber" data-n="4" data-on="3"></div><span class="rd">任务 <b>3</b>/4</span></div>
-              </div>
+            <div class="row1"><span class="pcode">218</span><span class="pname">NeonCarnival</span><span class="ppct">88%</span></div>
+            <div class="psub">Slot · 3×5 · 待美术总监确认</div>
+            <div class="pmeta">
+              <span class="ddl-warn">DEADLINE <b>2026/06/12</b></span>
+              <span>TASKS <b>3/4</b></span><span>ASSETS <b>3210</b></span>
             </div>
+            <div class="seg amber" data-n="4" data-on="3"></div>
           </div>
           <div class="card pcard st-done ani" data-go="tasks">
-            <span class="bookmark"></span>
-            <span class="corner-idx craft-only">N°240 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="pcode">240</span><span class="pname">PirateGold</span><span class="ppct">100%</span></div>
-              <div class="psub">Slot · 1024 Ways · 已交付</div>
-              <div class="pmeta">
-                <span class="inline">DELIVERED <b>2026/05/30</b></span><span class="inline">TASKS <b>4/4</b></span><span class="inline">ASSETS <b>2871</b></span>
-                <span class="stack"><span class="k">DELIVERED</span><b>05/30</b></span>
-                <span class="stack"><span class="k">ASSETS</span><b>2871</b></span>
-                <span class="stack"><span class="k">TASKS</span><b>4/4</b></span>
-              </div>
-              <div class="seg green" data-n="4" data-on="4"></div>
-              <div class="seg-wrap craft-only">
-                <div class="ticks" data-n="4"></div>
-                <div class="seg-row"><div class="seg green" data-n="4" data-on="4"></div><span class="rd">任务 <b>4</b>/4</span></div>
-              </div>
+            <div class="row1"><span class="pcode">240</span><span class="pname">PirateGold</span><span class="ppct">100%</span></div>
+            <div class="psub">Slot · 1024 Ways · 已交付</div>
+            <div class="pmeta">
+              <span>DELIVERED <b>2026/05/30</b></span>
+              <span>TASKS <b>4/4</b></span><span>ASSETS <b>2871</b></span>
             </div>
+            <div class="seg green" data-n="4" data-on="4"></div>
           </div>
           <div class="card pcard st-revision ani" data-go="tasks">
-            <span class="bookmark"></span>
-            <span class="corner-idx craft-only">N°235 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="pcode">235</span><span class="pname">MysticRunes</span><span class="ppct">64%</span></div>
-              <div class="psub">Slot · 5×3 · Big Win 返修中</div>
-              <div class="pmeta">
-                <span class="inline">DEADLINE <b>2026/06/20</b></span><span class="inline">TASKS <b>2/3</b></span><span class="inline">ASSETS <b>1764</b></span>
-                <span class="stack"><span class="k">DEADLINE</span><b>06/20</b></span>
-                <span class="stack"><span class="k">ASSETS</span><b>1764</b></span>
-                <span class="stack"><span class="k">TASKS</span><b>2/3</b></span>
-              </div>
-              <div class="seg red" data-n="3" data-on="2"></div>
-              <div class="seg-wrap craft-only">
-                <div class="ticks" data-n="3"></div>
-                <div class="seg-row"><div class="seg red" data-n="3" data-on="2"></div><span class="rd">任务 <b>2</b>/3</span></div>
-              </div>
+            <div class="row1"><span class="pcode">235</span><span class="pname">MysticRunes</span><span class="ppct">64%</span></div>
+            <div class="psub">Slot · 5×3 · Big Win 返修中</div>
+            <div class="pmeta">
+              <span>DEADLINE <b>2026/06/20</b></span>
+              <span>TASKS <b>2/3</b></span><span>ASSETS <b>1764</b></span>
             </div>
+            <div class="seg red" data-n="3" data-on="2"></div>
           </div>
           <div class="card pcard st-idle ani" data-go="tasks">
-            <span class="bookmark"></span>
-            <span class="corner-idx craft-only">N°229 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="pcode">229</span><span class="pname">JadeEmperor</span><span class="ppct">0%</span></div>
-              <div class="psub">Slot · 5×4 · 未开始</div>
-              <div class="pmeta">
-                <span class="inline">DEADLINE <b>2026/07/05</b></span><span class="inline">TASKS <b>0/3</b></span><span class="inline">ASSETS <b>0</b></span>
-                <span class="stack"><span class="k">DEADLINE</span><b>07/05</b></span>
-                <span class="stack"><span class="k">ASSETS</span><b>0</b></span>
-                <span class="stack"><span class="k">TASKS</span><b>0/3</b></span>
-              </div>
-              <div class="seg gray" data-n="3" data-on="0"></div>
-              <div class="seg-wrap craft-only">
-                <div class="ticks" data-n="3"></div>
-                <div class="seg-row"><div class="seg gray" data-n="3" data-on="0"></div><span class="rd">任务 <b>0</b>/3</span></div>
-              </div>
+            <div class="row1"><span class="pcode">229</span><span class="pname">JadeEmperor</span><span class="ppct">0%</span></div>
+            <div class="psub">Slot · 5×4 · 未开始</div>
+            <div class="pmeta">
+              <span>DEADLINE <b>2026/07/05</b></span>
+              <span>TASKS <b>0/3</b></span><span>ASSETS <b>0</b></span>
             </div>
+            <div class="seg gray" data-n="3" data-on="0"></div>
           </div>
         </div>
       </section>
@@ -938,112 +630,58 @@ body.craft .panel{background:linear-gradient(180deg,#1c1c1c,#181818);box-shadow:
 
         <div class="grid" id="taskGrid">
           <div class="card tcard st-progress task ani" data-st="progress" data-go="assets">
-            <span class="bookmark"></span><span class="corner-idx craft-only">T-02 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="tname">Free Spin</span><span class="tcode">T-02</span></div>
-              <div class="tcat">VFX / free_spin</div>
-              <div class="trow2"><span class="tag progress">进行中</span><span class="tnum">素材 <b>38</b> · 子任务 <b>5/8</b></span></div>
-              <div class="seg blue" data-n="8" data-on="5"></div>
-              <div class="seg-wrap craft-only"><div class="ticks" data-n="8"></div>
-                <div class="seg-row"><div class="seg blue" data-n="8" data-on="5"></div><span class="rd">子任务 <b>5</b>/8</span></div></div>
-            </div>
+            <div class="row1"><span class="tname">Free Spin</span><span class="tcode">T-02</span></div>
+            <div class="tcat">VFX / free_spin</div>
+            <div class="trow2"><span class="tag progress">进行中</span><span class="tnum">素材 <b>38</b> · 子任务 <b>5/8</b></span></div>
+            <div class="seg blue" data-n="8" data-on="5"></div>
           </div>
           <div class="card tcard st-progress task ani" data-st="progress" data-go="assets">
-            <span class="bookmark"></span><span class="corner-idx craft-only">T-01 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="tname">Big Win</span><span class="tcode">T-01</span></div>
-              <div class="tcat">Prototype / big_win</div>
-              <div class="trow2"><span class="tag progress">进行中</span><span class="tnum">素材 <b>52</b> · 子任务 <b>3/6</b></span></div>
-              <div class="seg blue" data-n="6" data-on="3"></div>
-              <div class="seg-wrap craft-only"><div class="ticks" data-n="6"></div>
-                <div class="seg-row"><div class="seg blue" data-n="6" data-on="3"></div><span class="rd">子任务 <b>3</b>/6</span></div></div>
-            </div>
+            <div class="row1"><span class="tname">Big Win</span><span class="tcode">T-01</span></div>
+            <div class="tcat">Prototype / big_win</div>
+            <div class="trow2"><span class="tag progress">进行中</span><span class="tnum">素材 <b>52</b> · 子任务 <b>3/6</b></span></div>
+            <div class="seg blue" data-n="6" data-on="3"></div>
           </div>
           <div class="card tcard st-review task ani" data-st="review" data-go="assets">
-            <span class="bookmark"></span><span class="corner-idx craft-only">T-05 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="tname">Symbol Wild</span><span class="tcode">T-05</span></div>
-              <div class="tcat">VFX / symbol</div>
-              <div class="trow2"><span class="tag review">待确认</span><span class="tnum">素材 <b>24</b> · 子任务 <b>4/4</b></span></div>
-              <div class="seg amber" data-n="4" data-on="4"></div>
-              <div class="seg-wrap craft-only"><div class="ticks" data-n="4"></div>
-                <div class="seg-row"><div class="seg amber" data-n="4" data-on="4"></div><span class="rd">子任务 <b>4</b>/4</span></div></div>
-            </div>
+            <div class="row1"><span class="tname">Symbol Wild</span><span class="tcode">T-05</span></div>
+            <div class="tcat">VFX / symbol</div>
+            <div class="trow2"><span class="tag review">待确认</span><span class="tnum">素材 <b>24</b> · 子任务 <b>4/4</b></span></div>
+            <div class="seg amber" data-n="4" data-on="4"></div>
           </div>
           <div class="card tcard st-done task ani" data-st="done" data-go="assets">
-            <span class="bookmark"></span><span class="corner-idx craft-only">T-03 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="tname">Main UI</span><span class="tcode">T-03</span></div>
-              <div class="tcat">Prototype / main_ui</div>
-              <div class="trow2"><span class="tag done">已完成</span><span class="tnum">素材 <b>67</b> · 子任务 <b>6/6</b></span></div>
-              <div class="seg green" data-n="6" data-on="6"></div>
-              <div class="seg-wrap craft-only"><div class="ticks" data-n="6"></div>
-                <div class="seg-row"><div class="seg green" data-n="6" data-on="6"></div><span class="rd">子任务 <b>6</b>/6</span></div></div>
-            </div>
+            <div class="row1"><span class="tname">Main UI</span><span class="tcode">T-03</span></div>
+            <div class="tcat">Prototype / main_ui</div>
+            <div class="trow2"><span class="tag done">已完成</span><span class="tnum">素材 <b>67</b> · 子任务 <b>6/6</b></span></div>
+            <div class="seg green" data-n="6" data-on="6"></div>
           </div>
           <div class="card tcard st-done task ani" data-st="done" data-go="assets">
-            <span class="bookmark"></span><span class="corner-idx craft-only">T-04 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="tname">Spin Button</span><span class="tcode">T-04</span></div>
-              <div class="tcat">Prototype / spinbutton</div>
-              <div class="trow2"><span class="tag done">已完成</span><span class="tnum">素材 <b>18</b> · 子任务 <b>3/3</b></span></div>
-              <div class="seg green" data-n="3" data-on="3"></div>
-              <div class="seg-wrap craft-only"><div class="ticks" data-n="3"></div>
-                <div class="seg-row"><div class="seg green" data-n="3" data-on="3"></div><span class="rd">子任务 <b>3</b>/3</span></div></div>
-            </div>
+            <div class="row1"><span class="tname">Spin Button</span><span class="tcode">T-04</span></div>
+            <div class="tcat">Prototype / spinbutton</div>
+            <div class="trow2"><span class="tag done">已完成</span><span class="tnum">素材 <b>18</b> · 子任务 <b>3/3</b></span></div>
+            <div class="seg green" data-n="3" data-on="3"></div>
           </div>
           <div class="card tcard st-revision task ani" data-st="revision" data-go="assets">
-            <span class="bookmark"></span><span class="corner-idx craft-only">T-06 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="tname">Loading Bonus</span><span class="tcode">T-06</span></div>
-              <div class="tcat">Prototype / loading_bonus</div>
-              <div class="trow2"><span class="tag revision">返修</span><span class="tnum">素材 <b>12</b> · 子任务 <b>2/4</b></span></div>
-              <div class="seg red" data-n="4" data-on="2"></div>
-              <div class="seg-wrap craft-only"><div class="ticks" data-n="4"></div>
-                <div class="seg-row"><div class="seg red" data-n="4" data-on="2"></div><span class="rd">子任务 <b>2</b>/4</span></div></div>
-            </div>
+            <div class="row1"><span class="tname">Loading Bonus</span><span class="tcode">T-06</span></div>
+            <div class="tcat">Prototype / loading_bonus</div>
+            <div class="trow2"><span class="tag revision">返修</span><span class="tnum">素材 <b>12</b> · 子任务 <b>2/4</b></span></div>
+            <div class="seg red" data-n="4" data-on="2"></div>
           </div>
           <div class="card tcard st-progress task ani" data-st="progress" data-go="assets">
-            <span class="bookmark"></span><span class="corner-idx craft-only">T-07 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="tname">Total Win</span><span class="tcode">T-07</span></div>
-              <div class="tcat">Prototype / total_win</div>
-              <div class="trow2"><span class="tag progress">进行中</span><span class="tnum">素材 <b>21</b> · 子任务 <b>2/5</b></span></div>
-              <div class="seg blue" data-n="5" data-on="2"></div>
-              <div class="seg-wrap craft-only"><div class="ticks" data-n="5"></div>
-                <div class="seg-row"><div class="seg blue" data-n="5" data-on="2"></div><span class="rd">子任务 <b>2</b>/5</span></div></div>
-            </div>
+            <div class="row1"><span class="tname">Total Win</span><span class="tcode">T-07</span></div>
+            <div class="tcat">Prototype / total_win</div>
+            <div class="trow2"><span class="tag progress">进行中</span><span class="tnum">素材 <b>21</b> · 子任务 <b>2/5</b></span></div>
+            <div class="seg blue" data-n="5" data-on="2"></div>
           </div>
           <div class="card tcard st-review task ani" data-st="review" data-go="assets">
-            <span class="bookmark"></span><span class="corner-idx craft-only">T-08 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="tname">Transition</span><span class="tcode">T-08</span></div>
-              <div class="tcat">VFX / transition</div>
-              <div class="trow2"><span class="tag review">待确认</span><span class="tnum">素材 <b>9</b> · 子任务 <b>2/2</b></span></div>
-              <div class="seg amber" data-n="2" data-on="2"></div>
-              <div class="seg-wrap craft-only"><div class="ticks" data-n="2"></div>
-                <div class="seg-row"><div class="seg amber" data-n="2" data-on="2"></div><span class="rd">子任务 <b>2</b>/2</span></div></div>
-            </div>
+            <div class="row1"><span class="tname">Transition</span><span class="tcode">T-08</span></div>
+            <div class="tcat">VFX / transition</div>
+            <div class="trow2"><span class="tag review">待确认</span><span class="tnum">素材 <b>9</b> · 子任务 <b>2/2</b></span></div>
+            <div class="seg amber" data-n="2" data-on="2"></div>
           </div>
           <div class="card tcard st-idle task ani" data-st="idle" data-go="assets">
-            <span class="bookmark"></span><span class="corner-idx craft-only">T-09 <span class="tick"></span></span>
-            <span class="rivet tl craft-only"></span><span class="rivet bl craft-only"></span><span class="rivet br craft-only"></span>
-            <div class="cbody">
-              <div class="row1"><span class="tname">Info Board</span><span class="tcode">T-09</span></div>
-              <div class="tcat">Prototype / infoboard</div>
-              <div class="trow2"><span class="tag idle">未开始</span><span class="tnum">素材 <b>0</b> · 子任务 <b>0/3</b></span></div>
-              <div class="seg gray" data-n="3" data-on="0"></div>
-              <div class="seg-wrap craft-only"><div class="ticks" data-n="3"></div>
-                <div class="seg-row"><div class="seg gray" data-n="3" data-on="0"></div><span class="rd">子任务 <b>0</b>/3</span></div></div>
-            </div>
+            <div class="row1"><span class="tname">Info Board</span><span class="tcode">T-09</span></div>
+            <div class="tcat">Prototype / infoboard</div>
+            <div class="trow2"><span class="tag idle">未开始</span><span class="tnum">素材 <b>0</b> · 子任务 <b>0/3</b></span></div>
+            <div class="seg gray" data-n="3" data-on="0"></div>
           </div>
         </div>
       </section>
@@ -1221,13 +859,12 @@ body.craft .panel{background:linear-gradient(180deg,#1c1c1c,#181818);box-shadow:
             <h3>选中态语法 / SELECTION GRAMMAR</h3>
             <table class="gram">
               <tr><td>导航项</td><td><span class="mini-nav"></span>&nbsp; 左侧 4px 竖条 + 底色提亮</td><td>band-4</td></tr>
-              <tr><td>卡片</td><td><span class="mini-card"></span>&nbsp; 状态色边框 + 顶 3px 线（精装加左上书签角 27px）</td><td>--sel · topline-3</td></tr>
-              <tr><td>筛选项</td><td><span class="mini-chip"></span>&nbsp; 底部 3px 色线（精装从左生长）</td><td>underline-3</td></tr>
-              <tr><td>素材</td><td><span class="mini-asset"></span>&nbsp; 2px 蓝外框 + 左上书签角（选中恒蓝）</td><td>border-2+bookmark</td></tr>
+              <tr><td>卡片</td><td><span class="mini-card"></span>&nbsp; 1px 蓝边框 + 顶部 3px 色线</td><td>border+topline-3</td></tr>
+              <tr><td>筛选项</td><td><span class="mini-chip"></span>&nbsp; 底部 3px 色线</td><td>underline-3</td></tr>
+              <tr><td>素材</td><td><span class="mini-asset"></span>&nbsp; 2px 蓝外框 + 左上书签角</td><td>border-2+bookmark</td></tr>
             </table>
             <div class="note">
               规则：一个元素只用一种选中表达，严禁发光（box-shadow blur = 0）。<br>
-              选中 = 状态色（<span class="mono">--sel</span>，§14.3）：项目/任务卡随状态变色，书签角与素材选中恒蓝（蓝 = 选中语义）。<br>
               状态色带统一 4px / 选中线统一 3px / 标签边框统一 1px。
             </div>
             <h3 style="margin-top:18px">字体 / TYPE</h3>
@@ -1370,11 +1007,6 @@ document.querySelectorAll('.seg').forEach(s => {
     s.appendChild(b);
   }
 });
-/* 精装·进度刻度仪：刻度短线与格数一致（craft 才可见） */
-document.querySelectorAll('.ticks').forEach(t => {
-  const n = +t.dataset.n || 4;
-  for (let i = 0; i < n; i++) t.appendChild(document.createElement('i'));
-});
 
 /* ════ 任务状态筛选 ════ */
 document.querySelectorAll('#taskFilters .chip').forEach(chip => {
@@ -1417,11 +1049,6 @@ syncInspector(document.querySelector('.asset.sel'));
     sw.querySelector('.hx').textContent = root.getPropertyValue(name).trim().toUpperCase();
   });
 })();
-
-/* ════ 全局「原版 ⇄ 精装」开关：切 body.craft，质感层整体显隐 ════ */
-const bP = document.getElementById('btnPlain'), bC = document.getElementById('btnCraft');
-bP.onclick = () => { document.body.classList.remove('craft'); bP.classList.add('on'); bC.classList.remove('on'); };
-bC.onclick = () => { document.body.classList.add('craft');    bC.classList.add('on'); bP.classList.remove('on'); };
 
 go('home');
 </script>

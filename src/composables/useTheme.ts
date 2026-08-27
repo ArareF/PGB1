@@ -3,12 +3,12 @@ import { ref } from 'vue'
 type Theme = 'light' | 'dark'
 
 /* 全局响应式状态，跨组件共享 */
-const currentTheme = ref<Theme>('dark')
+const currentTheme = ref<Theme>('light')
 
 export function useTheme() {
   function initTheme() {
     const saved = localStorage.getItem('pgb1-theme') as Theme | null
-    currentTheme.value = saved || 'dark'
+    currentTheme.value = saved || 'light'
     applyTheme(currentTheme.value)
   }
 

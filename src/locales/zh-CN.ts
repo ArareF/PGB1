@@ -104,7 +104,7 @@ export default {
     progress: '进度',
     otherVersions: '其他版本',
     modify: '修改',
-    markUploadedOriginal: '原件直传',
+    markSpine: 'Spine',
     // 侧边栏弹窗
     renameTitle: '重命名',
     inputNewName: '输入新名称',
@@ -263,6 +263,9 @@ export default {
     selectedOps: '已选 {count} 项操作',
     moveFrames: '移动{count}帧',
     noOp: '不处理',
+    normalizedGroup: '已规范化（{count}）',
+    expandGroup: '展开',
+    collapseGroup: '收起',
     restore: '恢复原件',
     execute: '执行规范化',
     progress: '处理中 {current}/{total}',

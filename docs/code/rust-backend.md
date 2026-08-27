@@ -83,7 +83,7 @@
 - 阶段前缀常量：`STAGE_PREFIX_ANIM`（an）/ `STAGE_PREFIX_IMG`（img）
 - 路径构造：`vfx_dir` / `export_dir` / `nextcloud_dir` / `nextcloud_task_dir` / `img_dir_name` / `an_dir_name` / `stage_dir_prefix`
 
-### commands/scanning.rs（1324 行）—— 最大文件
+### commands/scanning.rs（1363 行）—— 最大文件
 
 **扫描命令**：
 - `scan_projects` / `scan_tasks` / `scan_materials` / `scan_directory`
@@ -95,7 +95,7 @@
 **DirSnapshot 缓存**：目录快照减少重复 IO。
 - `from_dir`：普通任务（key = 阶段子目录名，value = 子目录内条目）
 - `from_dir_subcat`：Prototype 专用（value = `[XX]/{subcat}/` 子层条目），使所有查询方法对 Prototype 同样适用——普通/Prototype 共用 `determine_progress_image_cached` / `determine_progress_sequence_cached`（2026-06-10 双轨合并，旧 `determine_progress_prototype_*` / `find_file_in_*` 直读函数已删除）
-- `from_nextcloud_dir`：根层（"." 键）+ original/ 子目录（原件直传，方案 B）
+- `from_nextcloud_dir`：根层（"." 键）+ `original/` 子目录（Spine 原件直传）；静帧识别同名文件，序列帧识别同名目录
 
 **Prototype 处理**：`split_prototype_name` + 按子分类构建快照（每子分类 3 次批量读取）。
 
@@ -117,7 +117,7 @@
 - `spawn_daily_report_scroll` 轮询就绪后 JS focus + HWND 置顶 + `send_ctrl_end()` 跳到文档末尾
 - `send_ctrl_end()` / `scroll_to_bottom_via_wheel`（Win32 API 物理滚动）
 
-### commands/conversion.rs（1336 行）
+### commands/conversion.rs（1518 行）
 
 **转换/缩放命令**：
 - `scan_normalize_items` / `execute_normalize_v2` / `restore_normalize_backup`（Phase 5b+ 规范化独立页面：全量盘点 + 命名/自适应画布/加黑底三操作 + `.normalize_backup` 备份/恢复 + `normalize-progress` 事件；备份按规范后名做 key 保留最早纯净原件；图像辅助 `trim_transparent` / `composite_on_black`）
@@ -125,7 +125,7 @@
 - `start_conversion` / `stop_conversion`（Phase 5d 静帧 webp 监控）
 - `execute_sequence_conversion`（序列帧 TexturePacker）
 - `collect_drag_files`（Phase 5a OS 级拖拽收集）
-- `copy_to_nextcloud` / `import_files` / `copy_preview_to_nextcloud`
+- `copy_to_nextcloud`（正常交付复制；无 done 产物时支持静帧与序列帧 Spine 原件直传，序列帧保留目录）/ `import_files` / `copy_preview_to_nextcloud`
 
 **Prototype 处理**：`collect_best_files` / `collect_matching_files_in_subdirs` 统一接受 `sub_name: Option<&str>` 参数（None = 普通任务，Some = 深入子分类一层），不再有 `_prototype` 孪生函数（2026-06-10 合并）。
 
@@ -216,14 +216,14 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 
 **决策理由**：把前端 fetch 迁到 Rust `reqwest`，避免 IP 泄漏 + 收敛 CSP `connect-src`。
 
-### commands/files.rs（768 行）
+### commands/files.rs（787 行）
 
 **文件操作命令**：
 - `open_file`（`ShellExecuteW "open"`）
 - `rename_file`（保留扩展名 + 校验非法字符）
 - `delete_file`（`SHFileOperationW + FOF_ALLOWUNDO` 回收站）
 - `read_text_file`
-- `rename_material` / `delete_material`
+- `rename_material` / `delete_material`（同步维护 nextcloud `original/` 中的 Spine 文件或序列目录）
 - `rename_sequence_fps`
 - `set_default_ae_file`（Sprint 3·Y-19 改用 `mutate_project_config`）
 
@@ -279,7 +279,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 | `scan_app_shortcuts` | — | `Vec<AppShortcut>` | 扫描开始菜单 + 桌面 `.lnk`，COM 解析目标 exe |
 | `open_in_explorer` | `path` | `()` | Windows explorer 打开路径 |
 | `collect_drag_files` | `task_path, materials` | `Vec<String>` | Phase 5a 拖拽收集（02_done > 01_scale > 00_original） |
-| `copy_to_nextcloud` | `task_path, material_names` | `CopyResult` | Phase 5a 复制 02_done 到 nextcloud（排除 `.tps`） |
+| `copy_to_nextcloud` | `task_path, material_names` | `CopyResult` | Phase 5a 复制 02_done 到 nextcloud（排除 `.tps`）；无产物时执行静帧/序列帧 Spine 原件直传 |
 | `import_files` | `source_paths, target_dir` | `ImportResult` | 通用文件导入（同名跳过） |
 | `load_global_tasks` / `save_global_tasks` | `root_dir[, config]` | `GlobalTaskConfig` / `()` | `.pgb1_global_tasks.json` CRUD |
 | `apply_task_changes` | `project_path, enabled_tasks` | `ApplyTaskResult` | 核心：对比启用列表 → 创建/归档任务文件夹 |

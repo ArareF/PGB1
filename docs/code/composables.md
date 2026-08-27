@@ -25,6 +25,13 @@
 
 **MaterialInfo 接口字段**：`scales`（比例列表）, `fps`（序列帧帧率，转换前 null）
 
+**`materialUid(m)` — 素材身份 SSOT（铁律）**：`${material_type}|${name}|${path}`。
+所有"是不是同一个素材"的判定（列表 `:key`、多选 Set、卡片 `data-path`、侧边栏高亮、
+ScalePage/ConvertPage 的标注 Map）必须走它，**禁止再用单独的 `path` 或 `name`**：
+
+- `path` 不唯一：未规范化的 `00_original` 里序列帧平铺存放，同目录 N 个序列的 `path` 全是该目录本身
+- `name` 不唯一：静帧 `name` 是去扩展名 + 去 `_01` 后缀的基础名，`a.png` / `a.jpg` / `a_01.png` 会撞
+
 ### useDirectoryFiles.ts（41 行）
 
 `loadFiles()`, `openInExplorer()` — 通用一层目录扫描 + 打开文件管理器。
@@ -156,7 +163,11 @@
 
 ### useFrameCache.ts（57 行）
 
-`loadSequenceFrames()` — 序列帧 LRU 缓存（max 10 序列 / 120 帧）。
+`loadSequenceFrames(folderPath, baseName, framePaths, maxWidth)` — 序列帧 LRU 缓存（max 10 序列 / 120 帧）。
+
+**缓存 key 必须含 `baseName`**（防火）：平铺序列帧同目录共用 `folderPath`，只用目录做 key 会串帧——
+首次并发加载各自正确，切换视图重挂载后全部命中第一条缓存，同目录序列缩略图变成同一个，
+且模块级缓存不随路由清空，只有刷新/重启才恢复。
 
 ### usePsdThumbnail.ts（41 行）
 
@@ -173,6 +184,9 @@
 `useRubberBandSelect()` — 框选多选逻辑。
 
 **流程**：`mousedown`（空白区域）→ `mousemove`（视口矩形 + `data-path` 碰撞）→ `onSelect` 回调。
+
+**`data-path` 的语义是「选中标识」而非文件路径**：NormalCard 用真实文件路径（本身唯一），
+MaterialCard 用 `materialUid()`。同一页面里 `allPaths` / `selectedPaths` / `data-path` 三者必须同源取值。
 
 **防冲突**：`justFinished` ref 屏蔽框选后 `click` 事件。`onContainerScroll` 终止框选防止起点失效。
 

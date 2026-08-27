@@ -154,7 +154,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | `docs/新设计风格.md` | Sharp Grid 新风格草案（深色工业锐角，§12 Tech Lead 修订 + §13 产品评审二次裁决：左栏=启动台/取消面包屑/顶栏两行/去统计块/文字提亮/进度条平行四边形） |
 | `docs/新设计风格示意.html` | Sharp Grid 可交互网页示意稿（三级钻取 + 设计规范页，浏览器直接打开） |
 | `docs/code/` | CODE_INDEX 二级详情（components/composables/views/rust-backend/styles-system） |
-| `docs/plans/` | 实施方案草案（进行中的方案放这里；当前暂空，软件已进入维护期） |
+| `docs/plans/` | 实施方案草案（进行中的方案放这里）。当前 1 份：`2026-08-06-素材身份收口与遗留.md`（materialUid 身份 SSOT 已落地 + 命名债待裁决 + 合并注意事项） |
 | `docs/archive/plans/` | 已归档的历史方案（42 份：Phase 1~7 + 功能特性 + 2026-04 代码优化 + v2.8.13/15/17 已发版方案） |
 | `docs/archive/调研工作台/` | 历史代码审查报告（2026-04，含 `old/` 旧版） |
 | `docs/archive/MIGRATION_CHECKLIST.md` | 旧架构迁移检查清单（历史） |

@@ -6,7 +6,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
-import { useMaterials } from '../composables/useMaterials'
+import { useMaterials, materialUid } from '../composables/useMaterials'
 import type { MaterialInfo } from '../composables/useMaterials'
 import MaterialCard from '../components/MaterialCard.vue'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
@@ -36,10 +36,10 @@ const finalScale = computed(() => {
   return selectedScale.value
 })
 
-// 标注 Map：material.path → scale number
+// 标注 Map：materialUid → scale number（与卡片 data-path 同源，见 useMaterials.ts）
 const scaleMap = ref<Map<string, number>>(new Map())
 
-// 当前选中的卡片路径集合
+// 当前选中的卡片标识集合（materialUid）
 const selectedPaths = ref<Set<string>>(new Set())
 
 const cardAreaRef = ref<HTMLElement | null>(null)
@@ -101,11 +101,12 @@ function handleCustomInput(e: Event) {
 }
 
 function toggleCard(m: MaterialInfo) {
+  const uid = materialUid(m)
   const newSet = new Set(selectedPaths.value)
-  if (newSet.has(m.path)) {
-    newSet.delete(m.path)
+  if (newSet.has(uid)) {
+    newSet.delete(uid)
   } else {
-    newSet.add(m.path)
+    newSet.add(uid)
   }
   selectedPaths.value = newSet
 }
@@ -117,13 +118,13 @@ function applyScale() {
   if (scale <= 0) return
 
   const newMap = new Map(scaleMap.value)
-  selectedPaths.value.forEach(path => {
-    if (newMap.get(path) === scale) {
+  selectedPaths.value.forEach(uid => {
+    if (newMap.get(uid) === scale) {
       // 同比例再次应用 → 清除
-      newMap.delete(path)
+      newMap.delete(uid)
     } else {
       // 覆盖标注
-      newMap.set(path, scale)
+      newMap.set(uid, scale)
     }
   })
   scaleMap.value = newMap
@@ -133,7 +134,7 @@ function applyScale() {
 
 // 返回某素材的标注文字（用于 scaleLabel prop）
 function scaleLabelFor(m: MaterialInfo): string | undefined {
-  const s = scaleMap.value.get(m.path)
+  const s = scaleMap.value.get(materialUid(m))
   return s !== undefined ? `${s}%` : undefined
 }
 
@@ -152,8 +153,8 @@ async function handleExecute() {
 
     const requests: { original_path: string; task_path: string; scale_percent: number; base_name: string }[] = []
 
-    scaleMap.value.forEach((scale, path) => {
-      const m = imageMaterials.value.find(m => m.path === path)
+    scaleMap.value.forEach((scale, uid) => {
+      const m = imageMaterials.value.find(m => materialUid(m) === uid)
       if (!m) return
       // task_path + scale_percent 交给 Rust 端用 PathBuf 组装目标目录，避免前端拼 Windows 路径
       requests.push({
@@ -190,10 +191,10 @@ async function handleExecute() {
     <div v-else class="card-grid">
       <MaterialCard
         v-for="m in imageMaterials"
-        :key="m.path"
+        :key="materialUid(m)"
         :material="m"
         :multi-select="true"
-        :checked="selectedPaths.has(m.path)"
+        :checked="selectedPaths.has(materialUid(m))"
         :scale-label="scaleLabelFor(m)"
         @click="toggleCard(m)"
       />

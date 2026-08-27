@@ -11,11 +11,15 @@ export interface RubberBandRect {
 export interface UseRubberBandOptions {
   /** 卡片所在的滚动容器 ref */
   containerRef: Ref<HTMLElement | null>
-  /** 卡片元素 CSS 选择器，必须带 data-path 属性 */
+  /**
+   * 卡片元素 CSS 选择器，必须带 data-path 属性。
+   * data-path 的语义是「选中标识」而非文件路径：NormalCard 用真实文件路径（本身唯一），
+   * MaterialCard 用 `materialUid()`（path 对平铺序列帧不唯一，见 useMaterials.ts）。
+   */
   cardSelector: string
   /** 是否允许框选（false 时完全跳过） */
   isEnabled: Ref<boolean>
-  /** 框选过程中命中集合变化时回调（传入当前命中的 path Set） */
+  /** 框选过程中命中集合变化时回调（传入当前命中的标识 Set） */
   onSelect: (paths: Set<string>) => void
 }
 

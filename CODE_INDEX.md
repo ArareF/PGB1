@@ -10,9 +10,9 @@
 
 | 目录 | 文件数 | 总行数 | 说明 |
 |------|--------|--------|------|
-| `src/components/` | 30 | 9489 | Vue UI 组件 |
-| `src/composables/` | 23 | 3175 | 组合式函数（逻辑复用） |
-| `src/views/` | 19 | 9485 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
+| `src/components/` | 29 | 9105 | Vue UI 组件 |
+| `src/composables/` | 23 | 3209 | 组合式函数（逻辑复用） |
+| `src/views/` | 19 | 9490 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
 | `src/styles/` | 4 | 1836 | CSS 设计系统 |
 | `src/layouts/` | 1 | 321 | 主布局 |
 | `src/types/` | 2 | 57 | TypeScript 类型定义 |
@@ -21,7 +21,7 @@
 | `src/i18n/` + `src/locales/` | 3 | 1396 | 国际化（vue-i18n + zh-CN + en） |
 | `src/router/` + 入口 | 5 | 204 | 路由 + main/App/vite-env/vite.config |
 | `src-tauri/src/` | 25 | 10208 | Rust 后端 |
-| **合计** | **119** | **36364** | |
+| **合计** | **118** | **36019** | |
 
 > 行数口径 = 文件总行数（含空行），与历史版本一致。
 
@@ -31,9 +31,9 @@
 
 | 二级文档 | 包含什么 |
 |---------|---------|
-| [docs/code/components.md](docs/code/components.md) | 31 个组件的 Props、关键公共类、笔记体系接入 |
-| [docs/code/composables.md](docs/code/composables.md) | 22 个 composable 的关键导出、状态、模块级单例说明 |
-| [docs/code/views.md](docs/code/views.md) | 18 个页面的数据流、与组件/composable 的依赖图 |
+| [docs/code/components.md](docs/code/components.md) | 29 个组件的 Props、关键公共类、笔记体系接入 |
+| [docs/code/composables.md](docs/code/composables.md) | 23 个 composable 的关键导出、状态、模块级单例说明 |
+| [docs/code/views.md](docs/code/views.md) | 19 个页面的数据流、与组件/composable 的依赖图 |
 | [docs/code/rust-backend.md](docs/code/rust-backend.md) | Rust 命令清单（约 90 个）+ 数据模型 + 调度器 |
 | [docs/code/styles-system.md](docs/code/styles-system.md) | CSS 变量 SSOT、毛玻璃层级、动画系统、公共类 |
 
@@ -83,7 +83,7 @@
 
 ---
 
-## 3. 组件（30）
+## 3. 组件（29）
 
 | 文件 | 行数 | 一句话职责 |
 |------|------|-----------|
@@ -107,7 +107,6 @@
 | `EditProjectDialog.vue` | 168 | 项目管理弹窗（mode 复用：重命名 / 截止 / 删除） |
 | `OnboardingDialog.vue` | 481 | 首次引导 4 步向导（表单走 `useOnboardingForm`） |
 | `PageGuideOverlay.vue` | 125 | 通用页面指引遮罩（批注气泡） |
-| `ConversionDialog.vue` | 389 | 格式转换选择弹窗（Phase 5d） |
 | `SubtaskDialog.vue` | 251 | 子任务管理弹窗（从 TaskPage 抽取） |
 | `NoteTooltip.vue` | 148 | 笔记悬停预览气泡（可交互 checkbox） |
 | `NoteRenderer.vue` | 136 | 笔记渲染（markdown 子集 + 命名链接 + checkbox） |
@@ -127,9 +126,9 @@
 | `useNavigation.ts` | 75 | 导航状态模块级单例，驱动 TitleBar 动作按钮 |
 | `useProjects.ts` | 50 | `scan_projects` 数据加载 |
 | `useTasks.ts` | 43 | `scan_tasks` 数据加载 |
-| `useMaterials.ts` | 40 | `scan_materials` 数据加载 |
+| `useMaterials.ts` | 57 | `scan_materials` 数据加载 + `materialUid()` 素材身份 SSOT（禁止用 path/name 单独判身份） |
 | `useDirectoryFiles.ts` | 41 | 通用目录扫描 + `openInExplorer` |
-| `useFrameCache.ts` | 57 | 序列帧 LRU 缓存（max 10 序列 / 120 帧） |
+| `useFrameCache.ts` | 64 | 序列帧 LRU 缓存（max 10 序列 / 120 帧，key = 目录 + 基础名 + 宽度） |
 | `useTheme.ts` | 30 | 明暗主题切换 + localStorage |
 | `useScale.ts` | 28 | UI 全局缩放模块级单例（按设置页传入档位直接应用） |
 | `useSettings.ts` | 126 | 应用设置 CRUD（JSON 深拷贝脱壳 Vue Proxy） |

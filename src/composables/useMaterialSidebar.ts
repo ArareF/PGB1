@@ -1,6 +1,6 @@
 import { ref, watch, nextTick, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import type { MaterialInfo } from './useMaterials'
+import { materialUid, type MaterialInfo } from './useMaterials'
 import type { MaterialVersion } from '../types/material'
 
 export type SidebarDialog = 'none' | 'rename' | 'delete' | 'reset' | 'not-sequence'
@@ -65,8 +65,8 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     // 互斥：关闭预览视频侧边栏
     opts.onPreviewSelectionCleared()
 
-    // 再次点击同一素材则关闭侧边栏
-    if (selectedMaterial.value?.path === material.path) {
+    // 再次点击同一素材则关闭侧边栏（比 path 严格：平铺序列帧共用 path）
+    if (selectedMaterial.value && materialUid(selectedMaterial.value) === materialUid(material)) {
       closeSidebar()
       return
     }
@@ -75,10 +75,13 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     // 会查到两张不同的卡片导致 delta 变成"卡片间距"而不是"位移"。
     // - 切换场景：用 旧 卡片作参考（action 后它失去 .selected 但 data-path 还在）
     // - 首次打开：用 目标 卡片作参考（action 后它获得 .selected，data-path 不变）
-    const referencePath = selectedMaterial.value?.path ?? material.path
+    // data-path 存的是 materialUid，参考点必须同源取值。
+    const referenceUid = selectedMaterial.value
+      ? materialUid(selectedMaterial.value)
+      : materialUid(material)
 
     preserveCardPosition(
-      `.material-card[data-path="${CSS.escape(referencePath)}"]`,
+      `.material-card[data-path="${CSS.escape(referenceUid)}"]`,
       () => {
         selectedMaterial.value = material
         versions.value = []
@@ -97,8 +100,8 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
   }
 
   function closeSidebar() {
-    const prevPath = selectedMaterial.value?.path
-    if (!prevPath) {
+    const prevUid = selectedMaterial.value ? materialUid(selectedMaterial.value) : null
+    if (!prevUid) {
       selectedMaterial.value = null
       return
     }
@@ -107,7 +110,7 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     // 原版用 .material-card.selected 会导致 after 查不到任何元素，补偿
     // 直接被 `if (!afterCard) return` 跳过。
     preserveCardPosition(
-      `.material-card[data-path="${CSS.escape(prevPath)}"]`,
+      `.material-card[data-path="${CSS.escape(prevUid)}"]`,
       () => {
         selectedMaterial.value = null
       },
@@ -272,8 +275,10 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
       })
       cancelEditFps()
       await opts.refresh()
-      // refresh 只更新 materials.value，selectedMaterial 需手动同步到新数据
-      const updated = opts.materials.value.find(m => m.name === mat.name)
+      // refresh 只更新 materials.value，selectedMaterial 需手动同步到新数据。
+      // 用 uid 匹配而非 name：同名静帧/序列帧共存时 name 会错认。
+      const targetUid = materialUid(mat)
+      const updated = opts.materials.value.find(m => materialUid(m) === targetUid)
       if (updated) {
         selectedMaterial.value = updated
         versions.value = await invoke<MaterialVersion[]>('scan_material_versions', {

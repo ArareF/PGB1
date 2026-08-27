@@ -5,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
-import { useMaterials } from '../composables/useMaterials'
+import { useMaterials, materialUid, type MaterialInfo } from '../composables/useMaterials'
 import { useSettings } from '../composables/useSettings'
 import MaterialCard from '../components/MaterialCard.vue'
 import { useMultiSelect } from '../composables/useMultiSelect'
@@ -53,8 +53,8 @@ const {
   isSelecting, selectionRect, onContainerMouseDown, onContainerScroll,
 } = useMultiSelect({
   allPaths: computed(() => [
-    ...pendingImages.value.map(m => m.path),
-    ...pendingSequences.value.map(m => m.path),
+    ...pendingImages.value.map(materialUid),
+    ...pendingSequences.value.map(materialUid),
   ]),
   alwaysEnabled: true,
   rubberBand: { containerRef: cardAreaRef, cardSelector: '.material-card[data-path]' },
@@ -62,36 +62,37 @@ const {
 
 function toggleSelectAll() {
   // 全选/取消全选仅针对静帧（序列帧需手动标注FPS）
-  const allImagesSelected = pendingImages.value.every(m => selectedPaths.value.has(m.path))
+  const allImagesSelected = pendingImages.value.every(m => selectedPaths.value.has(materialUid(m)))
   const newSet = new Set(selectedPaths.value)
   if (allImagesSelected) {
-    pendingImages.value.forEach(m => newSet.delete(m.path))
+    pendingImages.value.forEach(m => newSet.delete(materialUid(m)))
   } else {
-    pendingImages.value.forEach(m => newSet.add(m.path))
+    pendingImages.value.forEach(m => newSet.add(materialUid(m)))
   }
   selectedPaths.value = newSet
 }
 
 const selectedImageCount = computed(() =>
-  pendingImages.value.filter(m => selectedPaths.value.has(m.path)).length
+  pendingImages.value.filter(m => selectedPaths.value.has(materialUid(m))).length
 )
 
 const annotatedSequenceCount = computed(() =>
-  pendingSequences.value.filter(m => fpsMap.value.has(m.path)).length
+  pendingSequences.value.filter(m => fpsMap.value.has(materialUid(m))).length
 )
 
 // 当前选中的序列帧（用于判断应用按钮是否可用）
 const selectedSequencePaths = computed(() =>
-  pendingSequences.value.filter(m => selectedPaths.value.has(m.path))
+  pendingSequences.value.filter(m => selectedPaths.value.has(materialUid(m)))
 )
 
 // ─── FPS 标注（批次标注模式） ──────────────────────────
 
+/** key = materialUid：未规范化目录里多个序列共用 path，用 path 会串标注 */
 const fpsMap = ref<Map<string, number>>(new Map())
 const fpsInput = ref('')
 
-function fpsLabelFor(m: { path: string }): string | undefined {
-  const fps = fpsMap.value.get(m.path)
+function fpsLabelFor(m: MaterialInfo): string | undefined {
+  const fps = fpsMap.value.get(materialUid(m))
   return fps !== undefined ? `${fps}fps` : undefined
 }
 
@@ -102,10 +103,11 @@ function applyFps() {
 
   const newMap = new Map(fpsMap.value)
   selectedSequencePaths.value.forEach(m => {
-    if (newMap.get(m.path) === fps) {
-      newMap.delete(m.path)  // 同值再次应用 → 清除
+    const uid = materialUid(m)
+    if (newMap.get(uid) === fps) {
+      newMap.delete(uid)  // 同值再次应用 → 清除
     } else {
-      newMap.set(m.path, fps)
+      newMap.set(uid, fps)
     }
   })
   fpsMap.value = newMap
@@ -122,7 +124,7 @@ const canStart = computed(() => {
   const hasImages = selectedImageCount.value > 0
   // 有效序列帧 = 已选中 且 已标注 FPS
   const hasSequences = pendingSequences.value.some(
-    m => selectedPaths.value.has(m.path) && fpsMap.value.has(m.path)
+    m => selectedPaths.value.has(materialUid(m)) && fpsMap.value.has(materialUid(m))
   )
   return hasImages || hasSequences
 })
@@ -149,13 +151,13 @@ async function handleStart() {
   const sequences: { name: string; fps: number }[] = []
 
   for (const img of pendingImages.value) {
-    if (selectedPaths.value.has(img.path)) {
+    if (selectedPaths.value.has(materialUid(img))) {
       images[img.name] = 0
     }
   }
-  fpsMap.value.forEach((fps, path) => {
-    if (!selectedPaths.value.has(path)) return  // 未选中的跳过
-    const seq = pendingSequences.value.find(m => m.path === path)
+  fpsMap.value.forEach((fps, uid) => {
+    if (!selectedPaths.value.has(uid)) return  // 未选中的跳过
+    const seq = pendingSequences.value.find(m => materialUid(m) === uid)
     if (seq) sequences.push({ name: seq.name, fps })
   })
 
@@ -275,7 +277,7 @@ onMounted(async () => {
   ])
   // 默认全选静帧（序列帧需手动标注FPS）
   const all = new Set<string>()
-  pendingImages.value.forEach(m => all.add(m.path))
+  pendingImages.value.forEach(m => all.add(materialUid(m)))
   selectedPaths.value = all
 })
 </script>
@@ -297,12 +299,12 @@ onMounted(async () => {
         <div class="material-grid">
           <MaterialCard
             v-for="m in pendingImages"
-            :key="m.path"
+            :key="materialUid(m)"
             :material="m"
             :multi-select="true"
-            :checked="selectedPaths.has(m.path)"
+            :checked="selectedPaths.has(materialUid(m))"
             class="mini-card"
-            @click="toggleItem(m.path)"
+            @click="toggleItem(materialUid(m))"
           />
         </div>
       </div>
@@ -313,13 +315,13 @@ onMounted(async () => {
         <div class="material-grid">
           <MaterialCard
             v-for="m in pendingSequences"
-            :key="m.path"
+            :key="materialUid(m)"
             :material="m"
             :multi-select="true"
-            :checked="selectedPaths.has(m.path)"
+            :checked="selectedPaths.has(materialUid(m))"
             :scale-label="fpsLabelFor(m)"
             class="mini-card"
-            @click="toggleItem(m.path)"
+            @click="toggleItem(materialUid(m))"
           />
         </div>
       </div>
@@ -345,7 +347,7 @@ onMounted(async () => {
         </div>
 
         <button v-if="pendingImages.length > 0" class="ghost-btn" @click="toggleSelectAll">
-          {{ pendingImages.every(m => selectedPaths.has(m.path)) ? $t('common.deselectAll') : $t('common.selectAll') }}
+          {{ pendingImages.every(m => selectedPaths.has(materialUid(m))) ? $t('common.deselectAll') : $t('common.selectAll') }}
         </button>
 
         <!-- 序列帧 FPS 标注区 -->

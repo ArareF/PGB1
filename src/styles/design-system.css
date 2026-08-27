@@ -1514,8 +1514,9 @@ html {
 }
 
 /* =============================================================================
-   紧凑版素材卡片 .mini-card（ConvertPage 控制面板 / ConversionDialog 复用）
-   从两处重复样式提取；非 scoped 不需要 :deep()
+   紧凑版素材卡片 .mini-card（当前仅 ConvertPage 使用）
+   原为 ConvertPage / ConversionDialog 两处重复样式的提取产物，
+   ConversionDialog 已于 2026-08-06 作为死代码删除；非 scoped 不需要 :deep()
    ============================================================================= */
 .mini-card {
   --card-material-width: 100%;

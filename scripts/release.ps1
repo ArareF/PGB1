@@ -64,7 +64,7 @@ Step '版本号一致性校验'
 npm run check:version-sync
 if ($LASTEXITCODE -ne 0) { Die '版本号不一致，先修齐再发版' }
 
-$Version = (Get-Content 'package.json' -Raw | ConvertFrom-Json).version
+$Version = (Get-Content 'package.json' -Raw -Encoding UTF8 | ConvertFrom-Json).version
 $Tag     = "v$Version"
 Ok "目标版本：$Tag"
 
@@ -111,7 +111,9 @@ $SignatureEsc = $Signature -replace '\$', '$$$$'
 $PubDate = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 $Url     = "https://github.com/$RepoSlug/releases/download/$Tag/PGB1_${Version}_x64-setup.exe"
 
-$json = Get-Content $LatestJson -Raw
+# PS 5.1 的 Get-Content 默认按系统 ANSI 代码页解码，读 UTF-8 中文会变乱码，
+# 再原样写回就是双重损坏（notes 直接进用户的更新弹窗）。必须显式指定 UTF8。
+$json = Get-Content $LatestJson -Raw -Encoding UTF8
 $json = $json -replace '"version":\s*"[^"]*"',   "`"version`": `"$Version`""
 $json = $json -replace '"pub_date":\s*"[^"]*"',  "`"pub_date`": `"$PubDate`""
 $json = $json -replace '"url":\s*"[^"]*"',       "`"url`": `"$Url`""
@@ -122,9 +124,14 @@ $json = $json -replace '"signature":\s*"[^"]*"', "`"signature`": `"$SignatureEsc
     (Join-Path (Get-Location) $LatestJson), $json,
     (New-Object System.Text.UTF8Encoding($false)))
 
-$check = Get-Content $LatestJson -Raw | ConvertFrom-Json
+$check = Get-Content $LatestJson -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($check.version -ne $Version)                    { Die 'latest.json 版本回填失败' }
 if ($check.platforms.'windows-x86_64'.signature -match 'REPLACE_ME') { Die '签名仍是占位符' }
+# 乱码探针：UTF-8 中文被按 ANSI 误读后必然出现 Ã / Â / â€ / ï¼ 这类残片。
+# notes 会显示在用户的更新弹窗里，宁可在这里拦下也不要发出去。
+if ($check.notes -match '[ÃÂ]|â€|ï¼') {
+    Die 'latest.json 的 notes 出现乱码特征，编码读取有问题，已中止发布'
+}
 Ok "version=$Version  pub_date=$PubDate"
 Ok "signature 已写入（$($Signature.Length) 字符）"
 

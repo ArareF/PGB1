@@ -364,6 +364,11 @@
   --card-normal-gap:          var(--spacing-2);
   --card-normal-preview-height: 150px;
 
+  /* 素材系列版本角标（同系列多版本合并为一张卡时显示版本数） */
+  --card-version-badge-size:  22px;
+  --card-version-badge-bg:    var(--color-primary-500);
+  --card-version-badge-text:  var(--color-neutral-0);
+
   /* 卡片网格 */
   --card-grid-gap:            var(--spacing-4);
   --card-grid-gap-large:      var(--spacing-6);
@@ -672,64 +677,108 @@
    暗色主题
    ============================================================================= */
 :root[data-theme="dark"] {
-  /* 应用背景 — 纯净深灰黑 */
-  --bg-app:               #0C0D10;
+  /* ----- Sharp Grid 深色主题原料（全应用 SSOT） ----- */
+  --sg-bg-work:            #0D0D0D;
+  --sg-bg-panel:           #181818;
+  --sg-bg-panel-2:         #1E1E1E;
+  --sg-bg-panel-3:         #242424;
+  --sg-bg-well:            #111111;
+  --sg-bg-canvas:          #0A0A0A;
+  --sg-line-weak:          #1D1D1D;
+  --sg-line:               #2A2A2A;
+  --sg-line-strong:        #3C3C3C;
+  --sg-grid-line:          rgba(128, 128, 128, 0.045);
+  --sg-grid-size:          24px;
+  --sg-surface-start:      #1E1E1E;
+  --sg-surface-end:        #181818;
+  --sg-surface-hover-start:#262626;
+  --sg-surface-hover-end:  #1F1F1F;
+  --sg-surface-gradient:   linear-gradient(180deg, var(--sg-surface-start), var(--sg-surface-end));
+  --sg-surface-hover:      linear-gradient(180deg, var(--sg-surface-hover-start), var(--sg-surface-hover-end));
+  --sg-inset-well:         inset 0 1px 2px rgba(0, 0, 0, 0.50);
+  --sg-etched-line:        0 1px 0 rgba(255, 255, 255, 0.03);
+  --sg-focus-ring:         0 0 0 2px color-mix(in srgb, var(--acc-blue) 42%, transparent);
+  --sg-accent-wash:        color-mix(in srgb, var(--acc-blue) 12%, transparent);
+  --sg-success-wash:       color-mix(in srgb, var(--acc-green) 12%, transparent);
+  --sg-warning-wash:       color-mix(in srgb, var(--acc-amber) 12%, transparent);
+  --sg-danger-wash:        color-mix(in srgb, var(--acc-red) 12%, transparent);
+  --sg-disabled-opacity:   0.46;
+  --sg-hover-lift:         -1px;
 
-  /* 毛玻璃背景 — 中性深灰黑底 */
-  --bg-glass-subtle:      rgba(14, 15, 18, 0.30);
-  --bg-glass-medium:      rgba(14, 15, 18, 0.45);
-  --bg-glass-strong:      rgba(14, 15, 18, 0.60);
+  --acc-blue:              #2F8CFF;
+  --acc-teal:              #20C7B5;
+  --acc-green:             #36C275;
+  --acc-amber:             #E8A23A;
+  --acc-red:               #E85D4F;
+  --sg-progress:           #3AA666;
+  --sg-band:               var(--acc-blue);
+  --band-w:                4px;
+  --band-border-alpha:     30%;
+
+  --edge-hi:               inset 0 1px 0 0 rgba(255, 255, 255, 0.045);
+  --edge-lo:               inset 0 -1px 0 0 rgba(0, 0, 0, 0.45);
+  --dot-gap:               8.5px;
+  --dot-r:                 0.8px;
+  --dot-fade:              45%;
+  --dot-alpha:             0.18;
+
+  --sg-font-display:       "URWDINRegular", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  --sg-font-mono:          "SarasaTermSC", "IBM Plex Mono", "Consolas", monospace;
+
+  /* 应用背景 — 纯净深灰黑 */
+  --bg-app:               var(--sg-bg-work);
+
+  /* 深色精装层使用实色金属面，不再依赖毛玻璃 */
+  --bg-glass-subtle:      var(--sg-bg-panel);
+  --bg-glass-medium:      var(--sg-bg-panel-2);
+  --bg-glass-strong:      var(--sg-bg-panel-3);
 
   /* 内容背景 */
-  --bg-primary:           rgba(22, 23, 28, 0.85);
-  --bg-secondary:         rgba(22, 23, 28, 0.55);
-  --bg-tertiary:          rgba(22, 23, 28, 0.30);
-  --bg-elevated:          rgba(22, 23, 28, 0.70);  /* 输入框/悬浮内容层 — 介于 primary 和 secondary */
+  --bg-primary:           var(--sg-bg-panel-2);
+  --bg-secondary:         var(--sg-bg-panel);
+  --bg-tertiary:          #141414;
+  --bg-elevated:          var(--sg-bg-panel-3);
 
-  /* 悬停/激活状态 — 蓝色 wash（仅小面积交互反馈） */
-  --bg-hover:             rgba(74, 158, 245, 0.10);
-  --bg-active:            rgba(74, 158, 245, 0.18);
-  --bg-selected:          rgba(74, 158, 245, 0.14);
+  /* 悬停/激活状态 */
+  --bg-hover:             #2B2B2B;
+  --bg-active:            #343434;
+  --bg-selected:          color-mix(in srgb, var(--acc-blue) 14%, var(--sg-bg-panel));
 
   /* 文字颜色 — 高对比近白 */
-  --text-primary:         #E2E4E8;
-  --text-secondary:       #8A8D96;
-  --text-tertiary:        #6B6E77;
-  --text-quaternary:       #4C4F55;  /* 最弱文字层 — 占位符/禁用文字 */
-  --text-inverse:         #0C0D10;
+  --text-primary:         #EEEEEE;
+  --text-secondary:       #C6C6C6;
+  --text-tertiary:        #969696;
+  --text-quaternary:      #666666;
+  --text-inverse:         var(--sg-bg-work);
   --text-link:            var(--color-primary-300);
   --text-link-hover:      #8ECFFF;
 
-  /* 边框颜色 — 冷蓝色亮线（蓝色的主要载体） */
-  --border-light:         rgba(100, 180, 255, 0.10);
-  --border-medium:        rgba(100, 180, 255, 0.14);
-  --border-heavy:         rgba(100, 180, 255, 0.22);
-  --border-subtle:        rgba(100, 180, 255, 0.06);  /* 极浅边框 — 卡片底部分隔线 */
-  --border-focus:         #6BB8FF;
+  /* 边框保持中性，强调色只用于交互与状态 */
+  --border-light:         var(--sg-line-weak);
+  --border-medium:        var(--sg-line);
+  --border-heavy:         var(--sg-line-strong);
+  --border-subtle:        #171717;
+  --border-focus:         var(--acc-blue);
   --border-error:         var(--color-danger);
 
-  /* 毛玻璃效果 — 极轻（下拉菜单/浮层遮罩） */
-  --glass-light-blur:         4px;
+  /* 旧 glass API 在深色主题下映射为无模糊实色表面 */
+  --glass-light-blur:         0px;
 
-  /* 毛玻璃效果 — 轻微（根层/次要） */
-  --glass-subtle-bg:          rgba(22, 23, 28, 0.45);
-  --glass-subtle-blur:        12px;
-  --glass-subtle-border:      1px solid rgba(100, 180, 255, 0.10);
-  --glass-subtle-shadow:      0 2px 8px rgba(0, 0, 0, 0.35);
+  --glass-subtle-bg:          linear-gradient(180deg, var(--sg-surface-start), var(--sg-surface-end));
+  --glass-subtle-blur:        0px;
+  --glass-subtle-border:      1px solid var(--sg-line);
+  --glass-subtle-shadow:      var(--edge-hi), var(--edge-lo);
 
-  /* 毛玻璃效果 — 中等（一层面板/主功能区） */
-  --glass-medium-bg:          rgba(22, 23, 28, 0.60);
-  --glass-medium-blur:        24px;
-  --glass-medium-border:      1px solid rgba(100, 180, 255, 0.12);
-  --glass-medium-shadow:      0 4px 12px rgba(0, 0, 0, 0.40);
-  /* 下拉菜单专用背景（无法用 backdrop-filter，高不透明度补偿） */
-  --dropdown-menu-bg:         rgba(28, 30, 36, 0.95);
+  --glass-medium-bg:          linear-gradient(180deg, var(--sg-bg-panel-2), var(--sg-bg-panel));
+  --glass-medium-blur:        0px;
+  --glass-medium-border:      1px solid var(--sg-line);
+  --glass-medium-shadow:      var(--edge-hi), var(--edge-lo);
+  --dropdown-menu-bg:         var(--sg-bg-panel-3);
 
-  /* 毛玻璃效果 — 强（二层面板/弹窗） */
-  --glass-strong-bg:          rgba(14, 15, 18, 0.75);
-  --glass-strong-blur:        18px;
-  --glass-strong-border:      1px solid rgba(100, 180, 255, 0.18);
-  --glass-strong-shadow:      0 0 24px rgba(74, 158, 245, 0.10);
+  --glass-strong-bg:          linear-gradient(180deg, var(--sg-bg-panel-3), var(--sg-bg-panel));
+  --glass-strong-blur:        0px;
+  --glass-strong-border:      1px solid var(--sg-line-strong);
+  --glass-strong-shadow:      var(--edge-hi), var(--edge-lo);
 
   /* 卡片毛玻璃 */
   --card-glass-bg:            var(--glass-medium-bg);
@@ -746,22 +795,22 @@
   --sidebar-bg:               var(--glass-strong-bg);
   --sidebar-backdrop:         blur(var(--glass-strong-blur));
   --sidebar-border:           var(--glass-strong-border);
-  --sidebar-shadow:           var(--shadow-xl);
+  --sidebar-shadow:           var(--edge-hi), var(--edge-lo);
 
   /* 按钮变体 — 次要（毛玻璃） */
-  --button-secondary-bg:          var(--glass-subtle-bg);
-  --button-secondary-bg-hover:    rgba(100, 180, 255, 0.12);
+  --button-secondary-bg:          var(--sg-bg-panel-2);
+  --button-secondary-bg-hover:    var(--sg-bg-panel-3);
   --button-secondary-border:      var(--border-medium);
   --button-secondary-text:        var(--text-primary);
 
   /* 按钮变体 — 幽灵 */
   --button-ghost-bg:              transparent;
-  --button-ghost-bg-hover:        rgba(74, 158, 245, 0.10);
+  --button-ghost-bg-hover:        color-mix(in srgb, var(--acc-blue) 10%, transparent);
   --button-ghost-text:            var(--color-primary-300);
 
   /* 输入框 */
-  --input-bg:                 rgba(14, 15, 18, 0.60);
-  --input-bg-disabled:        rgba(22, 23, 28, 0.40);
+  --input-bg:                 #111111;
+  --input-bg-disabled:        var(--sg-bg-panel);
   --input-text:               var(--text-primary);
   --input-placeholder:        var(--text-tertiary);
   --input-border:             1px solid var(--border-heavy);
@@ -773,6 +822,37 @@
   --tag-format-bg:            var(--glass-subtle-bg);
   --tag-format-text:          var(--text-secondary);
   --tag-format-border:        var(--border-light);
+
+  /* 深色全局组件几何与动效 */
+  --color-primary:            var(--acc-blue);
+  --color-primary-500:        var(--acc-blue);
+  --color-success:            var(--acc-green);
+  --color-warning:            var(--acc-amber);
+  --color-danger:             var(--acc-red);
+  --font-family-base:         var(--sg-font-display);
+  --font-mono:                var(--sg-font-mono);
+  --radius-sm:                0px;
+  --radius-md:                2px;
+  --radius-lg:                2px;
+  --radius-xl:                2px;
+  --radius-2xl:               2px;
+  --radius-3xl:               2px;
+  --radius-full:              2px;
+  --radius-button:            0px;
+  --radius-card:              0px;
+  --radius-floating-island:   2px;
+  --radius-tag:               0px;
+  --radius-input:             0px;
+  --card-border-radius:       0px;
+  --card-project-height:      126px;
+  --card-project-icon-size:   76px;
+  --card-hover-lift:          -2px;
+  --shadow-card:              var(--edge-hi), var(--edge-lo);
+  --shadow-card-hover:        var(--edge-hi), var(--edge-lo);
+  --shadow-floating:          var(--edge-hi), var(--edge-lo);
+  --shadow-modal:             var(--edge-hi), var(--edge-lo);
+  --shadow-dropdown:          var(--edge-hi), var(--edge-lo);
+  --noise-opacity:            0.05;
 }
 
 /* =============================================================================

@@ -7,20 +7,24 @@
 
 ## 卡片家族
 
-### ProjectCard.vue（490 行）
+### ProjectCard.vue（553 行）
 
-**Props**：`project: ProjectInfo`
+**Props**：`project: ProjectInfo`，`craft?: boolean`（由 HomePage 按全局主题传入：深色精装、浅色原版）
 
 **功能**：
-- 图标 + 名称 + 截止日期 + 进度条 + 优先度圆点 + ··· 菜单 + 笔记图标
+- 图标 + 名称 + 截止日期 + 进度条 + 优先度圆点 + 更多菜单 + 笔记图标
 - `AppIcon` 加载策略：PNG 用 `convertFileSrc` 直接渲染；PSD/PSB 调 `getPsdThumbnail(128)`；无图标降级 SVG 占位
 - 进度条分母 = 无子任务父任务数 + 所有子任务数
 - 优先度四档：`急` / `高` / `普`（= null）/ `停`，圆点 9px 实色无文字
 - 菜单项：重命名 / 修改截止日期 / 删除 / 批注 / 优先度四档
+- **更多菜单双形态**（`craft` 分流，模板内 `v-if="!craft"` / `v-else`，共用 `showMenu` 状态与 `setPriority`/`action` emit）：
+  - 原版：右上角 `···` 按钮 hover 显示，点击弹出 `Teleport to body` 的下拉菜单
+  - 深色精装（2026-07-28 全局启用）：卡片右侧居中飘带按钮（`assets/Sash_tool.png`），点击后满卡覆盖式抽屉从右向左展开；抽屉纯色面板不用 `backdrop-filter`，结构留在 ProjectCard.vue，皮肤/动效全在 `sharp-grid.css`（`.sg-drawer*` 选择器）
 
 **架构决策（防火手记）**：
 - 根元素用 `<div>` 而非 `<button>`，避免嵌套 button
-- ··· 菜单 `Teleport to body`：父级 `glass-subtle` 的 `backdrop-filter` 会创建合成层导致子级毛玻璃失效；菜单用 `position: fixed` + `getBoundingClientRect()` 动态锚定
+- 原版 ··· 菜单 `Teleport to body`：父级 `glass-subtle` 的 `backdrop-filter` 会创建合成层导致子级毛玻璃失效；菜单用 `position: fixed` + `getBoundingClientRect()` 动态锚定
+- craft 抽屉不 Teleport：满卡覆盖层本就在 `.project-card`（`position: relative`）内部，无需 viewport 定位；`toggleMenu()` 用 `!props.craft` 跳过 `getBoundingClientRect()` 计算
 - `@note-save` 处理 NoteTooltip checkbox 切换（乐观更新 `project.note`）
 
 ### TaskCard.vue（271 行）
@@ -44,9 +48,15 @@
 
 **架构决策**：手动 `glass-subtle`（不用 backdrop-filter），避免大量卡片创建独立合成层。
 
-### NormalCard.vue（324 行）
+### NormalCard.vue（366 行）
 
 **Props**：`file: FileEntry`, `hasNote?`, `notePreview?`
+
+**素材系列合并用的覆盖 Props**（全部可选，不传即原行为）：`displayName?`（覆盖卡片名）、
+`subLabel?`（名称下方副标题，如「最新 260807」）、`versionCount?`（>1 时右上角角标，
+与左上角多选框对称）、`formatLabel?`（覆盖右下角格式标签，如 `PSD·JPG`）、
+`selectionPath?`（覆盖 `data-path`，让合并卡以最新版 PSD 作为多选 / 框选身份）。
+角标配色走 `--card-version-badge-*` token。
 
 **多类型支持**：
 - 视频：`onMounted` canvas 截帧
@@ -86,9 +96,9 @@ Canvas 序列帧动画播放器，`mount` 后自动循环播放，LRU 缓存。`
 - 手动 `glass-strong`（避免 backdrop-filter 兄弟冲突）
 - 通用信息展示样式（`sidebar-section` / `info-list` / `version-card`）内置
 
-### FileDetailSidebar.vue（597 行）
+### FileDetailSidebar.vue（619 行）
 
-**Props**：`file: FileEntry | null`, `widthPercent?`, `versions?: FileEntry[]`, `allowActions?`, `note?`, `teleportTarget?`, `teleportDisabled?`
+**Props**：`file: FileEntry | null`, `widthPercent?`, `versions?: FileEntry[]`, `versionLabelOf?`, `allowActions?`, `note?`, `teleportTarget?`, `teleportDisabled?`
 
 **使用 SidebarShell 作外壳**。支持多类型预览：
 - 图片：ImageViewer，`aspect-ratio: 4/3` 自适应
@@ -99,6 +109,10 @@ Canvas 序列帧动画播放器，`mount` 后自动循环播放，LRU 缓存。`
 - 其他：图标占位
 
 **版本历史**：`versions` prop 传入多版本列表，点击 emit `select-version` 切换播放。版本卡片式布局：左列版本标签 + 文件大小，右侧扩展名 + 打开文件夹按钮。
+
+**`versionLabelOf?: (file, index) => string`**：覆盖版本条目标题。不传时按「最新版本 / 版本 N」编号，
+**该编号假设 versions 是旧→新**（预览视频如此）。MaterialsPage 的素材系列是新→旧，必须传此函数
+（传日期 + 尾缀），否则「最新版本」会标在最旧那一行。
 
 **`allowActions=true`**：底部显示重命名/删除按钮，内联弹窗 overlay。emit `rename(newName)` / `delete()` 由父页面执行 invoke + 刷新。
 

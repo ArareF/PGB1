@@ -1,5 +1,6 @@
 import { ref, watch, nextTick, type Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { clearMediaCaches } from './useMediaCache'
 import type { MaterialInfo } from './useMaterials'
 import type { MaterialVersion } from '../types/material'
 
@@ -22,6 +23,8 @@ export interface UseMaterialSidebarOptions {
   onPreviewSelectionCleared: () => void
   /** 「更新」时生成写入笔记的制作参数块（由 TaskPage 提供，带 i18n） */
   formatResetNote: (material: MaterialInfo) => string
+  /** TexturePacker GUI 路径（「修改」序列帧工程时阻塞打开；为空则退回系统关联打开，不做尺寸重整理） */
+  texturePackerGuiPathRef: Ref<string>
 }
 
 export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
@@ -309,7 +312,7 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     }
   }
 
-  /** 打开序列帧工程文件（.tps） */
+  /** 「修改」序列帧工程（.tps）：阻塞打开 TexturePacker，关闭后按新 scale 重整理并刷新 */
   async function openTpsFile() {
     const mat = selectedMaterial.value
     if (!mat) return
@@ -317,10 +320,28 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     if (!doneVersion) return
     const tpsPath = doneVersion.folder_path.replace(/\\/g, '/') + '/' + mat.name + '.tps'
     try {
-      // 用专用命令：打开前自愈 .tps 内 sprite 源路径深度，兼顾存量坏文件（历史错位一级）
-      await invoke('open_sequence_tps', { path: tpsPath })
+      // 阻塞等 TP 关闭；若用户改了 scale，后端会把 [an-旧-fps] 目录重命名为 [an-新-fps]
+      // （命令内会先自愈 .tps 内 sprite 源路径深度，兼顾历史错位一级的坏文件）
+      await invoke('edit_sequence_tps', {
+        tpsPath,
+        guiPath: opts.texturePackerGuiPathRef.value,
+      })
+      // TP 里只改了非尺寸参数（padding / 算法等）时目录名不变，帧图是同路径新内容——
+      // 这是侧边栏唯一路径不变的操作，必须清媒体缓存，否则预览还是改之前的帧
+      clearMediaCaches()
+      // 尺寸可能已变——刷新重新归类，并把侧边栏选中同步到刷新后的素材
+      await opts.refresh()
+      const updated = opts.materials.value.find(m => m.name === mat.name)
+      if (updated) {
+        selectedMaterial.value = updated
+        versions.value = await invoke<MaterialVersion[]>('scan_material_versions', {
+          taskPath: opts.taskFolderPathRef.value,
+          baseName: updated.name,
+          materialType: updated.material_type,
+        })
+      }
     } catch (e) {
-      console.error('打开工程文件失败:', e)
+      console.error('修改工程文件失败:', e)
     }
   }
 

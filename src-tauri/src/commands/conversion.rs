@@ -7,7 +7,7 @@ use crate::conversion::{ConversionState, ConversionSession, handle_file_event, b
 use super::helpers::{split_prototype_name, copy_dir_recursive, is_sequence_stem, matches_base_name, read_not_sequence_list, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
 use std::collections::HashSet;
 use super::workflow_paths::{
-    an_dir_name, nextcloud_task_dir, DIR_DONE, DIR_NC_BREAKDOWN, DIR_NC_ORIGINAL,
+    an_dir_name, nextcloud_task_dir, stage_dir_prefix, DIR_DONE, DIR_NC_BREAKDOWN, DIR_NC_ORIGINAL,
     DIR_ORIGINAL, DIR_SCALE, STAGE_PREFIX_ANIM, STAGE_PREFIX_IMG,
 };
 use std::collections::HashMap;
@@ -409,19 +409,91 @@ fn fix_tps_sprite_depth(tps_path: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-/// 打开序列帧工程文件（.tps）：打开前先自愈 sprite 源路径深度，再用系统关联程序打开。
-/// 兼顾存量已转换的坏 .tps（历史上路径错位一级）与新转换文件。
-/// 自愈失败仅记录、不阻断打开——让用户至少能进入 GUI。
+/// 「修改」序列帧工程文件（.tps）：阻塞打开 TexturePacker GUI，等其关闭后按新 scale 重整理。
+///
+/// 背景：.tps 的输出路径（textureFileName 空 → 由 data 名派生；plist 为相对文件名）都相对
+/// .tps 自身所在目录。用户在 GUI 里改 scale 重新发布，webp/plist 会写回 [an-<旧scale>-<fps>]/，
+/// 而目录名里的 scale 不会更新，导致扫描（按目录名解析 scale）仍归为旧尺寸。故 GUI 关闭后
+/// 重解析 .tps 的 scale，若变化就把成品目录整体重命名到 [an-<新scale>-<fps>]。
+///
+/// 打开前先自愈 sprite 源路径深度（兼顾历史错位一级的坏 .tps）。
+/// gui_path 为空则退回系统关联打开——无法等待，也就不做重整理，至少保证能打开。
 #[tauri::command]
-pub fn open_sequence_tps(path: String) -> Result<(), String> {
-    let tps_path = Path::new(&path);
-    if !tps_path.exists() {
-        return Err(format!("工程文件不存在: {}", path));
+pub async fn edit_sequence_tps(tps_path: String, gui_path: String) -> Result<(), String> {
+    let tps = Path::new(&tps_path);
+    if !tps.exists() {
+        return Err(format!("工程文件不存在: {}", tps_path));
     }
-    if let Err(e) = fix_tps_sprite_depth(tps_path) {
-        log::warn!("[conversion] 打开前修复 .tps 路径失败，继续打开: {}", e);
+    if let Err(e) = fix_tps_sprite_depth(tps) {
+        log::warn!("[edit_sequence_tps] 打开前修复 .tps 路径失败，继续打开: {}", e);
     }
-    super::files::open_file(path)
+
+    // 未配置 GUI 路径：退回系统关联打开（fire-and-forget，无法等待→不重整理）
+    if gui_path.trim().is_empty() {
+        return super::files::open_file(tps_path.clone());
+    }
+
+    // 成品目录名 [an-<scale>-<fps>]：留存旧名 + 取 fps，供关闭后判断 scale 是否变化。
+    // 仅当位于 [an-...] 成品目录时才在关闭后重整理；历史散落 .tps → 只开不整理。
+    let stage_dir = tps
+        .parent()
+        .ok_or_else(|| format!("无法定位工程文件所在目录: {}", tps_path))?;
+    let old_dir_name = stage_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    let an_prefix = stage_dir_prefix(STAGE_PREFIX_ANIM); // "[an-"
+    let fps = if old_dir_name.starts_with(&an_prefix) && old_dir_name.ends_with(']') {
+        old_dir_name
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .split('-')
+            .nth(2)
+            .and_then(|s| s.parse::<u32>().ok())
+    } else {
+        None
+    };
+
+    // 阻塞打开 GUI 并等待关闭（沿用 execute_sequence_conversion 的模式，跑在异步线程不冻结 UI）
+    let mut child = std::process::Command::new(&gui_path)
+        .arg(&tps_path)
+        .spawn()
+        .map_err(|e| format!("无法启动 TexturePacker GUI ({}): {}", gui_path, e))?;
+    let _ = child.wait();
+
+    // 关闭后重整理：需在成品目录内且能取到 fps
+    let fps = match fps {
+        Some(f) => f,
+        None => return Ok(()),
+    };
+
+    // 重解析最终 scale；目录名不变（尺寸没改）则无需整理
+    let new_scale = parse_tps_scale(tps)?;
+    let new_dir_name = an_dir_name(new_scale, fps);
+    if new_dir_name == old_dir_name {
+        return Ok(());
+    }
+
+    // 把成品目录整体重命名到新 scale 目录；目标已存在则报错（避免覆盖既有同尺寸成果）
+    let done_dir = stage_dir
+        .parent()
+        .ok_or_else(|| "无法定位 02_done 目录".to_string())?;
+    let new_dir = done_dir.join(&new_dir_name);
+    if new_dir.exists() {
+        return Err(format!(
+            "已存在同尺寸成品目录「{}」，请先处理后再改尺寸",
+            new_dir_name
+        ));
+    }
+    fs::rename(stage_dir, &new_dir)
+        .map_err(|e| format!("重命名成品目录 {} -> {} 失败: {}", old_dir_name, new_dir_name, e))?;
+    log::info!(
+        "[edit_sequence_tps] 尺寸变化，成品目录重命名: {} -> {}",
+        old_dir_name, new_dir_name
+    );
+
+    Ok(())
 }
 
 /// 停止转换会话
@@ -1113,6 +1185,77 @@ fn collect_all_files_in_dir(dir: &Path) -> Vec<String> {
     results
 }
 
+/// 将已规范化的序列帧目录复制到 nextcloud/original/{base_name}/。
+/// 返回实际复制的帧文件数；空目录不能作为“已上传”事实来源。
+fn copy_spine_sequence_original(
+    source_dir: &Path,
+    original_dest_dir: &Path,
+    base_name: &str,
+) -> Result<u32, String> {
+    if !source_dir.is_dir() {
+        return Err(format!("序列帧原件目录不存在: {}", source_dir.display()));
+    }
+    let entries = fs::read_dir(source_dir)
+        .map_err(|e| format!("读取序列帧原件目录失败: {}", e))?;
+    let mut frame_count = 0u32;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("读取序列帧条目失败: {}", e))?;
+        if entry.path().is_file() {
+            frame_count += 1;
+        }
+    }
+    if frame_count == 0 {
+        return Err("序列帧原件目录为空".to_string());
+    }
+
+    let destination = original_dest_dir.join(base_name);
+    if destination.exists() {
+        return Err(format!("Spine 目标目录已存在，请刷新后重试: {}", destination.display()));
+    }
+    if let Err(error) = copy_dir_recursive(source_dir, &destination) {
+        if destination.exists() {
+            fs::remove_dir_all(&destination)
+                .map_err(|cleanup| format!("{}；清理半成品目录失败: {}", error, cleanup))?;
+        }
+        return Err(error);
+    }
+    Ok(frame_count)
+}
+
+/// Spine 直传兼容两种 00_original 状态：优先复制已规范化目录，
+/// 若目录尚未生成，则把已识别的散落帧归入目标端同名目录。
+fn copy_spine_sequence_from_original(
+    original_search_dir: &Path,
+    original_dest_dir: &Path,
+    base_name: &str,
+) -> Result<u32, String> {
+    let sequence_dir = original_search_dir.join(base_name);
+    if sequence_dir.is_dir() {
+        return copy_spine_sequence_original(&sequence_dir, original_dest_dir, base_name);
+    }
+
+    let scattered_frames = collect_scattered_sequence_files(original_search_dir, base_name);
+    if scattered_frames.is_empty() {
+        return Err("00_original 中未找到对应序列帧".to_string());
+    }
+    let destination = original_dest_dir.join(base_name);
+    if destination.exists() {
+        return Err(format!("Spine 目标目录已存在，请刷新后重试: {}", destination.display()));
+    }
+    fs::create_dir_all(&destination)
+        .map_err(|e| format!("创建 Spine 序列帧目录失败: {}", e))?;
+    for source in &scattered_frames {
+        let source_path = Path::new(source);
+        let file_name = source_path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+        if let Err(error) = fs::copy(source_path, destination.join(file_name)) {
+            fs::remove_dir_all(&destination)
+                .map_err(|cleanup| format!("复制 Spine 序列帧 {} 失败: {}；清理半成品目录失败: {}", file_name, error, cleanup))?;
+            return Err(format!("复制 Spine 序列帧 {} 失败: {}", file_name, error));
+        }
+    }
+    Ok(scattered_frames.len() as u32)
+}
+
 // ─── Nextcloud 复制 ────────────────────────────────────
 
 /// 将选中素材从 02_done 复制到 nextcloud/
@@ -1171,9 +1314,8 @@ fn copy_material_normal(base_name: &str, material_type: &str, done_dir: &Path, o
         return Ok(count);
     }
 
-    // 原件直传兜底（仅静帧）：02_done 无产物时，把 00_original 原件复制到
-    // nextcloud/<任务>/original/（方案 B：与 webp 交付物隔离，避免混淆与污染）。
-    // 序列帧原件是整个帧序列文件夹，不作为可交付原件直传。
+    // Spine 原件直传兜底：02_done 无产物时，把 00_original 原件复制到
+    // nextcloud/<任务>/original/，与 webp 交付物隔离。
     if material_type == "image" {
         let original_files = collect_matching_files_flat(original_dir, base_name);
         if !original_files.is_empty() {
@@ -1189,6 +1331,9 @@ fn copy_material_normal(base_name: &str, material_type: &str, done_dir: &Path, o
             }
             return Ok(count);
         }
+    } else if material_type == "sequence" {
+        let original_dest_dir = nextcloud_dir.join(DIR_NC_ORIGINAL);
+        return copy_spine_sequence_from_original(original_dir, &original_dest_dir, base_name);
     }
 
     Err("02_done 与 00_original 中均未找到对应文件".to_string())
@@ -1223,7 +1368,7 @@ fn copy_material_prototype(
         count += 1;
     }
 
-    // 原件直传兜底（仅静帧）：done + scale 均无产物（仅原件场景）时，
+    // Spine 原件直传兜底：done + scale 均无产物（仅原件场景）时，
     // 从 00_original/<sub>/ 复制原件到 nextcloud/<sub>/original/（方案 B：与交付物隔离，
     // determine_progress_prototype_img 会识别该 original/ 子目录判为已上传）。
     if count == 0 && material_type == "image" {
@@ -1240,6 +1385,10 @@ fn copy_material_prototype(
                 count += 1;
             }
         }
+    } else if count == 0 && material_type == "sequence" {
+        let original_search_dir = original_dir.join(sub_name);
+        let original_dest_dir = sub_dir.join(DIR_NC_ORIGINAL);
+        count += copy_spine_sequence_from_original(&original_search_dir, &original_dest_dir, base_name)?;
     }
 
     Ok(count)
@@ -1283,6 +1432,39 @@ pub fn import_files(source_paths: Vec<String>, target_dir: String) -> Result<Imp
     }
 
     Ok(ImportResult { imported_count: imported, skipped_count: skipped, errors })
+}
+
+#[cfg(test)]
+mod spine_upload_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_test_dir(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("系统时间应晚于 Unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("pgb1_{}_{}_{}", name, std::process::id(), nonce))
+    }
+
+    #[test]
+    fn copy_spine_sequence_original_preserves_directory_and_counts_frames() {
+        let root = temp_test_dir("spine_copy");
+        let source = root.join("00_original").join("bonus_vfx_a_add");
+        let original_dest = root.join("nextcloud").join("original");
+        fs::create_dir_all(&source).expect("应能创建测试源目录");
+        fs::write(source.join("bonus_vfx_a_add_01.png"), b"frame-1").expect("应能写入第一帧");
+        fs::write(source.join("bonus_vfx_a_add_02.png"), b"frame-2").expect("应能写入第二帧");
+
+        let copied = copy_spine_sequence_original(&source, &original_dest, "bonus_vfx_a_add")
+            .expect("Spine 序列帧复制应成功");
+
+        assert_eq!(copied, 2);
+        assert!(original_dest.join("bonus_vfx_a_add/bonus_vfx_a_add_01.png").is_file());
+        assert!(original_dest.join("bonus_vfx_a_add/bonus_vfx_a_add_02.png").is_file());
+
+        fs::remove_dir_all(&root).expect("应能清理测试目录");
+    }
 }
 
 /// 将选中的预览视频复制到 nextcloud/preview/

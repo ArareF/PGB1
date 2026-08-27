@@ -101,7 +101,7 @@ export default {
     progress: 'Progress',
     otherVersions: 'Other Versions',
     modify: 'Modify',
-    markUploadedOriginal: 'Upload Original',
+    markSpine: 'Spine',
     renameTitle: 'Rename',
     inputNewName: 'Enter new name',
     deleteMaterial: 'Delete Material',
@@ -252,6 +252,9 @@ export default {
     selectedOps: '{count} operations selected',
     moveFrames: 'move {count} frames',
     noOp: 'No action',
+    normalizedGroup: 'Normalized ({count})',
+    expandGroup: 'Expand',
+    collapseGroup: 'Collapse',
     restore: 'Restore original',
     execute: 'Execute',
     progress: 'Processing {current}/{total}',
@@ -520,6 +523,8 @@ export default {
     materialFolders: 'Material Folders',
     noMaterials: 'No materials',
     dropHint: 'Drop files here',
+    /** 合并卡副标题：最新版本日期 */
+    latestDate: 'Latest {date}',
   },
 
   layout: {

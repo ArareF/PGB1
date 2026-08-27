@@ -5,6 +5,8 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
+import { clearMediaCaches } from '../composables/useMediaCache'
+import { partitionNormalizeItems } from '../utils/normalizeItems'
 
 interface NormalizeItem {
   base_name: string
@@ -43,6 +45,8 @@ const selections = ref<Selection[]>([])
 const progress = ref<{ current: number; total: number; name: string } | null>(null)
 // 缩略图缓存破坏：每次重新盘点自增，强制刷新原地改动后的预览图
 const reloadTick = ref(0)
+// 已规范化素材下沉到底部且默认折叠，避免遮挡当前待处理内容
+const normalizedExpanded = ref(false)
 
 // ── 全局操作开关（驱动各行默认值，可逐行覆盖）──
 const gRename = ref(true)   // 命名规范化默认开
@@ -106,6 +110,13 @@ const totalOps = computed(() =>
   selections.value.reduce((sum, s) => sum + (s.rename ? 1 : 0) + (s.trim ? 1 : 0) + (s.blackBg ? 1 : 0), 0)
 )
 
+/** 仅改变展示顺序；index 始终指向原始 selections，避免行内操作错位 */
+const groupedItems = computed(() => partitionNormalizeItems(items.value))
+const displayItems = computed(() => [
+  ...groupedItems.value.pending,
+  ...groupedItems.value.normalized,
+])
+
 onMounted(async () => {
   setNavigation({
     title: `${t('normalize.title')} · ${taskId}`,
@@ -139,6 +150,9 @@ async function handleExecute() {
     }))
 
     await invoke('execute_normalize_v2', { requests, backup: gBackup.value })
+    // 规范化是原地改 00_original 的文件（自适应画布 / 加黑底），路径完全不变——
+    // 不清缓存的话返回任务页，序列帧 LRU 与静帧 URL 都会命中改之前的旧图
+    clearMediaCaches()
     router.back()
   } catch (e) {
     error.value = String(e)
@@ -155,6 +169,8 @@ async function handleRestore(it: NormalizeItem) {
   if (!it.paths[0]) return
   try {
     await invoke('restore_normalize_backup', { currentPath: it.paths[0], backupName: it.target_name })
+    // 恢复原件同样是原地覆盖，先清缓存再重新盘点
+    clearMediaCaches()
     await loadItems()
   } catch (e) {
     error.value = String(e)
@@ -182,7 +198,13 @@ async function handleRestore(it: NormalizeItem) {
       </div>
 
       <div class="table-body">
-        <div v-for="(it, i) in items" :key="it.target_name + it.material_type" class="material-row">
+        <div
+          v-for="{ item: it, index: i } in displayItems"
+          v-show="it.needs_rename || normalizedExpanded"
+          :key="it.target_name + it.material_type"
+          class="material-row"
+          :class="{ 'normalized-row': !it.needs_rename }"
+        >
           <!-- 缩略图（cache-bust：reloadTick 随重新盘点自增）-->
           <div class="thumb col-thumb">
             <img :src="`${convertFileSrc(it.thumbnail_path)}?v=${reloadTick}`" :alt="it.base_name" loading="lazy" />
@@ -233,6 +255,22 @@ async function handleRestore(it: NormalizeItem) {
             <span v-else class="op-dash muted" :title="canTrim(it) && !it.is_add_or_screen ? $t('normalize.notAddScreen') : ''">—</span>
           </div>
         </div>
+
+        <button
+          v-if="groupedItems.normalized.length > 0"
+          class="normalized-disclosure"
+          type="button"
+          :aria-expanded="normalizedExpanded"
+          @click="normalizedExpanded = !normalizedExpanded"
+        >
+          <span class="disclosure-title">
+            <span class="disclosure-icon" :class="{ expanded: normalizedExpanded }" aria-hidden="true">›</span>
+            {{ $t('normalize.normalizedGroup', { count: groupedItems.normalized.length }) }}
+          </span>
+          <span class="disclosure-action">
+            {{ normalizedExpanded ? $t('normalize.collapseGroup') : $t('normalize.expandGroup') }}
+          </span>
+        </button>
       </div>
     </div>
   </div>
@@ -346,6 +384,7 @@ async function handleRestore(it: NormalizeItem) {
 }
 
 .material-row {
+  order: 0;
   display: grid;
   grid-template-columns: var(--grid-cols);
   align-items: center;
@@ -356,6 +395,61 @@ async function handleRestore(it: NormalizeItem) {
 
 .material-row:hover {
   background: var(--bg-hover);
+}
+
+.material-row.normalized-row {
+  order: 2;
+}
+
+.normalized-disclosure {
+  order: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-2);
+  border: 0;
+  border-bottom: 1px solid var(--border-light);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.normalized-disclosure:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.normalized-disclosure:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.disclosure-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.disclosure-icon {
+  display: inline-flex;
+  color: var(--text-tertiary);
+  transform: rotate(0deg);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.disclosure-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.disclosure-action {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
 }
 
 .thumb {

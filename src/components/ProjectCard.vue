@@ -3,6 +3,7 @@ import { computed, ref, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { getPsdThumbnail } from '../composables/usePsdThumbnail'
+import { mediaVersion } from '../composables/useMediaCache'
 import NoteTooltip from './NoteTooltip.vue'
 import type { ProjectInfo } from '../composables/useProjects'
 
@@ -10,6 +11,8 @@ useI18n()
 
 const props = defineProps<{
   project: ProjectInfo
+  /** Sharp Grid 试点：true 时渲染分段进度 + 完成度 hero（DOM 分支，结构不动） */
+  craft?: boolean
 }>()
 
 const showMenu = ref(false)
@@ -18,7 +21,8 @@ const menuStyle = ref({ top: '0px', right: '0px' })
 
 async function toggleMenu() {
   showMenu.value = !showMenu.value
-  if (showMenu.value) {
+  // craft 抽屉是卡片内联覆盖层，不需要 viewport 定位；仅原版 Teleport 下拉菜单需要
+  if (showMenu.value && !props.craft) {
     await nextTick()
     if (menuBtnRef.value) {
       const rect = menuBtnRef.value.getBoundingClientRect()
@@ -86,7 +90,8 @@ async function loadIcon() {
   }
   const ext = iconPath.split('.').pop()?.toLowerCase() ?? ''
   if (ext === 'png') {
-    iconSrc.value = convertFileSrc(iconPath)
+    // 带刷新代次：同名替换项目图标后，不破缓存的话 webview 会一直给旧图
+    iconSrc.value = `${convertFileSrc(iconPath)}?v=${mediaVersion.value}`
   } else if (ext === 'psd' || ext === 'psb') {
     iconSrc.value = await getPsdThumbnail(iconPath, 128)
   } else {
@@ -109,6 +114,10 @@ async function setPriority(option: string) {
   <div
     ref="cardRef"
     class="project-card glass-subtle"
+    :class="[
+      project.priority ? `prio-${project.priority}` : '',
+      { 'sg-done': craft && progressPercent >= 100 },
+    ]"
     @click="$emit('click', project)"
   >
     <!-- 左侧 ICON -->
@@ -150,8 +159,15 @@ async function setPriority(option: string) {
       </span>
     </div>
 
-    <!-- 底部进度条 -->
-    <div class="card-progress">
+    <!-- 底部进度条 — Sharp Grid：分段刻度（一格一任务）；原版：平滑条 -->
+    <!-- 完成时刻度变绿由 .sg-done 经 --sg-band 驱动，进度条本身无需 is-complete 标记 -->
+    <div v-if="craft" class="card-progress sg-progress">
+      <div class="sg-seg">
+        <i v-for="n in totalTaskCount" :key="n" :class="{ on: n <= completedTaskCount }" />
+      </div>
+      <span class="sg-readout">{{ completedTaskCount }}/{{ totalTaskCount }}</span>
+    </div>
+    <div v-else class="card-progress">
       <div class="progress-bar">
         <div
           class="progress-fill"
@@ -162,50 +178,99 @@ async function setPriority(option: string) {
       <span class="progress-text">{{ completedTaskCount }} / {{ totalTaskCount }} {{ $t('project.taskCount') }}</span>
     </div>
 
-    <!-- ··· 菜单按钮（hover 时显示） -->
-    <button
-      ref="menuBtnRef"
-      class="card-menu-btn"
-      :class="{ visible: showMenu }"
-      @click.stop="toggleMenu"
-      @blur="showMenu = false"
-    >
-      ···
-    </button>
+    <!-- Sharp Grid：已完成「角标绶带」——左下角双色折角（暗绿内角 + 亮绿斜带）。停(low)=废弃，即使 100% 也不挂 -->
+    <div v-if="craft && progressPercent >= 100 && project.priority !== 'low'" class="sg-ribbon" aria-hidden="true"></div>
 
-    <!-- 下拉菜单 — Teleport 到 body 避免父级 backdrop-filter 干扰毛玻璃 -->
-    <Teleport to="body">
-      <Transition name="card-menu">
-        <div v-if="showMenu" class="card-menu glass-medium" :style="menuStyle" @click.stop>
-          <div class="menu-priority-section">
-            <span class="menu-priority-label">{{ $t('priority.setPriority') }}</span>
-            <div class="menu-priority-pills">
-              <button
-                v-for="p in ['high', 'medium', 'normal', 'low']"
-                :key="p"
-                class="priority-pill"
-                :class="[`priority-pill--${p}`, { 'is-active': p === 'normal' ? !project.priority : project.priority === p }]"
-                @mousedown.prevent="setPriority(p)"
-              >{{ $t(`priority.${p}`) }}</button>
+    <!-- 原版毛玻璃卡片：··· 菜单按钮（hover 时显示）+ Teleport 下拉菜单，不变 -->
+    <template v-if="!craft">
+      <button
+        ref="menuBtnRef"
+        class="card-menu-btn"
+        :class="{ visible: showMenu }"
+        @click.stop="toggleMenu"
+        @blur="showMenu = false"
+      >
+        ···
+      </button>
+
+      <!-- 下拉菜单 — Teleport 到 body 避免父级 backdrop-filter 干扰毛玻璃 -->
+      <Teleport to="body">
+        <Transition name="card-menu">
+          <div v-if="showMenu" class="card-menu glass-medium" :style="menuStyle" @click.stop>
+            <div class="menu-priority-section">
+              <span class="menu-priority-label">{{ $t('priority.setPriority') }}</span>
+              <div class="menu-priority-pills">
+                <button
+                  v-for="p in ['high', 'medium', 'normal', 'low']"
+                  :key="p"
+                  class="priority-pill"
+                  :class="[`priority-pill--${p}`, { 'is-active': p === 'normal' ? !project.priority : project.priority === p }]"
+                  @mousedown.prevent="setPriority(p)"
+                >{{ $t(`priority.${p}`) }}</button>
+              </div>
             </div>
+            <div class="menu-divider" />
+            <button class="menu-item" @mousedown.prevent="$emit('action', project, 'note')">
+              {{ $t('note.note') }}
+            </button>
+            <div class="menu-divider" />
+            <button class="menu-item" @mousedown.prevent="$emit('action', project, 'rename')">
+              {{ $t('project.renameProject') }}
+            </button>
+            <button class="menu-item" @mousedown.prevent="$emit('action', project, 'deadline')">
+              {{ $t('project.editDeadline') }}
+            </button>
+            <button class="menu-item menu-item--danger" @mousedown.prevent="$emit('action', project, 'delete')">
+              {{ $t('project.deleteProject') }}
+            </button>
           </div>
-          <div class="menu-divider" />
-          <button class="menu-item" @mousedown.prevent="$emit('action', project, 'note')">
-            {{ $t('note.note') }}
-          </button>
-          <div class="menu-divider" />
-          <button class="menu-item" @mousedown.prevent="$emit('action', project, 'rename')">
-            {{ $t('project.renameProject') }}
-          </button>
-          <button class="menu-item" @mousedown.prevent="$emit('action', project, 'deadline')">
-            {{ $t('project.editDeadline') }}
-          </button>
-          <button class="menu-item menu-item--danger" @mousedown.prevent="$emit('action', project, 'delete')">
-            {{ $t('project.deleteProject') }}
-          </button>
+        </Transition>
+      </Teleport>
+    </template>
+
+    <!-- Sharp Grid 精装卡片：飘带按钮 + 满卡覆盖式功能抽屉（结构/皮肤见 sharp-grid.css） -->
+    <template v-else>
+      <button
+        class="sg-drawer-btn"
+        :class="{ 'is-open': showMenu }"
+        :title="$t('common.more')"
+        @click.stop="toggleMenu"
+        @blur="showMenu = false"
+      />
+
+      <Transition name="sg-drawer-slide">
+        <div v-if="showMenu" class="sg-drawer" @click.stop>
+          <!-- 左栏：优先度四档，锐角左色带条目（沿用卡片左色带语系，非胶囊） -->
+          <div class="sg-drawer-priority">
+            <button
+              v-for="p in ['high', 'medium', 'normal', 'low']"
+              :key="p"
+              class="sg-prio-item"
+              :class="[`sg-prio-item--${p}`, { 'is-active': p === 'normal' ? !project.priority : project.priority === p }]"
+              @mousedown.prevent="setPriority(p)"
+            >{{ $t(`priority.${p}`) }}</button>
+          </div>
+
+          <div class="sg-drawer-divider" aria-hidden="true"></div>
+
+          <!-- 右栏：2×2 等分操作网格，删除只靠危险色降权，不靠缩小 -->
+          <div class="sg-drawer-grid">
+            <button class="sg-drawer-item" @mousedown.prevent="$emit('action', project, 'note')">
+              {{ $t('note.note') }}
+            </button>
+            <button class="sg-drawer-item" @mousedown.prevent="$emit('action', project, 'rename')">
+              {{ $t('project.renameProject') }}
+            </button>
+            <button class="sg-drawer-item" @mousedown.prevent="$emit('action', project, 'deadline')">
+              {{ $t('project.editDeadline') }}
+            </button>
+            <button class="sg-drawer-item sg-drawer-item--danger" @mousedown.prevent="$emit('action', project, 'delete')">
+              {{ $t('project.deleteProject') }}
+            </button>
+          </div>
         </div>
       </Transition>
-    </Teleport>
+    </template>
 
     <NoteTooltip
       v-if="project.note"

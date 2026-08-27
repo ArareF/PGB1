@@ -1,0 +1,936 @@
+/* =============================================================================
+   Sharp Grid 全应用深色组件配方
+   -----------------------------------------------------------------------------
+   主题 token SSOT：src/styles/design-system.css → :root[data-theme="dark"]
+   规范来源：docs/新设计风格.md §14
+   范围：主应用、全部页面、公共组件、弹窗与独立窗口
+   红线：不改布局；无毛玻璃、无大阴影模糊、无大圆角
+   ============================================================================= */
+
+/* 主页工作区：深底 + 24px 蓝图网格（§12.7，纯渐变零成本） */
+:root[data-theme="dark"] .home-page {
+  background-color: var(--sg-bg-work);
+  background-image:
+    linear-gradient(rgba(128, 128, 128, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(128, 128, 128, .045) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* =============================================================================
+   项目卡：中和玻璃 → 叠加 Sharp Grid 质感
+   ============================================================================= */
+
+/* 内容整体垂直居中：基线用 1fr auto 把进度条顶到底；矮卡片后改 auto auto + 居中 */
+:root[data-theme="dark"] .project-card {
+  grid-template-rows: auto auto;
+  align-content: center;
+}
+
+/* 表面三件套 ① 微渐变（金属漆面）+ ② 顶边高光/底边暗线 + 左色带（box-shadow inset） */
+:root[data-theme="dark"] .project-card.glass-subtle {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: linear-gradient(180deg, #1e1e1e 0%, #181818 100%);
+  /* 外围描边 = 卡片强调色，按 --band-border-alpha 降透明度（见上方 token） */
+  border: 1px solid color-mix(in srgb, var(--sg-band) var(--band-border-alpha), transparent);
+  /* 放宽 overflow:clip 的裁切边到描边外 2px，让绶带 1px 溢出盖住角上的描边 */
+  overflow-clip-margin: 2px;
+  box-shadow:
+    inset var(--band-w, 4px) 0 0 0 var(--sg-band, var(--sg-line-strong)),
+    var(--edge-hi), var(--edge-lo);
+  transition:
+    background .14s, border-color .16s,
+    transform .16s cubic-bezier(.2, .7, .3, 1), box-shadow .2s ease;
+}
+
+/* hover：整卡轻浮 -2px + 漆面提亮（不放大不投影，沿用 --card-hover-lift 语义） */
+:root[data-theme="dark"] .project-card.glass-subtle:hover {
+  background: linear-gradient(180deg, #262626 0%, #1f1f1f 100%);
+  border-color: color-mix(in srgb, var(--sg-band) var(--band-border-alpha), transparent);  /* hover 同样的 30% 描边，不退灰 */
+  transform: translateY(-2px);
+  box-shadow:
+    inset var(--band-w, 4px) 0 0 0 var(--sg-band, var(--sg-line-strong)),
+    var(--edge-hi), var(--edge-lo);
+}
+
+/* 卡片强调色 --sg-band：统一驱动 描边 + 左色带 + 进度刻度（"改重要度整卡跟着变"）。
+   优先级：完成(绿) > 重要度(急红/高橙/普蓝) > 停(废弃灰)。
+   产品总监 2026-06-23 改版：普通档由中性灰改蓝；新增「100% 完成 → 整卡转绿」覆盖。 */
+:root[data-theme="dark"] .project-card             { --sg-band: var(--acc-blue); }   /* 普通 / 未设 = 蓝（默认强调色） */
+:root[data-theme="dark"] .project-card.prio-high   { --sg-band: var(--acc-red); }    /* 急 = 红 */
+:root[data-theme="dark"] .project-card.prio-medium { --sg-band: var(--acc-amber); }  /* 高 = 橙 */
+:root[data-theme="dark"] .project-card.prio-low    { --sg-band: var(--sg-line); opacity: .62; } /* 停 = 废弃压暗（不参与蓝/绿） */
+/* 完成度覆盖：100% 完成 → 整卡强调色转绿（描边/左色带/刻度同步）。停档保持废弃外观，故 :not(.prio-low） */
+:root[data-theme="dark"] .project-card.sg-done:not(.prio-low) { --sg-band: var(--sg-progress); }
+
+/* 表面三件套 ③ 点阵光照：落在内容之下、底色之上（z-index:-1），从左上沿 135° 渐隐 */
+:root[data-theme="dark"] .project-card.glass-subtle::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(circle,
+    rgba(255, 255, 255, var(--dot-alpha)) var(--dot-r),
+    transparent calc(var(--dot-r) + .2px));
+  background-size: var(--dot-gap) var(--dot-gap);
+  -webkit-mask-image: linear-gradient(135deg, #000 0%, rgba(0, 0, 0, .55) 16%, transparent var(--dot-fade));
+          mask-image: linear-gradient(135deg, #000 0%, rgba(0, 0, 0, .55) 16%, transparent var(--dot-fade));
+}
+/* 停（废弃）：把点阵层替换为 45° 停用斜纹。深底必须用亮线（黑线叠黑底=隐形，§14.4 坑） */
+:root[data-theme="dark"] .project-card.prio-low.glass-subtle::before {
+  background-image: repeating-linear-gradient(45deg,
+    transparent 0 7px,
+    rgba(255, 255, 255, .055) 7px 8px);
+  background-size: auto;
+  -webkit-mask-image: none;
+          mask-image: none;
+}
+/* 噪点层复用 glass-subtle::after（--noise-opacity 已在作用域调高至 .05） */
+
+/* 图标方块：去圆角，工业正方形 */
+:root[data-theme="dark"] .card-icon,
+:root[data-theme="dark"] .card-icon-img,
+:root[data-theme="dark"] .card-icon--has-image::after { border-radius: 0; }
+
+/* 优先度已由左色带编码 → 隐藏冗余的优先度圆点，避免双重编码 */
+:root[data-theme="dark"] .priority-dot { display: none; }
+
+/* =============================================================================
+   排版重音（§14.5）：名字成 hero，截止/百分比走等宽
+   ============================================================================= */
+:root[data-theme="dark"] .card-name { font-size: 15px; font-weight: 400; letter-spacing: .01em; margin-left: 3px; }
+:root[data-theme="dark"] .card-deadline {
+  font-family: var(--sg-font-mono);
+  font-size: 8px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-left: 3px;
+}
+
+/* 排版更宽松：字号变小后加大行间距，留白相对更多 */
+:root[data-theme="dark"] .card-info { gap: var(--spacing-2); }
+:root[data-theme="dark"] .card-progress { margin-top: var(--spacing-4); }
+
+/* =============================================================================
+   分段进度条（§13.6）：一格 = 一个真实任务，平行四边形斜切，首段外缘竖直、末段暴露右斜角
+   ============================================================================= */
+:root[data-theme="dark"] .sg-progress { gap: var(--spacing-3); }
+
+:root[data-theme="dark"] .sg-seg {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+  height: 5.4px;   /* 比基线 6px 矮 10% */
+}
+:root[data-theme="dark"] .sg-seg i {
+  flex: 1;
+  background: var(--bg-hover);
+  clip-path: polygon(2px 0, 100% 0, calc(100% - 2px) 100%, 0 100%);
+}
+/* 首段左缘竖直；末段不再裁切，暴露右侧斜角 */
+:root[data-theme="dark"] .sg-seg i:first-child { clip-path: polygon(0 0, 100% 0, calc(100% - 2px) 100%, 0 100%); }
+/* 进度刻度同步整卡强调色：完成时 --sg-band 已转绿 → 刻度自动变绿（无需单独 is-complete 规则） */
+:root[data-theme="dark"] .sg-seg i.on { background: var(--sg-band); }
+
+:root[data-theme="dark"] .sg-readout {
+  flex: none;
+  font-family: var(--sg-font-mono);
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* =============================================================================
+   已完成「角标绶带」（§完成度专属）：左下角贴产品总监手作位图 Sash.png
+   仅 craft + 100% 完成、且重要度非「停」时出现（见 ProjectCard v-if）
+   位图含绿绶带 + 暗角 + 折痕光影，右上透明；颜色/光影烤死在图内（不再走 token）
+   ============================================================================= */
+:root[data-theme="dark"] .sg-ribbon {
+  position: absolute;
+  bottom: -1px;
+  left: -1px;
+  width: 69px;
+  height: 69px;
+  z-index: 4;
+  pointer-events: none;
+  background: url('../../assets/Sash.png') left bottom / contain no-repeat;
+}
+
+/* =============================================================================
+   飘带按钮 + 满卡覆盖式功能抽屉（替代原版 ··· 下拉菜单，仅 craft 生效）
+   产品总监 2026-07-10 拍板：卡片只有 320×126，抽屉直接覆盖整卡，不做半卡浮层
+   飘带位图 assets/Sash_tool.png（11×50，与已有 Sash.png 完成绶带同一视觉语系）
+   抽屉纯色面板（无 backdrop-filter，遵守卡片性能铁律），不再 Teleport 到 body
+   ============================================================================= */
+:root[data-theme="dark"] .sg-drawer-btn {
+  --sg-drawer-btn-w: 22px;
+  --sg-drawer-btn-peek: 3px;
+  position: absolute;
+  top: 50%;
+  right: calc(-1 * var(--sg-drawer-btn-peek));
+  width: var(--sg-drawer-btn-w);
+  height: 64px;
+  z-index: 7;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: url('../../assets/Sash_tool.png') center / contain no-repeat;
+  /* 静止态：整体藏到卡片右缘之外（位移量 = 自身宽度 - 露出量，正好把左缘推到卡片右缘）。
+     卡片 overflow-clip-margin:2px 会漏出 2px，故仍留 opacity:0 兜底。 */
+  opacity: 0;
+  transform: translateY(-50%) translateX(calc(var(--sg-drawer-btn-w) - var(--sg-drawer-btn-peek)));
+  transition: opacity var(--duration-fast) var(--ease-out),
+              transform var(--duration-normal) var(--ease-out);
+}
+/* hover：从右缘外向左滑入贴边位（与展开时继续向左滑到左缘，构成同一条方向连贯的运动线）
+   :not(.is-open) 避免跟下面的展开态规则抢 transform——之前两条规则同时命中时，
+   :hover 那条选择器层级更高（4 层 vs 3 层），会一直压制展开态的位移，
+   必须移出鼠标才失效，看起来像"松手才滑走"。加 :not(.is-open) 让两条规则互斥，不再比优先级。 */
+:root[data-theme="dark"] .project-card:hover .sg-drawer-btn:not(.is-open) {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+/* 打开态：跟抽屉一起滑到卡片左侧（镜像贴边露出，跟合上时对称），用 scaleX(-1) 水平镜像指向反转
+   ——不用 rotate(180deg)，飘带是竖长条形，旋转会连同上下一起翻转，镜像才是只翻左右 */
+:root[data-theme="dark"] .sg-drawer-btn.is-open {
+  opacity: 1;
+  transform:
+    translateY(-50%)
+    translateX(calc(-1 * (var(--card-project-width) - var(--sg-drawer-btn-w) + 2 * var(--sg-drawer-btn-peek))))
+    scaleX(-1);
+}
+
+/* 左右分栏：左=优先度四档，右=操作网格，中间 1px 竖分隔线 */
+:root[data-theme="dark"] .sg-drawer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  background: linear-gradient(180deg, var(--sg-bg-panel-2) 0%, var(--sg-bg-panel) 100%);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+}
+
+/* --- 左栏：优先度。抽屉里没有"设置优先级"文字标签（126px 放不下），色带 + 文案自明 --- */
+:root[data-theme="dark"] .sg-drawer-priority {
+  flex: none;
+  width: 74px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 锐角条目：左 3px 实色带 + 透明底，直接沿用卡片左色带的视觉语系，不用胶囊 */
+:root[data-theme="dark"] .sg-prio-item {
+  height: 22px;
+  padding: 0 var(--spacing-2);
+  border: none;
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-align: left;
+  color: var(--text-tertiary);
+  background: transparent;
+  box-shadow: inset 3px 0 0 0 var(--sg-prio-c);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+/* 每档一色（定义单独成行，便于 check-css-tokens 识别为定义而非未定义引用） */
+:root[data-theme="dark"] .sg-prio-item--high {
+  --sg-prio-c: var(--acc-red);
+}
+:root[data-theme="dark"] .sg-prio-item--medium {
+  --sg-prio-c: var(--acc-amber);
+}
+:root[data-theme="dark"] .sg-prio-item--normal {
+  --sg-prio-c: var(--acc-blue);
+}
+:root[data-theme="dark"] .sg-prio-item--low {
+  --sg-prio-c: var(--sg-line-strong);
+}
+
+:root[data-theme="dark"] .sg-prio-item:hover {
+  background: color-mix(in srgb, var(--sg-prio-c) 10%, transparent);
+  color: var(--text-secondary);
+}
+/* 选中：底色染上该档强调色，文字提亮 —— 与卡片 --sg-band 的"状态即颜色"一致 */
+:root[data-theme="dark"] .sg-prio-item.is-active {
+  background: color-mix(in srgb, var(--sg-prio-c) 22%, transparent);
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] .sg-drawer-divider {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  background: var(--sg-line);
+}
+
+/* --- 右栏：操作区 2×2 等分网格。四格同尺寸，"修改截止日期"这类长文案也放得开
+   （三等分一行时会挤）。删除不靠缩小降权，只靠危险色区分 —— 见下方 --danger --- */
+:root[data-theme="dark"] .sg-drawer-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+:root[data-theme="dark"] .sg-drawer-item {
+  height: 26px;
+  border: 1px solid var(--sg-line);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--sg-bg-panel);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+:root[data-theme="dark"] .sg-drawer-item:hover {
+  background: var(--sg-bg-panel-2);
+  color: var(--text-primary);
+  border-color: var(--sg-line-strong);
+}
+
+/* 删除：与其余三格同尺寸，仅用危险色标记（红字 + 红描边），hover 才铺红底 */
+:root[data-theme="dark"] .sg-drawer-item--danger {
+  color: var(--acc-red);
+  border-color: color-mix(in srgb, var(--acc-red) 40%, transparent);
+}
+:root[data-theme="dark"] .sg-drawer-item--danger:hover {
+  background: color-mix(in srgb, var(--acc-red) 14%, var(--sg-bg-panel));
+  color: var(--acc-red);
+  border-color: var(--acc-red);
+}
+
+/* 抽屉展开/收起：整块面板从卡片右侧平移进入/退出，跟飘带按钮的滑动方向一致
+   （.project-card 的 overflow:clip 负责裁掉滑出卡片外的部分，无需额外声明） */
+.sg-drawer-slide-enter-active,
+.sg-drawer-slide-leave-active {
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+.sg-drawer-slide-enter-from,
+.sg-drawer-slide-leave-to {
+  transform: translateX(100%);
+}
+
+/* =============================================================================
+   全应用工作区与共享外壳
+   ============================================================================= */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] #app {
+  background: var(--sg-bg-work);
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] body {
+  font-family: var(--sg-font-display);
+}
+
+:root[data-theme="dark"] .main-layout {
+  background-color: var(--sg-bg-work);
+  background-image:
+    linear-gradient(var(--sg-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--sg-grid-line) 1px, transparent 1px);
+  background-size: var(--sg-grid-size) var(--sg-grid-size);
+  border-radius: var(--radius-floating-island);
+}
+
+:root[data-theme="dark"] .main-layout::before {
+  opacity: 0;
+}
+
+:root[data-theme="dark"] :is(
+  .main-content,
+  .title-bar-center,
+  .sidebar,
+  .status-bar__body,
+  .more-dropdown,
+  .sidebar-shell,
+  .control-panel,
+  .settings-container
+) {
+  background: var(--sg-surface-gradient);
+  border: 1px solid var(--sg-line);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="dark"] .main-content {
+  position: relative;
+  overflow: hidden;
+}
+
+:root[data-theme="dark"] .page-wrapper {
+  background-color: var(--sg-bg-work);
+  background-image:
+    linear-gradient(var(--sg-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--sg-grid-line) 1px, transparent 1px);
+  background-size: var(--sg-grid-size) var(--sg-grid-size);
+}
+
+:root[data-theme="dark"] :is(.title-bar-left, .title-bar-center, .status-bar__body) {
+  border-radius: var(--radius-sm);
+}
+
+:root[data-theme="dark"] :is(.title-text, .sub-title, .page-title, .section-label) {
+  letter-spacing: var(--tracking-wide);
+}
+
+:root[data-theme="dark"] :is(.title-bar-divider, .status-bar__config-divider, .divider) {
+  background: var(--sg-line);
+  box-shadow: var(--sg-etched-line);
+}
+
+:root[data-theme="dark"] :is(.more-menu-btn, .window-control, .back-button) {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--sg-line);
+  background: var(--sg-surface-gradient);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+}
+
+:root[data-theme="dark"] :is(.more-menu-btn, .window-control, .back-button):hover {
+  color: var(--text-primary);
+  border-color: var(--sg-line-strong);
+  background: var(--sg-surface-hover);
+  transform: translateY(var(--sg-hover-lift));
+}
+
+:root[data-theme="dark"] .window-control.close:hover {
+  border-color: var(--acc-red);
+  color: var(--acc-red);
+  background: var(--sg-danger-wash);
+}
+
+:root[data-theme="dark"] :is(.more-dropdown, .card-menu, .aep-dropdown, .status-bar__config) {
+  border-radius: var(--radius-sm);
+  background: var(--sg-bg-panel-3);
+  border: 1px solid var(--sg-line-strong);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="dark"] :is(.dropdown-item, .menu-item, .aep-file-item) {
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+:root[data-theme="dark"] :is(.dropdown-item, .menu-item, .aep-file-item):hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* =============================================================================
+   基础交互控件
+   ============================================================================= */
+
+:root[data-theme="dark"] :is(
+  input,
+  textarea,
+  select,
+  .form-input,
+  .form-select,
+  .custom-input,
+  .note-textarea
+) {
+  border-radius: var(--radius-input);
+  color: var(--input-text);
+  background: var(--input-bg);
+  border: 1px solid var(--sg-line-strong);
+  box-shadow: var(--sg-inset-well);
+}
+
+:root[data-theme="dark"] :is(input, textarea, select, .form-input, .form-select, .custom-input):focus {
+  border-color: var(--acc-blue);
+  box-shadow: var(--sg-inset-well), var(--sg-focus-ring);
+  outline: none;
+}
+
+:root[data-theme="dark"] :is(button, [role="button"], input, textarea, select):focus-visible {
+  outline: 1px solid var(--acc-blue);
+  outline-offset: 2px;
+  box-shadow: var(--sg-focus-ring);
+}
+
+:root[data-theme="dark"] button {
+  font-family: inherit;
+}
+
+:root[data-theme="dark"] :is(
+  .add-btn,
+  .action-btn,
+  .browse-btn,
+  .primary-btn,
+  .secondary-btn,
+  .confirm-btn,
+  .cancel-btn,
+  .save-btn,
+  .test-btn,
+  .folder-btn,
+  .note-btn,
+  .view-btn,
+  .toolbar-btn,
+  .pb-tool-btn,
+  .pb-action-btn
+) {
+  border-radius: var(--radius-button);
+  border: 1px solid var(--sg-line-strong);
+  color: var(--text-secondary);
+  background: var(--sg-surface-gradient);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+:root[data-theme="dark"] :is(
+  .add-btn,
+  .action-btn,
+  .browse-btn,
+  .primary-btn,
+  .secondary-btn,
+  .confirm-btn,
+  .cancel-btn,
+  .save-btn,
+  .test-btn,
+  .folder-btn,
+  .note-btn,
+  .view-btn,
+  .toolbar-btn,
+  .pb-tool-btn,
+  .pb-action-btn
+):not(:disabled):hover {
+  color: var(--text-primary);
+  border-color: var(--acc-blue);
+  background: var(--sg-surface-hover);
+  transform: translateY(var(--sg-hover-lift));
+}
+
+:root[data-theme="dark"] :is(.primary-btn, .confirm-btn, .save-btn, .add-btn) {
+  color: var(--acc-blue);
+  border-color: color-mix(in srgb, var(--acc-blue) 56%, var(--sg-line));
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--spacing-2)), calc(100% - var(--spacing-2)) 100%, 0 100%);
+}
+
+:root[data-theme="dark"] :is(.danger-btn, .delete-btn, .menu-item--danger) {
+  color: var(--acc-red);
+  border-color: color-mix(in srgb, var(--acc-red) 48%, var(--sg-line));
+  background: var(--sg-danger-wash);
+}
+
+:root[data-theme="dark"] :is(.success-btn, .test-success) {
+  color: var(--acc-green);
+  border-color: color-mix(in srgb, var(--acc-green) 48%, var(--sg-line));
+  background: var(--sg-success-wash);
+}
+
+:root[data-theme="dark"] :is(button, input, textarea, select):disabled {
+  opacity: var(--sg-disabled-opacity);
+  cursor: not-allowed;
+}
+
+:root[data-theme="dark"] :is(
+  .sort-tabs,
+  .view-buttons,
+  .tab-bar,
+  .mode-btn-group,
+  .theme-toggle-row,
+  .type-selector,
+  .segmented-control
+) {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--sg-line);
+  background: var(--sg-bg-panel);
+  box-shadow: var(--sg-inset-well);
+}
+
+:root[data-theme="dark"] :is(
+  .sort-tab,
+  .view-button,
+  .view-btn,
+  .tab-btn,
+  .mode-btn,
+  .theme-btn,
+  .type-btn
+) {
+  position: relative;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  background: transparent;
+}
+
+:root[data-theme="dark"] :is(
+  .sort-tab.active,
+  .view-button.active,
+  .view-btn.active,
+  .tab-btn.active,
+  .mode-btn.active,
+  .theme-btn.active,
+  .type-btn.active
+) {
+  color: var(--text-primary);
+  background: var(--sg-accent-wash);
+  box-shadow: inset 0 -3px 0 var(--acc-blue);
+}
+
+:root[data-theme="dark"] :is(
+  .status-tag,
+  .progress-tag,
+  .format-tag,
+  .size-tag,
+  .frame-badge,
+  .priority-pill,
+  .tag
+) {
+  border-radius: var(--radius-tag);
+  border: 1px solid var(--sg-line);
+  box-shadow: var(--edge-hi);
+  font-family: var(--sg-font-mono);
+  letter-spacing: var(--tracking-wide);
+}
+
+/* =============================================================================
+   卡片、列表与内容面板
+   ============================================================================= */
+
+:root[data-theme="dark"] :is(.task-card, .material-card, .normal-card, .preview-video-card) {
+  border-radius: var(--card-border-radius);
+  background: var(--sg-surface-gradient);
+  border: 1px solid var(--sg-line);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="dark"] :is(.task-card, .material-card, .normal-card, .preview-video-card):hover {
+  background: var(--sg-surface-hover);
+  border-color: var(--sg-line-strong);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+  transform: translateY(var(--card-hover-lift));
+}
+
+:root[data-theme="dark"] :is(.task-card, .material-card, .normal-card, .preview-video-card).selected,
+:root[data-theme="dark"] :is(.task-card, .material-card, .normal-card, .preview-video-card).checked,
+:root[data-theme="dark"] :is(.task-card, .material-card, .normal-card, .preview-video-card).multi-checked {
+  border-color: var(--acc-blue);
+  box-shadow: var(--edge-hi), var(--edge-lo), inset 0 3px 0 var(--acc-blue);
+}
+
+:root[data-theme="dark"] .task-card {
+  --sg-task-band: var(--acc-blue);
+  box-shadow: inset var(--band-w) 0 0 var(--sg-task-band), var(--edge-hi), var(--edge-lo);
+}
+
+:root[data-theme="dark"] .task-card:has(.priority-dot--high) {
+  --sg-task-band: var(--acc-red);
+}
+
+:root[data-theme="dark"] .task-card:has(.priority-dot--medium) {
+  --sg-task-band: var(--acc-amber);
+}
+
+:root[data-theme="dark"] .task-card:has(.priority-dot--low) {
+  --sg-task-band: var(--sg-line-strong);
+  opacity: var(--sg-disabled-opacity);
+}
+
+:root[data-theme="dark"] .task-card:has(.status-completed):not(:has(.priority-dot--low)) {
+  --sg-task-band: var(--acc-green);
+}
+
+:root[data-theme="dark"] :is(.card-preview, .preview-wrapper, .preview-image-wrap, .preview-psd-wrap) {
+  border-radius: var(--radius-sm);
+  background: var(--sg-bg-well);
+  border: 1px solid var(--sg-line-weak);
+  box-shadow: var(--sg-inset-well);
+}
+
+:root[data-theme="dark"] :is(.task-name, .card-name, .archive-name, .material-name) {
+  color: var(--text-primary);
+  letter-spacing: var(--tracking-wide);
+}
+
+:root[data-theme="dark"] :is(
+  .archive-group,
+  .archive-version,
+  .material-subgroup,
+  .edit-row,
+  .material-row,
+  .about-card,
+  .attendance-group,
+  .settings-section,
+  .failed-list,
+  .stats,
+  .tp-preset-section
+) {
+  border-radius: var(--radius-sm);
+  background: var(--sg-surface-gradient);
+  border: 1px solid var(--sg-line);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+}
+
+:root[data-theme="dark"] :is(
+  .group-header,
+  .sub-group-header,
+  .table-head,
+  .sidebar-shell__header,
+  .note-render-header,
+  .note-toolbar,
+  .pb-tab-bar,
+  .pb-toolbar,
+  .pb-statusbar
+) {
+  background: var(--sg-bg-panel-2);
+  border-color: var(--sg-line);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+}
+
+:root[data-theme="dark"] :is(.progress-track, .progress-bar-track, .note-progress-bar, .update-progress-bar) {
+  border-radius: var(--radius-sm);
+  background: var(--sg-bg-well);
+  border: 1px solid var(--sg-line);
+  box-shadow: var(--sg-inset-well);
+}
+
+:root[data-theme="dark"] :is(.progress-fill, .progress-bar-fill, .note-progress-fill, .update-progress-fill) {
+  border-radius: var(--radius-sm);
+  background: var(--acc-blue);
+}
+
+:root[data-theme="dark"] :is(.sidebar-shell, .file-detail-sidebar) {
+  border-radius: var(--radius-sm);
+  background: var(--sg-surface-gradient);
+}
+
+:root[data-theme="dark"] :is(.sidebar-section, .info-row, .version-card, .props .pr) {
+  border-color: var(--sg-line);
+  box-shadow: var(--sg-etched-line);
+}
+
+/* =============================================================================
+   弹窗体系
+   ============================================================================= */
+
+:root[data-theme="dark"] :is(
+  .dialog-overlay,
+  .update-overlay,
+  .onboarding-overlay,
+  .subtask-overlay,
+  .fb-overlay,
+  .inner-dialog-overlay,
+  .sidebar-dialog-overlay
+) {
+  background: var(--overlay-dialog-backdrop);
+}
+
+:root[data-theme="dark"] :is(
+  .dialog-content,
+  .update-dialog,
+  .onboarding-dialog,
+  .subtask-dialog,
+  .fb-dialog,
+  .inner-dialog,
+  .sidebar-dialog
+) {
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--sg-surface-gradient);
+  border: 1px solid var(--sg-line-strong);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="dark"] :is(
+  .dialog-header,
+  .dialog-actions,
+  .update-header,
+  .update-actions,
+  .fb-header,
+  .step-footer,
+  .subtask-actions,
+  .inner-dialog-actions,
+  .sidebar-dialog-actions
+) {
+  border-color: var(--sg-line);
+  box-shadow: var(--sg-etched-line);
+}
+
+/* =============================================================================
+   页面与独立窗口
+   ============================================================================= */
+
+:root[data-theme="dark"] :is(
+  .home-page,
+  .project-page,
+  .task-page,
+  .task-list-page,
+  .time-machine-page,
+  .game-intro-page,
+  .materials-page,
+  .settings-page,
+  .normalize-page,
+  .scale-page,
+  .convert-page
+) {
+  color: var(--text-primary);
+  background-color: transparent;
+}
+
+:root[data-theme="dark"] :is(.page-header, .sub-title-bar) {
+  border-color: var(--sg-line);
+  box-shadow: var(--sg-etched-line);
+}
+
+:root[data-theme="dark"] .settings-page {
+  --settings-accent: var(--acc-blue);
+}
+
+:root[data-theme="dark"] :is(.settings-sidebar, .sidebar-footer) {
+  background: var(--sg-bg-panel);
+  border-color: var(--sg-line);
+}
+
+:root[data-theme="dark"] :is(.settings-tab, .sidebar-tab).active {
+  color: var(--text-primary);
+  background: var(--sg-accent-wash);
+  box-shadow: inset 4px 0 0 var(--acc-blue);
+}
+
+:root[data-theme="dark"] .normalize-table {
+  border: 1px solid var(--sg-line);
+  background: var(--sg-bg-panel);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+}
+
+:root[data-theme="dark"] .material-row:nth-child(even) {
+  background: color-mix(in srgb, var(--sg-bg-panel-2) 72%, transparent);
+}
+
+:root[data-theme="dark"] .reminder-container {
+  border-radius: var(--radius-sm);
+  background: var(--sg-surface-gradient);
+  border: 1px solid var(--sg-line-strong);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="dark"] .missed-clock-out-warning {
+  border-radius: var(--radius-sm);
+  color: var(--acc-amber);
+  background: var(--sg-warning-wash);
+  border: 1px solid color-mix(in srgb, var(--acc-amber) 48%, var(--sg-line));
+}
+
+:root[data-theme="dark"] .translator-window {
+  border-radius: var(--radius-sm);
+  background: var(--sg-surface-gradient);
+  border: 1px solid var(--sg-line-strong);
+  box-shadow: var(--edge-hi), var(--edge-lo);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="dark"] .drag-pill {
+  border-radius: var(--radius-sm);
+  background: var(--sg-line-strong);
+}
+
+:root[data-theme="dark"] .text-container {
+  border-radius: var(--radius-sm);
+  background: var(--sg-bg-well);
+  border: 1px solid var(--sg-line);
+  box-shadow: var(--sg-inset-well);
+}
+
+:root[data-theme="dark"] .pinboard-page {
+  color: var(--text-primary);
+  background: var(--sg-bg-work);
+  border: 1px solid var(--sg-line-strong);
+}
+
+:root[data-theme="dark"] :is(.pb-tab, .pb-window-btn, .pb-tool-btn, .pb-action-btn) {
+  border-radius: var(--radius-sm);
+}
+
+:root[data-theme="dark"] :is(.pb-tab.active, .pb-tool-btn.active) {
+  color: var(--text-primary);
+  background: var(--sg-accent-wash);
+  box-shadow: inset 0 -3px 0 var(--acc-blue);
+}
+
+:root[data-theme="dark"] .pb-canvas-area {
+  background-color: var(--sg-bg-canvas);
+  background-image:
+    linear-gradient(var(--sg-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--sg-grid-line) 1px, transparent 1px);
+  background-size: var(--sg-grid-size) var(--sg-grid-size);
+}
+
+:root[data-theme="dark"] :is(.pin-item, .pb-canvas-inner) {
+  border-radius: var(--radius-sm);
+}
+
+:root[data-theme="dark"] .pin-item.pin-selected {
+  border-color: var(--acc-blue);
+  box-shadow: var(--sg-focus-ring);
+}
+
+/* =============================================================================
+   状态、滚动条与动态降级
+   ============================================================================= */
+
+:root[data-theme="dark"] ::selection {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--acc-blue) 48%, transparent);
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar {
+  width: var(--spacing-2);
+  height: var(--spacing-2);
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: var(--sg-bg-work);
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  border: 2px solid var(--sg-bg-work);
+  border-radius: var(--radius-sm);
+  background: var(--sg-line-strong);
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-quaternary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="dark"] *,
+  :root[data-theme="dark"] *::before,
+  :root[data-theme="dark"] *::after {
+    scroll-behavior: auto;
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
+    transition-duration: 1ms;
+  }
+}

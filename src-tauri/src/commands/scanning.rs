@@ -345,7 +345,7 @@ impl DirSnapshot {
     }
 
     /// 读取 nextcloud 任务目录：根层文件（"." 键）+ original/ 子目录文件（"original" 键）。
-    /// 根层 = 正常交付物（webp）；original/ = 原件直传落点（与交付物隔离，方案 B）。
+    /// 根层 = 正常交付物（webp）；original/ = Spine 原件直传落点（文件或序列目录）。
     fn from_nextcloud_dir(dir: &Path) -> Self {
         let mut subdirs = std::collections::HashMap::new();
         if !dir.exists() {
@@ -380,10 +380,19 @@ impl DirSnapshot {
             .unwrap_or(false)
     }
 
-    /// 在 original/ 子目录（原件直传落点，方案 B）中查找以 base_name 开头的文件
+    /// 在 original/ 子目录中查找以 base_name 开头的 Spine 文件或序列目录
     fn has_file_in_original(&self, base_name: &str) -> bool {
         self.subdirs.get("original")
             .map(|files| files.iter().any(|(n, _, _)| matches_base_name(n, base_name)))
+            .unwrap_or(false)
+    }
+
+    /// 序列帧 Spine 直传必须命中同名目录，不能让同名静帧文件造成误判
+    fn has_dir_in_original(&self, base_name: &str) -> bool {
+        self.subdirs.get("original")
+            .map(|entries| entries.iter().any(|(name, _, is_file)| {
+                !is_file && matches_base_name(name, base_name)
+            }))
             .unwrap_or(false)
     }
 
@@ -931,7 +940,7 @@ fn determine_progress_image_cached(
     done_cache: &DirSnapshot,
     nc_cache: &DirSnapshot,
 ) -> MaterialProgress {
-    // 根层（正常交付）或 original/ 子目录（原件直传，方案 B）任一命中即已上传
+    // 根层（正常交付）或 original/ 子目录（Spine 原件直传）任一命中即已上传
     if nc_cache.has_file_in_root(base_name) || nc_cache.has_file_in_original(base_name) {
         return MaterialProgress::Uploaded;
     }
@@ -950,6 +959,11 @@ fn determine_progress_sequence_cached(
     done_cache: &DirSnapshot,
     nc_cache: &DirSnapshot,
 ) -> MaterialProgress {
+    // Spine 原件直传保留整个序列目录；original/ 中的同名目录是独立合法交付路径，
+    // 不要求 02_done 存在精灵图。
+    if nc_cache.has_dir_in_original(base_name) {
+        return MaterialProgress::Uploaded;
+    }
     let in_nextcloud = nc_cache.has_file_in_root(base_name);
     let in_done_webp = done_cache.has_webp_in_subdirs(base_name, STAGE_PREFIX_ANIM);
     let in_done_any = done_cache.has_file_in_subdirs(base_name, STAGE_PREFIX_ANIM);
@@ -967,6 +981,31 @@ fn determine_progress_sequence_cached(
         return MaterialProgress::Done;
     }
     MaterialProgress::Original
+}
+
+#[cfg(test)]
+mod spine_progress_tests {
+    use super::*;
+    use crate::commands::workflow_paths::DIR_NC_ORIGINAL;
+
+    #[test]
+    fn spine_original_marks_sequence_uploaded() {
+        let done_cache = DirSnapshot { subdirs: std::collections::HashMap::new() };
+        let mut nc_subdirs = std::collections::HashMap::new();
+        nc_subdirs.insert(
+            DIR_NC_ORIGINAL.to_string(),
+            vec![("bonus_vfx_a_add".to_string(), 0, false)],
+        );
+        let nc_cache = DirSnapshot { subdirs: nc_subdirs };
+
+        let progress = determine_progress_sequence_cached(
+            "bonus_vfx_a_add",
+            &done_cache,
+            &nc_cache,
+        );
+
+        assert_eq!(progress, MaterialProgress::Uploaded);
+    }
 }
 
 fn count_frames(dir: &Path) -> u32 {

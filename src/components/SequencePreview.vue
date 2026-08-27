@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { loadSequenceFrames } from '../composables/useFrameCache'
+import { mediaVersion } from '../composables/useMediaCache'
 
 const props = defineProps<{
   folderPath: string
@@ -20,17 +21,40 @@ let animationId: number | null = null
 let lastFrameTime = 0
 const frameInterval = 1000 / (props.fps ?? 24)
 
+/** 重载令牌：手动刷新连点时，慢的那次回来不许覆盖新的（对齐 FileDetailSidebar 的 loadToken） */
+let initToken = 0
+
 async function init() {
+  const token = ++initToken
+  const version = mediaVersion.value
   const filePaths = await invoke<string[]>('list_sequence_frames', {
     dirPath: props.folderPath,
     baseName: props.baseName ?? null,
   })
+  if (token !== initToken) return
   if (filePaths.length === 0) return
 
-  frames = await loadSequenceFrames(props.folderPath, filePaths, props.maxWidth ?? 200)
+  const loadedFrames = await loadSequenceFrames(props.folderPath, filePaths, props.maxWidth ?? 200, version)
+  if (token !== initToken) return
+
+  frames = loadedFrames
   loaded.value = true
   play()
 }
+
+/**
+ * 手动刷新（mediaVersion +1）→ 丢弃本实例已解码的帧重新加载。
+ *
+ * 必须由组件自己监听：卡片 key 是素材路径，原地重转同尺寸时路径不变，Vue 会复用实例、
+ * 不重跑 onMounted——只清模块级 LRU 缓存的话，屏幕上正在播的还是旧帧。
+ */
+watch(mediaVersion, () => {
+  stop()
+  frames = []
+  currentFrame = 0
+  loaded.value = false
+  init()
+})
 
 function drawFrame(index: number) {
   const canvas = canvasRef.value

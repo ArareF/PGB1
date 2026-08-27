@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { IMAGE_EXTS_BROWSE as IMAGE_EXTS, VIDEO_EXTS, PSD_EXTS, PDF_EXTS } from '../config/fileTypes'
 import { getPsdThumbnail, invalidatePsdCache } from '../composables/usePsdThumbnail'
+import { mediaVersion } from '../composables/useMediaCache'
 import NoteTooltip from './NoteTooltip.vue'
 
 const props = defineProps<{
@@ -12,6 +13,16 @@ const props = defineProps<{
   checked?: boolean
   hasNote?: boolean
   notePreview?: string
+  /** 覆盖卡片显示名（素材系列合并时显示基础名而非完整文件名） */
+  displayName?: string
+  /** 名称下方的副标题（如「最新 260807」） */
+  subLabel?: string
+  /** 版本数，>1 时右上角显示角标 */
+  versionCount?: number
+  /** 覆盖右下角格式标签（如多格式时的「PSD·JPG」） */
+  formatLabel?: string
+  /** 覆盖 data-path（多选 / 框选的身份标识），默认取 file.path */
+  selectionPath?: string
 }>()
 
 const cardRef = ref<HTMLElement | null>(null)
@@ -43,7 +54,8 @@ function generateVideoThumbnail() {
   const video = document.createElement('video')
   video.crossOrigin = 'anonymous'
   video.preload = 'metadata'
-  video.src = convertFileSrc(props.file.path)
+  // 带刷新代次：同名覆盖的新视频若走 webview 缓存，截出来还是旧首帧
+  video.src = `${convertFileSrc(props.file.path)}?v=${mediaVersion.value}`
   video.currentTime = 0.1
 
   video.addEventListener('seeked', () => {
@@ -63,7 +75,13 @@ function generateVideoThumbnail() {
   }, { once: true })
 }
 
-onMounted(() => {
+/** 建立视频截帧 / PSD 缩略图的懒加载观察器（挂载 + 手动刷新后各跑一次） */
+function setupThumbnailObservers() {
+  videoObserver?.disconnect()
+  videoObserver = null
+  psdObserver?.disconnect()
+  psdObserver = null
+
   if (isVideo.value && cardRef.value) {
     videoObserver = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting) {
@@ -91,6 +109,21 @@ onMounted(() => {
     }, { threshold: 0 })
     psdObserver.observe(cardRef.value)
   }
+}
+
+onMounted(setupThumbnailObservers)
+
+/**
+ * 手动刷新（mediaVersion +1）→ 丢弃本实例的截帧/缩略图重新生成。
+ *
+ * 观察器是一次性的（触发即 disconnect），卡片 key 又是稳定的文件/系列标识，
+ * 不在这里重建的话：视频永远停在旧首帧；PSD 改动后 Rust 返回 thumbnail_path=null，
+ * 模板会退回到还握着旧 URL 的 psdThumbnail，且再也不会重新请求。
+ */
+watch(mediaVersion, () => {
+  videoThumbnail.value = null
+  psdThumbnail.value = null
+  setupThumbnailObservers()
 })
 
 onUnmounted(() => {
@@ -105,7 +138,7 @@ onUnmounted(() => {
   <button
     ref="cardRef"
     class="normal-card"
-    :data-path="file.path"
+    :data-path="selectionPath ?? file.path"
     @click="$emit('click', file)"
   >
     <!-- 多选复选框 -->
@@ -114,13 +147,15 @@ onUnmounted(() => {
         <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
       </svg>
     </span>
+    <!-- 版本数角标（素材系列合并时显示） -->
+    <span v-if="versionCount && versionCount > 1" class="version-badge">{{ versionCount }}</span>
     <!-- 预览区域 -->
     <div class="preview-wrapper">
       <div class="card-preview">
         <!-- 图片预览 -->
         <img
           v-if="isImage"
-          :src="convertFileSrc(file.path)"
+          :src="`${convertFileSrc(file.path)}?v=${mediaVersion}`"
           :alt="file.name"
           class="preview-img"
           loading="lazy"
@@ -180,16 +215,17 @@ onUnmounted(() => {
 
       <!-- 格式标签（右下角，独立于预览容器） -->
       <span class="format-tag">
-        {{ file.extension ? file.extension.toUpperCase() : 'DIR' }}
+        {{ formatLabel ?? (file.extension ? file.extension.toUpperCase() : 'DIR') }}
       </span>
     </div>
 
     <!-- 文件信息 -->
     <div class="card-info">
       <div class="card-name-row">
-        <span class="card-name">{{ file.name }}</span>
+        <span class="card-name">{{ displayName ?? file.name }}</span>
         <svg v-if="hasNote" class="note-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       </div>
+      <span v-if="subLabel" class="card-sub-label">{{ subLabel }}</span>
     </div>
 
     <NoteTooltip
@@ -270,9 +306,38 @@ onUnmounted(() => {
 .card-info {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-3);
+  gap: var(--spacing-1);
   padding-top: var(--card-material-gap);
   min-width: 0;
+}
+
+/* 版本数角标（右上角，与左上角多选框对称） */
+.version-badge {
+  position: absolute;
+  top: var(--spacing-2);
+  right: var(--spacing-2);
+  min-width: var(--card-version-badge-size);
+  height: var(--card-version-badge-size);
+  padding: 0 var(--spacing-1);
+  border-radius: var(--radius-full);
+  background: var(--card-version-badge-bg);
+  color: var(--card-version-badge-text);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-heading);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+}
+
+/* 副标题（最新版本日期） */
+.card-sub-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .card-name-row {

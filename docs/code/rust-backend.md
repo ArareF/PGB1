@@ -11,11 +11,11 @@
 
 应用入口，调 `pgb1_lib::run()`。
 
-### lib.rs（374 行）
+### lib.rs（375 行）
 
 **Tauri 初始化**：
-- 命令注册（约 76 个）
-- 插件注册：`opener` / `drag` / `dialog` / `clipboard` / `notification` / `autostart`
+- 命令注册（约 90 个）
+- 插件注册：`single-instance` / `log` / `autostart` / `opener` / `drag` / `dialog` / `clipboard` / `notification` / `updater` / `process`
 - Windows Acrylic 毛玻璃
 - 调度器初始化 + 补打检测
 - `hotkey` 全局快捷键初始化
@@ -23,7 +23,7 @@
 
 **关闭行为**：`CloseRequested` 拦截 + `hide()` 最小化到系统托盘，不退出。
 
-### models.rs（637 行）
+### models.rs（681 行）
 
 **29 个 struct + 3 个 enum**。见 [数据模型](#数据模型) 小节。
 
@@ -62,6 +62,12 @@
 - `pre_warm_daily_report`：提前 90 秒创建隐藏 WebView 加载 Google Docs
 - 在 `daily_timer_loop` 中日报提醒前 90 秒触发
 
+### migrations.rs（95 行）
+
+**安装目录迁移**（v2.8.10 起 productName 由「PG素材管理系统」→「PGB1」的善后）：
+- `migrate_legacy_install`：新版首次启动时静默清理旧中文 productName 安装残留（`%LOCALAPPDATA%\Programs\PG素材管理系统\` 及老快捷方式），失败只记日志不中断启动
+- **爆炸半径自律**：仅固定字面量路径，不 glob、不递归、不碰 `AppData\Roaming`；目录需含 `.exe` 才认定为 NSIS 安装目录后清理
+
 ---
 
 ## commands/ 子模块
@@ -77,7 +83,7 @@
 - 阶段前缀常量：`STAGE_PREFIX_ANIM`（an）/ `STAGE_PREFIX_IMG`（img）
 - 路径构造：`vfx_dir` / `export_dir` / `nextcloud_dir` / `nextcloud_task_dir` / `img_dir_name` / `an_dir_name` / `stage_dir_prefix`
 
-### commands/scanning.rs（1316 行）—— 最大文件
+### commands/scanning.rs（1363 行）—— 最大文件
 
 **扫描命令**：
 - `scan_projects` / `scan_tasks` / `scan_materials` / `scan_directory`
@@ -89,7 +95,7 @@
 **DirSnapshot 缓存**：目录快照减少重复 IO。
 - `from_dir`：普通任务（key = 阶段子目录名，value = 子目录内条目）
 - `from_dir_subcat`：Prototype 专用（value = `[XX]/{subcat}/` 子层条目），使所有查询方法对 Prototype 同样适用——普通/Prototype 共用 `determine_progress_image_cached` / `determine_progress_sequence_cached`（2026-06-10 双轨合并，旧 `determine_progress_prototype_*` / `find_file_in_*` 直读函数已删除）
-- `from_nextcloud_dir`：根层（"." 键）+ original/ 子目录（原件直传，方案 B）
+- `from_nextcloud_dir`：根层（"." 键）+ `original/` 子目录（Spine 原件直传）；静帧识别同名文件，序列帧识别同名目录
 
 **Prototype 处理**：`split_prototype_name` + 按子分类构建快照（每子分类 3 次批量读取）。
 
@@ -111,7 +117,7 @@
 - `spawn_daily_report_scroll` 轮询就绪后 JS focus + HWND 置顶 + `send_ctrl_end()` 跳到文档末尾
 - `send_ctrl_end()` / `scroll_to_bottom_via_wheel`（Win32 API 物理滚动）
 
-### commands/conversion.rs（1319 行）
+### commands/conversion.rs（1518 行）
 
 **转换/缩放命令**：
 - `scan_normalize_items` / `execute_normalize_v2` / `restore_normalize_backup`（Phase 5b+ 规范化独立页面：全量盘点 + 命名/自适应画布/加黑底三操作 + `.normalize_backup` 备份/恢复 + `normalize-progress` 事件；备份按规范后名做 key 保留最早纯净原件；图像辅助 `trim_transparent` / `composite_on_black`）
@@ -119,7 +125,7 @@
 - `start_conversion` / `stop_conversion`（Phase 5d 静帧 webp 监控）
 - `execute_sequence_conversion`（序列帧 TexturePacker）
 - `collect_drag_files`（Phase 5a OS 级拖拽收集）
-- `copy_to_nextcloud` / `import_files` / `copy_preview_to_nextcloud`
+- `copy_to_nextcloud`（正常交付复制；无 done 产物时支持静帧与序列帧 Spine 原件直传，序列帧保留目录）/ `import_files` / `copy_preview_to_nextcloud`
 
 **Prototype 处理**：`collect_best_files` / `collect_matching_files_in_subdirs` 统一接受 `sub_name: Option<&str>` 参数（None = 普通任务，Some = 深入子分类一层），不再有 `_prototype` 孪生函数（2026-06-10 合并）。
 
@@ -147,7 +153,7 @@
 - `copy_icon_to_cache`
 - `find_game_exe`（Unity `UnityCrashHandler64.exe` 指纹 + Godot `.pck` 同名配对）
 
-### commands/helpers.rs（606 行）
+### commands/helpers.rs（661 行）
 
 **公共辅助函数**：
 - **扩展名常量 SSOT**（与前端 `fileTypes.ts` 对齐）：`IMAGE_EXTS` / `VIDEO_EXTS` / `FRAME_EXTS` + `material_type_from_ext`
@@ -167,7 +173,7 @@
 - `extract_psd_thumbnail`（命令）：PSD 图层合并 + PSB 内嵌 JPEG fallback，`PSD_SEMAPHORE(2)` 限并发，磁盘缓存
 - `psd_cache_file`：缓存路径 hash 计算（路径 + mtime + max_size），与 `scan_directory` 的命中检查共用，杜绝两处 hash 逻辑漂移
 
-### commands/translation.rs（340 行）
+### commands/translation.rs（346 行）
 
 **翻译命令入口**：
 - `translate_text_stream`（SSE 流式 Gemini API）
@@ -177,14 +183,14 @@
 
 PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块。
 
-### commands/translation/pdf_font.rs（212 行）
+### commands/translation/pdf_font.rs（216 行）
 
 **CJK 字体处理**（Sprint 3·Y-7 剥离）：
 - `load_cjk_font_bytes`：`msyh` / `simhei` 候选
 - `extract_single_ttf_from_data`：TTC → TTF 表重定位
 - `add_yahe_font`：`Type0` + `Identity-H` + `FontFile2` + `ToUnicode CMap`
 
-### commands/translation/pdf_reflow.rs（450 行）
+### commands/translation/pdf_reflow.rs（464 行）
 
 **PDF 内容流提取 + 流式排版**（Sprint 3·Y-7 剥离）：
 - `obj_to_f32`
@@ -193,7 +199,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 - `get_page_xobject_dict`
 - `render_flow_pages`（字符宽度换行 + 图片穿插 + 自适应分页）
 
-### commands/translation/pdf_cmds.rs（194 行）
+### commands/translation/pdf_cmds.rs（199 行）
 
 **PDF 命令整合**（Sprint 3·Y-7 剥离）：
 - `build_translated_pdf`（reflow 架构整合者）
@@ -210,14 +216,14 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 
 **决策理由**：把前端 fetch 迁到 Rust `reqwest`，避免 IP 泄漏 + 收敛 CSP `connect-src`。
 
-### commands/files.rs（734 行）
+### commands/files.rs（787 行）
 
 **文件操作命令**：
 - `open_file`（`ShellExecuteW "open"`）
 - `rename_file`（保留扩展名 + 校验非法字符）
 - `delete_file`（`SHFileOperationW + FOF_ALLOWUNDO` 回收站）
 - `read_text_file`
-- `rename_material` / `delete_material`
+- `rename_material` / `delete_material`（同步维护 nextcloud `original/` 中的 Spine 文件或序列目录）
 - `rename_sequence_fps`
 - `set_default_ae_file`（Sprint 3·Y-19 改用 `mutate_project_config`）
 
@@ -236,7 +242,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 
 **rename_material 帧文件下划线兼容**：序列帧帧文件命名为 `{base_name}_{帧号}.png`（下划线分隔），`matches_base_name` 只认连字符，故 sequence 分支内对帧文件单独放宽判定为 `stem == base_name || stem.starts_with("{base_name}_") || stem.starts_with("{base_name}-")`，外层目录判定保持严格。
 
-### commands/pinboard.rs（182 行）
+### commands/pinboard.rs（184 行）
 
 **贴图板命令**：
 - `get_pinboard` / `save_pinboard`
@@ -251,7 +257,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 - `save_settings`
 - `set_default_ae_file`
 
-### commands/notes.rs（37 行）
+### commands/notes.rs（39 行）
 
 **笔记命令**：
 - `get_notes`（读 `.pgb1_notes.json`）
@@ -273,7 +279,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 | `scan_app_shortcuts` | — | `Vec<AppShortcut>` | 扫描开始菜单 + 桌面 `.lnk`，COM 解析目标 exe |
 | `open_in_explorer` | `path` | `()` | Windows explorer 打开路径 |
 | `collect_drag_files` | `task_path, materials` | `Vec<String>` | Phase 5a 拖拽收集（02_done > 01_scale > 00_original） |
-| `copy_to_nextcloud` | `task_path, material_names` | `CopyResult` | Phase 5a 复制 02_done 到 nextcloud（排除 `.tps`） |
+| `copy_to_nextcloud` | `task_path, material_names` | `CopyResult` | Phase 5a 复制 02_done 到 nextcloud（排除 `.tps`）；无产物时执行静帧/序列帧 Spine 原件直传 |
 | `import_files` | `source_paths, target_dir` | `ImportResult` | 通用文件导入（同名跳过） |
 | `load_global_tasks` / `save_global_tasks` | `root_dir[, config]` | `GlobalTaskConfig` / `()` | `.pgb1_global_tasks.json` CRUD |
 | `apply_task_changes` | `project_path, enabled_tasks` | `ApplyTaskResult` | 核心：对比启用列表 → 创建/归档任务文件夹 |
@@ -312,6 +318,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 | `find_game_exe` | `root_dir` | `Option<String>` | Unity/Godot 原型检测 |
 | `open_file` | `path` | `()` | `ShellExecuteW "open"` 系统关联 |
 | `rename_sequence_fps` | `task_path, base_name, old_fps, new_fps` | `()` | 序列帧帧率重命名目录 |
+| `edit_sequence_tps` | `tps_path, gui_path` | `()` | 序列帧「修改」：阻塞打开 TP GUI，关闭后重解析 scale，变了就把 `[an-旧-fps]` 重命名为 `[an-新-fps]`（gui_path 空则退回系统关联打开、不重整理）。定义在 `conversion.rs` |
 | `set_default_ae_file` | `project_path, file_name` | `()` | 默认 AE 工程名 |
 | `copy_preview_to_nextcloud` | `file_path, nextcloud_preview_path` | `()` | 预览视频复制（breakdown 自动路由） |
 | `extract_psd_thumbnail` | `app_handle, path, max_size` | `Option<String>` | PSD 图层合并 + PSB 内嵌 JPEG，磁盘缓存 |

@@ -1,6 +1,7 @@
 use super::helpers::{
     matches_base_name, material_type_from_ext, move_dir, mutate_project_config,
-    read_not_sequence_list, validate_file_name, NOT_SEQUENCE_LIST_FILE, NOT_SEQUENCE_LIST_HEADER,
+    read_not_sequence_list, split_prototype_name, validate_file_name,
+    NOT_SEQUENCE_LIST_FILE, NOT_SEQUENCE_LIST_HEADER,
 };
 use super::workflow_paths::{
     nextcloud_task_dir, stage_dir_prefix, vfx_dir,
@@ -64,13 +65,21 @@ pub fn read_text_file(path: String) -> Result<String, String> {
 pub fn rename_material(task_path: String, base_name: String, new_base_name: String, material_type: String) -> Result<(), String> {
     let task_dir = Path::new(&task_path);
     let is_sequence = material_type == "sequence";
+    let (prototype_subcat, actual_base_name) = split_prototype_name(&base_name);
+    let (_, actual_new_base_name) = split_prototype_name(&new_base_name);
     let mut dirs_to_scan: Vec<std::path::PathBuf> = vec![task_dir.join(DIR_ORIGINAL)];
     let scale_dir = task_dir.join(DIR_SCALE);
     if scale_dir.exists() { if let Ok(entries) = fs::read_dir(&scale_dir) { for e in entries.flatten() { if e.path().is_dir() { dirs_to_scan.push(e.path()); } } } }
     let done_dir = task_dir.join(DIR_DONE);
     if done_dir.exists() { if let Ok(entries) = fs::read_dir(&done_dir) { for e in entries.flatten() { if e.path().is_dir() { dirs_to_scan.push(e.path()); } } } }
     let nc_dir = nextcloud_task_dir(task_dir);
-    if let Some(ref nc) = nc_dir { if nc.exists() { dirs_to_scan.push(nc.clone()); } }
+    if let Some(ref nc) = nc_dir {
+        let nc_material_dir = if prototype_subcat.is_empty() { nc.clone() } else { nc.join(&prototype_subcat) };
+        if nc_material_dir.exists() {
+            dirs_to_scan.push(nc_material_dir.clone());
+            dirs_to_scan.push(nc_material_dir.join(DIR_NC_ORIGINAL));
+        }
+    }
 
     for dir in &dirs_to_scan {
         if !dir.exists() { continue; }
@@ -78,9 +87,9 @@ pub fn rename_material(task_path: String, base_name: String, new_base_name: Stri
         for entry in entries.flatten() {
             let path = entry.path();
             let file_name = match path.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
-            if !matches_base_name(&file_name, base_name.as_str()) { continue; }
-            let suffix = &file_name[base_name.len()..];
-            let new_name = format!("{}{}", new_base_name, suffix);
+            if !matches_base_name(&file_name, actual_base_name.as_str()) { continue; }
+            let suffix = &file_name[actual_base_name.len()..];
+            let new_name = format!("{}{}", actual_new_base_name, suffix);
             let new_path = dir.join(&new_name);
             if is_sequence && path.is_dir() {
                 // 先收集所有需要改名的帧文件，检测目标冲突，然后原子性批量重命名
@@ -94,12 +103,12 @@ pub fn rename_material(task_path: String, base_name: String, new_base_name: Stri
                     // 序列帧帧文件命名为 {base_name}_{帧编号}.png（下划线分隔），
                     // matches_base_name 只认连字符后缀，这里单独放宽：允许 '_' 或 '-' 分隔帧号
                     let fstem = Path::new(&fname).file_stem().and_then(|s| s.to_str()).unwrap_or("");
-                    let is_frame = fstem == base_name.as_str()
-                        || fstem.starts_with(&format!("{}_", base_name))
-                        || fstem.starts_with(&format!("{}-", base_name));
+                    let is_frame = fstem == actual_base_name.as_str()
+                        || fstem.starts_with(&format!("{}_", actual_base_name))
+                        || fstem.starts_with(&format!("{}-", actual_base_name));
                     if is_frame {
-                        let fsuffix = &fname[base_name.len()..];
-                        let new_fname = format!("{}{}", new_base_name, fsuffix);
+                        let fsuffix = &fname[actual_base_name.len()..];
+                        let new_fname = format!("{}{}", actual_new_base_name, fsuffix);
                         let new_fpath = fpath.parent()
                             .ok_or_else(|| format!("帧文件 {} 无父目录", fname))?
                             .join(&new_fname);
@@ -160,6 +169,7 @@ fn archive_material_internal(
 ) -> Result<(), String> {
     let task_dir = Path::new(&task_path);
     let is_sequence = material_type == "sequence";
+    let (prototype_subcat, actual_base_name) = split_prototype_name(&base_name);
 
     // 定位项目根：task_path = <project>/03_Render_VFX/VFX/Export/<TaskName>/
     let vfx_root = task_dir
@@ -233,13 +243,18 @@ fn archive_material_internal(
     }
 
     // nextcloud 副本：本地上传标记，直接删（决策对齐）
-    let nc_dir = vfx_root.join(DIR_NEXTCLOUD).join(&task_name);
-    if nc_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&nc_dir) {
+    let nc_task_dir = vfx_root.join(DIR_NEXTCLOUD).join(&task_name);
+    let nc_material_dir = if prototype_subcat.is_empty() {
+        nc_task_dir
+    } else {
+        nc_task_dir.join(&prototype_subcat)
+    };
+    if nc_material_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&nc_material_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 let file_name = match path.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
-                if !matches_base_name(&file_name, base_name.as_str()) { continue; }
+                if !matches_base_name(&file_name, actual_base_name.as_str()) { continue; }
                 if path.is_dir() {
                     fs::remove_dir_all(&path).map_err(|e| format!("删除 nextcloud 目录 {} 失败: {}", file_name, e))?;
                 } else {
@@ -247,15 +262,19 @@ fn archive_material_internal(
                 }
             }
         }
-        // original/ 子目录（原件直传副本）：删除匹配文件，避免遗留孤儿（方案 B 配套）
-        let nc_original = nc_dir.join(DIR_NC_ORIGINAL);
+        // original/ 子目录（Spine 原件直传副本）：删除匹配文件或序列目录，避免遗留孤儿
+        let nc_original = nc_material_dir.join(DIR_NC_ORIGINAL);
         if nc_original.exists() {
             if let Ok(entries) = fs::read_dir(&nc_original) {
                 for entry in entries.flatten() {
                     let path = entry.path();
                     let file_name = match path.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
-                    if path.is_dir() || !matches_base_name(&file_name, base_name.as_str()) { continue; }
-                    fs::remove_file(&path).map_err(|e| format!("删除 nextcloud/original 文件 {} 失败: {}", file_name, e))?;
+                    if !matches_base_name(&file_name, actual_base_name.as_str()) { continue; }
+                    if path.is_dir() {
+                        fs::remove_dir_all(&path).map_err(|e| format!("删除 nextcloud/original 目录 {} 失败: {}", file_name, e))?;
+                    } else {
+                        fs::remove_file(&path).map_err(|e| format!("删除 nextcloud/original 文件 {} 失败: {}", file_name, e))?;
+                    }
                 }
             }
         }

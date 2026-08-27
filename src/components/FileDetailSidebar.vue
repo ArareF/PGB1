@@ -5,6 +5,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { formatSize } from '../utils/format'
 import { IMAGE_EXTS, VIDEO_EXTS, TEXT_EXTS, PSD_EXTS, PDF_EXTS } from '../config/fileTypes'
 import { getPsdThumbnail, invalidatePsdCache } from '../composables/usePsdThumbnail'
+import { mediaVersion } from '../composables/useMediaCache'
 import type { FileEntry } from '../composables/useDirectoryFiles'
 import { useDirectoryFiles } from '../composables/useDirectoryFiles'
 import { toggleCheckbox } from '../composables/useNotes'
@@ -18,6 +19,11 @@ const props = withDefaults(defineProps<{
   file: FileEntry | null
   widthPercent?: number
   versions?: FileEntry[]
+  /**
+   * 自定义版本条目标题。不传时按「最新版本 / 版本 N」编号（预览视频用，versions 为旧→新）。
+   * 素材系列传入日期标签，因为它的 versions 是新→旧，编号会反。
+   */
+  versionLabelOf?: (file: FileEntry, index: number) => string
   /** 是否显示重命名/删除按钮（游戏介绍/项目素材页使用；预览视频侧边栏不显示） */
   allowActions?: boolean
   /** 笔记文本（有值时显示编辑区） */
@@ -117,27 +123,39 @@ watch(() => props.file, async (file, prevFile) => {
   }
 
   if (fileType.value === 'psd') {
-    psdThumbLoading.value = true
+    await loadPsdThumbnail(file, token, !prevFile)
+  }
+})
 
-    try {
-      // 侧边栏刚打开时（prevFile 为 null）正在播放进场动画，等动画结束再加载
-      if (!prevFile) {
-        await new Promise(resolve => setTimeout(resolve, SIDEBAR_ENTER_MS))
-        if (token !== loadToken) return
-      }
+/** 加载 PSD 大图。`waitEnter`：侧边栏刚打开时先等进场动画放完再解码，避免掉帧 */
+async function loadPsdThumbnail(file: FileEntry, token: number, waitEnter: boolean) {
+  psdThumbLoading.value = true
 
-      // 800px 不走 JS 缓存（侧边栏需要感知文件修改，freshness > perf）
-      invalidatePsdCache(file.path, 800)
-      const thumb = await getPsdThumbnail(file.path, 800)
+  try {
+    if (waitEnter) {
+      await new Promise(resolve => setTimeout(resolve, SIDEBAR_ENTER_MS))
       if (token !== loadToken) return
-      psdThumbnail.value = thumb
-    } catch (e) {
-      if (token !== loadToken) return
-      console.error('加载 PSD 缩略图失败:', e)
-    } finally {
-      // 只在 token 未过期时重置 loading（与 text 路径对齐，防 stale 结果残留 true）
-      if (token === loadToken) psdThumbLoading.value = false
     }
+
+    // 800px 不走 JS 缓存（侧边栏需要感知文件修改，freshness > perf）
+    invalidatePsdCache(file.path, 800)
+    const thumb = await getPsdThumbnail(file.path, 800)
+    if (token !== loadToken) return
+    psdThumbnail.value = thumb
+  } catch (e) {
+    if (token !== loadToken) return
+    console.error('加载 PSD 缩略图失败:', e)
+  } finally {
+    // 只在 token 未过期时重置 loading（与 text 路径对齐，防 stale 结果残留 true）
+    if (token === loadToken) psdThumbLoading.value = false
+  }
+}
+
+/** 手动刷新：侧边栏开着不动时 props.file 不变，上面的 watch 不会触发，这里补一刀 */
+watch(mediaVersion, () => {
+  const file = props.file
+  if (file && fileType.value === 'psd') {
+    loadPsdThumbnail(file, ++loadToken, false)
   }
 })
 
@@ -212,8 +230,8 @@ function confirmDelete() {
       <!-- 图片预览 -->
       <div v-if="fileType === 'image'" class="preview-image-wrap">
         <ImageViewer
-          :key="file!.path"
-          :src="convertFileSrc(file!.path)"
+          :key="`${file!.path}@${mediaVersion}`"
+          :src="`${convertFileSrc(file!.path)}?v=${mediaVersion}`"
           :alt="file!.name"
         />
         <button v-if="!teleportDisabled" class="preview-fullscreen-btn" :title="isFullscreen ? $t('common.exitFullscreen') : $t('common.fullscreen')" @click="toggleFullscreen">
@@ -328,7 +346,9 @@ function confirmDelete() {
           >
             <div class="version-card-left">
               <span class="version-name">
-                {{ i === versions.length - 1 ? $t('fileDetail.latestVersion') : $t('fileDetail.versionN', { n: i + 1 }) }}
+                {{ versionLabelOf
+                  ? versionLabelOf(v, i)
+                  : (i === versions.length - 1 ? $t('fileDetail.latestVersion') : $t('fileDetail.versionN', { n: i + 1 })) }}
               </span>
               <span class="version-meta">{{ formatSize(v.size_bytes) }}</span>
             </div>

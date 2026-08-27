@@ -7,7 +7,7 @@
 
 ## 主流程（三级页面）
 
-### HomePage.vue（449 行）
+### HomePage.vue（446 行）
 
 **职责**：项目列表 + 新建 + 排序 + 加班按钮。
 
@@ -23,8 +23,6 @@
 - `<TransitionGroup name="card">` 交错入场 + `.card-move` FLIP 排序动画
 
 **排序控件**：page-header 右侧三档切换（默认/截止日期/优先度），localStorage 持久化（`pgb1-home-sort`）。
-
-**Sharp Grid**：不再维护主页局部试点开关；通过 `useTheme().theme` 向 ProjectCard 传入 `craft`，深色使用精装卡片，浅色保留原版结构。
 
 **截止日期排序算法**：
 - `parseDeadline()` 用 `DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/` 校验（文字备注如"转交了"视为无日期）
@@ -204,7 +202,7 @@
 
 **笔记系统**：NormalCard 传 `:has-note` / `:note-preview`；FileDetailSidebar 传 `:note` / `@save-note`；sub-title-bar 旁 `.note-btn` + 可折叠页面笔记（`page` key）。
 
-### MaterialsPage.vue（726 行）
+### MaterialsPage.vue（733 行）
 
 **职责**：4 个分组素材库，每个分组内按素材系列聚合成卡。
 

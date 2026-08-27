@@ -2,7 +2,7 @@
 
 > 全量源代码文件职责目录视图。新会话快速了解代码现状用。
 > 详细信息（Props / 状态 / 防火手记 / 架构决策）见 [`docs/code/*.md`](docs/code/)。
-> 最后更新: 2026-08-12
+> 最后更新: 2026-08-27
 
 ---
 
@@ -10,18 +10,18 @@
 
 | 目录 | 文件数 | 总行数 | 说明 |
 |------|--------|--------|------|
-| `src/components/` | 30 | 9548 | Vue UI 组件 |
-| `src/composables/` | 23 | 3175 | 组合式函数（逻辑复用） |
-| `src/views/` | 19 | 9556 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
-| `src/styles/` | 4 | 1836 | CSS 设计系统 |
+| `src/components/` | 30 | 9601 | Vue UI 组件 |
+| `src/composables/` | 24 | 3262 | 组合式函数（逻辑复用） |
+| `src/views/` | 19 | 9674 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
+| `src/styles/` | 4 | 1841 | CSS 设计系统 |
 | `src/layouts/` | 1 | 321 | 主布局 |
 | `src/types/` | 2 | 57 | TypeScript 类型定义 |
 | `src/utils/` | 3 | 255 | 工具函数 |
 | `src/config/` | 6 | 170 | 配置 SSOT（app/onboarding/fileTypes/pinboard/priority/projectPaths） |
-| `src/i18n/` + `src/locales/` | 3 | 1396 | 国际化（vue-i18n + zh-CN + en） |
+| `src/i18n/` + `src/locales/` | 3 | 1406 | 国际化（vue-i18n + zh-CN + en） |
 | `src/router/` + 入口 | 5 | 204 | 路由 + main/App/vite-env/vite.config |
-| `src-tauri/src/` | 25 | 10208 | Rust 后端 |
-| **合计** | **120** | **36629** | |
+| `src-tauri/src/` | 25 | 10448 | Rust 后端 |
+| **合计** | **122** | **37239** | |
 
 > 行数口径 = 文件总行数（含空行），与历史版本一致。
 
@@ -183,8 +183,7 @@
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `styles/design-system.css` | 1660 | **SSOT**：颜色 / 间距 / 排版 / 圆角 / 阴影 / 过渡 / Sharp Grid 深色 token / 公共类 |
-| `styles/sharp-grid.css` | 936 | Sharp Grid 全应用深色组件配方（主布局 / 页面 / 卡片 / 弹窗 / 独立窗口） |
+| `styles/design-system.css` | 1590 | **SSOT**：颜色 / 间距 / 排版 / 圆角 / 阴影 / 过渡 / 公共类 |
 | `styles/glass.css` | 86 | 毛玻璃工具类（subtle/medium/strong） + backdrop-filter 兄弟冲突规则 |
 | `styles/dialog.css` | 120 | 弹窗公共样式（overlay / content / btn 变体 / 进出场动画） |
 | `styles/reset.css` | 45 | 基础重置 + 字体引用 |

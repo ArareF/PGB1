@@ -1,19 +1,19 @@
 # 样式系统详情
 
-> `src/styles/` 下 5 个 CSS 文件的 SSOT 变量、主题配方、动画系统、公共类清单。
+> `src/styles/` 下 4 个 CSS 文件的 SSOT 变量、毛玻璃层级、动画系统、公共类清单。
 > 顶层索引见 [CODE_INDEX.md](../../CODE_INDEX.md#6-样式)。
 
 ---
 
-## design-system.css（1660 行）—— SSOT
+## design-system.css（1590 行）—— SSOT
 
 **地位**：所有视觉参数的唯一真相源。组件只用 `var(--*)`，严禁硬编码。
 
 ### 颜色系统
 
 - 冷科技蓝色板 + 冷蓝灰中性色
-- 暗色主题为 Sharp Grid 深色工业终端风格；无历史偏好时默认深色
-- Sharp Grid 灰阶、强调色、金属表面、点阵、蚀刻线、焦点与动效 token 均在 `:root[data-theme="dark"]`
+- 暗色主题 v2.0 冷色工业终端风格
+- **深色模式 `--text-tertiary`**：`#6B6E77`（原 `#4A4D54` 对比度仅 2.2:1，已提升至 3.8:1）
 
 ### 设计语言
 
@@ -21,22 +21,9 @@
 - 排版：URW DIN + 更纱黑体（中文自定义字体：猫啃网糖圆体）
 - 圆角：工业风收窄
 - 卡片、标签、过渡规范
-- 旧毛玻璃 API 在深色主题映射为无模糊实色金属面，保持组件兼容
-- 无大阴影；通过 1px 顶边高光、底边暗线和中性边框建立层级
-
----
-
-## sharp-grid.css（936 行）—— 全应用深色组件配方
-
-**作用域**：`:root[data-theme="dark"]`，不影响浅色主题。
-
-**覆盖范围**：
-- MainLayout / TitleBar / StatusBar / Sidebar / WindowControls
-- 项目、任务、素材、普通文件和预览视频卡片
-- 输入、按钮、Tab、标签、进度、菜单、侧边栏和所有 Dialog
-- 19 个页面及 Reminder / Translator / Pinboard 独立窗口
-
-**硬约束**：不保存主题色值，不改变功能布局；无 `backdrop-filter`、无大模糊阴影、无大圆角；支持 `prefers-reduced-motion`。
+- 毛玻璃变量（5 级预设）
+- **弱化 Material 阴影**，改用透明度 + 冷蓝边框拉层级
+- **`--card-version-badge-*`**（v2.8.18）：素材系列合并卡右上角版本数角标的底色 / 文字色 / 边框色
 
 ### 新增 token
 

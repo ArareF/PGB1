@@ -9,7 +9,7 @@
 
 - **产品**：PGB1 — 2D游戏特效师文件整理工具
 - **技术栈**：Tauri 2.x（Rust + HTML/CSS/JS），目标 Windows
-- **状态**：✅ **已发布 v2.8.17**（功能完整，持续迭代维护中）
+- **状态**：✅ **已发布 v2.8.18**（功能完整，持续迭代维护中）
 - **角色**：产品总监（决策）+ Tech Lead / Agent（实现）
 
 ---
@@ -151,11 +151,11 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | `docs/打包发布指南.md` | Agent 的完整打包手册，**打包前必读** |
 | `docs/文档组织规范.md` | 文档目录结构、命名、维护规则 |
 | `docs/设计风格.md` | 视觉风格参考（毛玻璃·现行版） |
-| `docs/新设计风格.md` | Sharp Grid 深色工业锐角规范；§14 质感精装层定稿，§15 全应用深色实装（2026-07-28） |
+| `docs/新设计风格.md` | Sharp Grid 深色工业锐角规范；§14 质感精装层定稿，§15 全应用深色方案（2026-07-28）。⚠️ **仅设计稿，代码未实装** —— v2.8.18 有意剥离 UI 改动，实装代码留在 `claude/media-cache-invalidation` 分支的 362cd3f |
 | `docs/新设计风格示意.html` | Sharp Grid 可交互网页示意稿（三级钻取 + 设计规范页，浏览器直接打开） |
 | `docs/新设计风格-精装样板.html` | §14 质感精装层 canonical 参考：主页项目卡 + 组件样板，含 `原版⇄精装` 对比开关 + 点阵光照控制台（可调参） |
 | `docs/code/` | CODE_INDEX 二级详情（components/composables/views/rust-backend/styles-system） |
-| `docs/plans/` | 实施方案草案（进行中的方案放这里）。当前：`2026-07-28-sharp-grid-global-dark-design.md` + `2026-07-28-sharp-grid-global-dark-ui.md`（全应用深色统一升级） |
+| `docs/plans/` | 实施方案草案（进行中的方案放这里）。当前：`2026-08-24-normalize-completed-collapse.md` + `2026-08-24-spine-direct-upload{,-design}.md` |
 | `docs/archive/plans/` | 已归档的历史方案（42 份：Phase 1~7 + 功能特性 + 2026-04 代码优化 + v2.8.13/15/17 已发版方案） |
 | `docs/archive/调研工作台/` | 历史代码审查报告（2026-04，含 `old/` 旧版） |
 | `docs/archive/MIGRATION_CHECKLIST.md` | 旧架构迁移检查清单（历史） |
@@ -181,7 +181,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | **打包格式** | NSIS only（`"targets": "nsis"`） | WiX 3 不支持中文 productName，会直接报错 |
 | **关闭行为** | 最小化到系统托盘，不退出 | lib.rs CloseRequested 拦截 + hide() |
 | **UI 缩放** | 固定值，默认 100%，无自动模式 | 自动模式（按窗口宽度缩放）效果差，已移除 |
-| **软件名称** | PG素材管理系统，V2.8.17，开发者 Fuchikami | `src/config/app.ts` 为 SSOT |
+| **软件名称** | PG素材管理系统，V2.8.18，开发者 Fuchikami | `src/config/app.ts` 为 SSOT |
 | **CSP media-src** | 必须单独声明，含 asset:／blob:／data: | `<video>` 不继承 img-src，缺失打包后视频全灭 |
 | 技术栈 | Tauri 2.x（不用 Electron） | Electron 不支持拖拽文件到外部浏览器 |
 | UI 风格 | 毛玻璃（Glassmorphism），明暗双主题 | — |
@@ -233,6 +233,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 | 版本 | 日期 | 主要变更 |
 |------|------|---------|
+| v2.8.18 | 2026-08-27 | 项目素材页同系列多版本合并成卡（最新版为卡片身份，旧版走侧边栏版本历史）+ 规范化页已完成项下沉折叠 + 侧边栏 Spine 直传（原件静帧/序列帧直传 nextcloud `original/`）+ 序列帧「修改」按新尺寸重整理 + **刷新真正生效**（`mediaVersion` 代次驱动媒体缓存失效，修复刷新后仍显示旧图/旧首帧）。⚠️ 本版**不含** Sharp Grid 深色 UI 改版 |
 | v2.8.17 | 2026-06-16 | 序列帧识别更精准（帧编号须紧跟混合模式 add/screen/normal，消除静帧变体误并；规范化页同步）+ 新增「非序列帧」手动排除（记于 `00_original/非序列帧.txt`，删行即恢复）+ 含 6/10 内部优化 |
 | v2.8.16 | 2026-06-04 | 修复 TexturePacker 序列帧「打开工程文件」报素材缺失（.tps 移入 [an-X-Y] 子目录后 sprite 相对路径错位一级，移动时补偿 + 打开前自愈）+ 规范化页面表头固定 |
 | v2.8.15 | 2026-06-04 | 规范化升级为独立页面（序列帧合并 + 全量素材）+ PNG 静帧自适应画布/添加黑底 + 原件备份恢复 + 静帧预览升级最新阶段并破缓存 |
@@ -247,4 +248,4 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 ---
 
-**最后更新**：2026-07-28
+**最后更新**：2026-08-27

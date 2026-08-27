@@ -1185,6 +1185,77 @@ fn collect_all_files_in_dir(dir: &Path) -> Vec<String> {
     results
 }
 
+/// 将已规范化的序列帧目录复制到 nextcloud/original/{base_name}/。
+/// 返回实际复制的帧文件数；空目录不能作为“已上传”事实来源。
+fn copy_spine_sequence_original(
+    source_dir: &Path,
+    original_dest_dir: &Path,
+    base_name: &str,
+) -> Result<u32, String> {
+    if !source_dir.is_dir() {
+        return Err(format!("序列帧原件目录不存在: {}", source_dir.display()));
+    }
+    let entries = fs::read_dir(source_dir)
+        .map_err(|e| format!("读取序列帧原件目录失败: {}", e))?;
+    let mut frame_count = 0u32;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("读取序列帧条目失败: {}", e))?;
+        if entry.path().is_file() {
+            frame_count += 1;
+        }
+    }
+    if frame_count == 0 {
+        return Err("序列帧原件目录为空".to_string());
+    }
+
+    let destination = original_dest_dir.join(base_name);
+    if destination.exists() {
+        return Err(format!("Spine 目标目录已存在，请刷新后重试: {}", destination.display()));
+    }
+    if let Err(error) = copy_dir_recursive(source_dir, &destination) {
+        if destination.exists() {
+            fs::remove_dir_all(&destination)
+                .map_err(|cleanup| format!("{}；清理半成品目录失败: {}", error, cleanup))?;
+        }
+        return Err(error);
+    }
+    Ok(frame_count)
+}
+
+/// Spine 直传兼容两种 00_original 状态：优先复制已规范化目录，
+/// 若目录尚未生成，则把已识别的散落帧归入目标端同名目录。
+fn copy_spine_sequence_from_original(
+    original_search_dir: &Path,
+    original_dest_dir: &Path,
+    base_name: &str,
+) -> Result<u32, String> {
+    let sequence_dir = original_search_dir.join(base_name);
+    if sequence_dir.is_dir() {
+        return copy_spine_sequence_original(&sequence_dir, original_dest_dir, base_name);
+    }
+
+    let scattered_frames = collect_scattered_sequence_files(original_search_dir, base_name);
+    if scattered_frames.is_empty() {
+        return Err("00_original 中未找到对应序列帧".to_string());
+    }
+    let destination = original_dest_dir.join(base_name);
+    if destination.exists() {
+        return Err(format!("Spine 目标目录已存在，请刷新后重试: {}", destination.display()));
+    }
+    fs::create_dir_all(&destination)
+        .map_err(|e| format!("创建 Spine 序列帧目录失败: {}", e))?;
+    for source in &scattered_frames {
+        let source_path = Path::new(source);
+        let file_name = source_path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+        if let Err(error) = fs::copy(source_path, destination.join(file_name)) {
+            fs::remove_dir_all(&destination)
+                .map_err(|cleanup| format!("复制 Spine 序列帧 {} 失败: {}；清理半成品目录失败: {}", file_name, error, cleanup))?;
+            return Err(format!("复制 Spine 序列帧 {} 失败: {}", file_name, error));
+        }
+    }
+    Ok(scattered_frames.len() as u32)
+}
+
 // ─── Nextcloud 复制 ────────────────────────────────────
 
 /// 将选中素材从 02_done 复制到 nextcloud/
@@ -1243,9 +1314,8 @@ fn copy_material_normal(base_name: &str, material_type: &str, done_dir: &Path, o
         return Ok(count);
     }
 
-    // 原件直传兜底（仅静帧）：02_done 无产物时，把 00_original 原件复制到
-    // nextcloud/<任务>/original/（方案 B：与 webp 交付物隔离，避免混淆与污染）。
-    // 序列帧原件是整个帧序列文件夹，不作为可交付原件直传。
+    // Spine 原件直传兜底：02_done 无产物时，把 00_original 原件复制到
+    // nextcloud/<任务>/original/，与 webp 交付物隔离。
     if material_type == "image" {
         let original_files = collect_matching_files_flat(original_dir, base_name);
         if !original_files.is_empty() {
@@ -1261,6 +1331,9 @@ fn copy_material_normal(base_name: &str, material_type: &str, done_dir: &Path, o
             }
             return Ok(count);
         }
+    } else if material_type == "sequence" {
+        let original_dest_dir = nextcloud_dir.join(DIR_NC_ORIGINAL);
+        return copy_spine_sequence_from_original(original_dir, &original_dest_dir, base_name);
     }
 
     Err("02_done 与 00_original 中均未找到对应文件".to_string())
@@ -1295,7 +1368,7 @@ fn copy_material_prototype(
         count += 1;
     }
 
-    // 原件直传兜底（仅静帧）：done + scale 均无产物（仅原件场景）时，
+    // Spine 原件直传兜底：done + scale 均无产物（仅原件场景）时，
     // 从 00_original/<sub>/ 复制原件到 nextcloud/<sub>/original/（方案 B：与交付物隔离，
     // determine_progress_prototype_img 会识别该 original/ 子目录判为已上传）。
     if count == 0 && material_type == "image" {
@@ -1312,6 +1385,10 @@ fn copy_material_prototype(
                 count += 1;
             }
         }
+    } else if count == 0 && material_type == "sequence" {
+        let original_search_dir = original_dir.join(sub_name);
+        let original_dest_dir = sub_dir.join(DIR_NC_ORIGINAL);
+        count += copy_spine_sequence_from_original(&original_search_dir, &original_dest_dir, base_name)?;
     }
 
     Ok(count)
@@ -1355,6 +1432,39 @@ pub fn import_files(source_paths: Vec<String>, target_dir: String) -> Result<Imp
     }
 
     Ok(ImportResult { imported_count: imported, skipped_count: skipped, errors })
+}
+
+#[cfg(test)]
+mod spine_upload_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_test_dir(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("系统时间应晚于 Unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("pgb1_{}_{}_{}", name, std::process::id(), nonce))
+    }
+
+    #[test]
+    fn copy_spine_sequence_original_preserves_directory_and_counts_frames() {
+        let root = temp_test_dir("spine_copy");
+        let source = root.join("00_original").join("bonus_vfx_a_add");
+        let original_dest = root.join("nextcloud").join("original");
+        fs::create_dir_all(&source).expect("应能创建测试源目录");
+        fs::write(source.join("bonus_vfx_a_add_01.png"), b"frame-1").expect("应能写入第一帧");
+        fs::write(source.join("bonus_vfx_a_add_02.png"), b"frame-2").expect("应能写入第二帧");
+
+        let copied = copy_spine_sequence_original(&source, &original_dest, "bonus_vfx_a_add")
+            .expect("Spine 序列帧复制应成功");
+
+        assert_eq!(copied, 2);
+        assert!(original_dest.join("bonus_vfx_a_add/bonus_vfx_a_add_01.png").is_file());
+        assert!(original_dest.join("bonus_vfx_a_add/bonus_vfx_a_add_02.png").is_file());
+
+        fs::remove_dir_all(&root).expect("应能清理测试目录");
+    }
 }
 
 /// 将选中的预览视频复制到 nextcloud/preview/

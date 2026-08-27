@@ -7,7 +7,7 @@
 
 ## 主流程（三级页面）
 
-### HomePage.vue（449 行）
+### HomePage.vue（446 行）
 
 **职责**：项目列表 + 新建 + 排序 + 加班按钮。
 
@@ -74,7 +74,7 @@
 
 **内嵌 confirm/alert 弹窗**：Teleport to body + glass-strong，`white-space: pre-wrap` 支持后端返回的多行冲突清单。
 
-### TaskPage.vue（1472 行）—— 最大页面
+### TaskPage.vue（1558 行）—— 最大页面
 
 **职责**：素材浏览主页面（树形/名称双视图 + Phase 5a-5d + 预览视频）。
 
@@ -119,6 +119,8 @@
 - `hasNormalizeWork` ref（异步 `preview_normalize` 检测）+ `hasScaleWork` / `hasConvertWork` computed
 - `watch([三 flag])` 变化时重刷 `updateNavigation`
 
+**侧边栏 Spine 直传**：`image | sequence` 且 `progress === 'original'` 时显示「Spine」，复用 `copy_to_nextcloud`。静帧复制原文件；序列帧复制到 nextcloud `original/{素材名}/`。操作成功关闭侧边栏并刷新，失败保留现场和重试入口。
+
 **笔记系统**：
 - MaterialCard 传入 `:has-note` / `:note-preview`
 - 自定义侧边栏内嵌 NoteEditor（watch selectedMaterial 切换）
@@ -129,11 +131,11 @@
 
 ## Phase 5 工作流页面
 
-### NormalizePage.vue（601 行）
+### NormalizePage.vue（715 行）
 
 **职责**：规范化执行页面（Phase 5b+），取代旧 `NormalizationDialog` 弹窗。
 
-**布局**：素材列表占满 main-content（每素材一行：缩略图 + 名称 + 类型角标 + 操作勾选）；全局开关面板 Teleport 到 `#content-row`。
+**布局**：素材列表占满 main-content（每素材一行：缩略图 + 名称 + 类型角标 + 操作勾选）；全局开关面板 Teleport 到 `#content-row`。待规范化项置顶；已规范化项下沉到底部并默认折叠，展开后保留内容操作与恢复能力。
 
 **数据流**：`scan_normalize_items`（全量盘点 `00_original`，序列帧合并为一项、已命名素材也列出）→ `selections[]` 与 `items[]` 平行 → `execute_normalize_v2`（按内容操作→命名操作顺序执行，发 `normalize-progress`）。
 
@@ -143,6 +145,8 @@
 - 添加黑底：仅 `static && is_png && is_add_or_screen`（base 按 `_` 切分含 add/screen）
 
 **全局开关**：命名规范化(ON)/自适应画布(OFF)/添加黑底(OFF)/执行前备份(ON)；`watch` 全局开关→批量重置有资格行（批量设置语义，手动覆盖会被下次全局切换重置）。
+
+**折叠分组防火手记**：`partitionNormalizeItems()` 只负责稳定分组并携带原始 `index`；模板必须用该索引访问与 `items[]` 平行的 `selections[]`，不得直接使用分组后的循环序号，否则勾选会写入错误素材。
 
 ---
 
@@ -200,7 +204,7 @@
 
 **笔记系统**：NormalCard 传 `:has-note` / `:note-preview`；FileDetailSidebar 传 `:note` / `@save-note`；sub-title-bar 旁 `.note-btn` + 可折叠页面笔记（`page` key）。
 
-### MaterialsPage.vue（726 行）
+### MaterialsPage.vue（733 行）
 
 **职责**：4 个分组素材库，每个分组内按素材系列聚合成卡。
 

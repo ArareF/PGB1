@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { useNavigation } from '../composables/useNavigation'
 import { useMaterials } from '../composables/useMaterials'
 import type { MaterialInfo } from '../composables/useMaterials'
+import { clearMediaCaches } from '../composables/useMediaCache'
 import MaterialCard from '../components/MaterialCard.vue'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
@@ -165,6 +166,8 @@ async function handleExecute() {
     })
 
     await invoke('execute_scaling', { requests })
+    // 重缩同档位会覆盖 01_scale 下的同名产物——路径不变、内容已变，返回任务页前清缓存
+    clearMediaCaches()
     router.back()
   } catch (e) {
     error.value = String(e)

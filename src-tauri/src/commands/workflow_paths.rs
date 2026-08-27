@@ -25,7 +25,7 @@ pub(crate) const DIR_PREVIEW: &str = "03_preview";
 /// nextcloud 下的预览视频目录及其 breakdown 子目录
 pub(crate) const DIR_NC_PREVIEW: &str = "preview";
 pub(crate) const DIR_NC_BREAKDOWN: &str = "breakdown";
-/// nextcloud/<Task>/ 下的原件直传落点（方案 B：与 webp 交付物隔离）
+/// nextcloud/<Task>/ 下的 Spine 原件直传落点（与 webp 交付物隔离）
 pub(crate) const DIR_NC_ORIGINAL: &str = "original";
 
 /// 02_done 子目录前缀：序列帧 [an-...] / 静帧 [img-...]

@@ -7,13 +7,13 @@
 
 ## 卡片家族
 
-### ProjectCard.vue（553 行）
+### ProjectCard.vue（492 行）
 
 **Props**：`project: ProjectInfo`，`craft?: boolean`（由 HomePage 按全局主题传入：深色精装、浅色原版）
 
 **功能**：
-- 图标 + 名称 + 截止日期 + 进度条 + 优先度圆点 + 更多菜单 + 笔记图标
-- `AppIcon` 加载策略：PNG 用 `convertFileSrc` 直接渲染；PSD/PSB 调 `getPsdThumbnail(128)`；无图标降级 SVG 占位
+- 图标 + 名称 + 截止日期 + 进度条 + 优先度圆点 + ··· 菜单 + 笔记图标
+- `AppIcon` 加载策略：PNG 用 `convertFileSrc` 渲染并拼 `?v=mediaVersion` 破缓存；PSD/PSB 调 `getPsdThumbnail(128)`；无图标降级 SVG 占位
 - 进度条分母 = 无子任务父任务数 + 所有子任务数
 - 优先度四档：`急` / `高` / `普`（= null）/ `停`，圆点 9px 实色无文字
 - 菜单项：重命名 / 修改截止日期 / 删除 / 批注 / 优先度四档
@@ -48,7 +48,7 @@
 
 **架构决策**：手动 `glass-subtle`（不用 backdrop-filter），避免大量卡片创建独立合成层。
 
-### NormalCard.vue（366 行）
+### NormalCard.vue（389 行）
 
 **Props**：`file: FileEntry`, `hasNote?`, `notePreview?`
 
@@ -96,7 +96,7 @@ Canvas 序列帧动画播放器，`mount` 后自动循环播放，LRU 缓存。`
 - 手动 `glass-strong`（避免 backdrop-filter 兄弟冲突）
 - 通用信息展示样式（`sidebar-section` / `info-list` / `version-card`）内置
 
-### FileDetailSidebar.vue（619 行）
+### FileDetailSidebar.vue（632 行）
 
 **Props**：`file: FileEntry | null`, `widthPercent?`, `versions?: FileEntry[]`, `versionLabelOf?`, `allowActions?`, `note?`, `teleportTarget?`, `teleportDisabled?`
 

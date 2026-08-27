@@ -1,11 +1,11 @@
 {
   "version": "2.8.18",
-  "notes": "项目素材页同系列多版本合并成卡：同一素材的多个版本聚合为一张卡片，缩略图取最新版，旧版本在侧边栏「版本历史」里按日期查看和打开。规范化页已完成项下沉到底部并默认折叠，待办项置顶，长列表不再被已完成项淹没。侧边栏新增「Spine」直传：原件阶段的静帧和序列帧可直接传到 nextcloud 的 original/ 目录。序列帧「修改」现在按新尺寸重新整理目录。修复刷新不生效：点刷新后正在播放的序列帧、视频首帧、PSD 缩略图和项目图标会真正重新读取，不再停留在旧图。",
-  "pub_date": "REPLACE_ME_ISO8601",
+  "notes": "é¡¹ç›®ç´ æé¡µåŒç³»åˆ—å¤šç‰ˆæœ¬åˆå¹¶æˆå¡ï¼šåŒä¸€ç´ æçš„å¤šä¸ªç‰ˆæœ¬èšåˆä¸ºä¸€å¼ å¡ç‰‡ï¼Œç¼©ç•¥å›¾å–æœ€æ–°ç‰ˆï¼Œæ—§ç‰ˆæœ¬åœ¨ä¾§è¾¹æ ã€Œç‰ˆæœ¬åŽ†å²ã€é‡ŒæŒ‰æ—¥æœŸæŸ¥çœ‹å’Œæ‰“å¼€ã€‚è§„èŒƒåŒ–é¡µå·²å®Œæˆé¡¹ä¸‹æ²‰åˆ°åº•éƒ¨å¹¶é»˜è®¤æŠ˜å ï¼Œå¾…åŠžé¡¹ç½®é¡¶ï¼Œé•¿åˆ—è¡¨ä¸å†è¢«å·²å®Œæˆé¡¹æ·¹æ²¡ã€‚ä¾§è¾¹æ æ–°å¢žã€ŒSpineã€ç›´ä¼ ï¼šåŽŸä»¶é˜¶æ®µçš„é™å¸§å’Œåºåˆ—å¸§å¯ç›´æŽ¥ä¼ åˆ° nextcloud çš„ original/ ç›®å½•ã€‚åºåˆ—å¸§ã€Œä¿®æ”¹ã€çŽ°åœ¨æŒ‰æ–°å°ºå¯¸é‡æ–°æ•´ç†ç›®å½•ã€‚ä¿®å¤åˆ·æ–°ä¸ç”Ÿæ•ˆï¼šç‚¹åˆ·æ–°åŽæ­£åœ¨æ’­æ”¾çš„åºåˆ—å¸§ã€è§†é¢‘é¦–å¸§ã€PSD ç¼©ç•¥å›¾å’Œé¡¹ç›®å›¾æ ‡ä¼šçœŸæ­£é‡æ–°è¯»å–ï¼Œä¸å†åœç•™åœ¨æ—§å›¾ã€‚",
+  "pub_date": "2026-08-27T03:48:39Z",
   "platforms": {
     "windows-x86_64": {
       "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.18/PGB1_2.8.18_x64-setup.exe",
-      "signature": "REPLACE_ME_粘贴_PGB1_2.8.18_x64-setup.exe.sig_的完整内容"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNk1SZUJybzNsRlQreDVTdXE3TXhvaTVIQm40NGZVQi9tQzRPQlc4SDJUZ1V4SVU0WGZlQlQrWkZaNHM0TnN0ZWFnKzJqcDlDYytka1BVTDduN3Z0N0FVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3ODAyMjcxCWZpbGU6UEdCMV8yLjguMThfeDY0LXNldHVwLmV4ZQprSkpiSjBFaU5QaUcwbXp0cDI0Wis1WldOSlRheTNDL0FpaVVxeXQ0MjZYajRSaTBCREVJRUtiNjBaSzA3dm9tc2owU1d5UHFPOHlzR2V4SERaTE5BQT09Cg=="
     }
   }
 }

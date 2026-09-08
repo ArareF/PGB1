@@ -4,7 +4,7 @@ use crate::models::{
     NormalizeRequest, ScaleRequest, StartConversionRequest,
 };
 use crate::conversion::{ConversionState, ConversionSession, handle_file_event, bring_window_to_front};
-use super::helpers::{split_prototype_name, copy_dir_recursive, is_sequence_stem, matches_base_name, read_deprecated_list, read_not_sequence_list, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
+use super::helpers::{split_prototype_name, copy_dir_recursive, is_bookkeeping_file, is_sequence_stem, matches_base_name, read_deprecated_list, read_not_sequence_list, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
 use std::collections::HashSet;
 use super::workflow_paths::{
     an_dir_name, nextcloud_task_dir, stage_dir_prefix, DIR_DONE, DIR_NC_BREAKDOWN, DIR_NC_ORIGINAL,
@@ -786,8 +786,8 @@ fn inventory_dir(
     for entry in entries.flatten() {
         let path = entry.path();
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if name.starts_with('.') {
-            continue; // 跳过隐藏项（含 .normalize_backup）
+        if name.starts_with('.') || is_bookkeeping_file(name) {
+            continue; // 跳过隐藏项（含 .normalize_backup）与簿记文件
         }
 
         // 已规范的序列帧文件夹

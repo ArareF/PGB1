@@ -79,6 +79,20 @@ pub(crate) const DEPRECATED_LIST_HEADER: &str = concat!(
     "# 在素材详情侧边栏点「取消废弃」，或直接删除对应行后刷新，即可恢复。\n",
 );
 
+/// 任务 `00_original/` 下的「名簿」类簿记文件 —— 它们是程序的账本，不是素材。
+///
+/// 凡是枚举 `00_original` 的地方都必须跳过它们，否则会同时弄出三个毛病：
+/// 素材列表多一张卡片、规范化待办里多一行、任务上传进度的分母被顶高一格（永远到不了 100%）。
+/// 这些文件故意不以 `.` 开头（需要用户能看见、能手编辑），所以蹭不进隐藏文件那道过滤。
+pub(crate) const BOOKKEEPING_FILES: &[&str] = &[NOT_SEQUENCE_LIST_FILE, DEPRECATED_LIST_FILE];
+
+/// 是否为簿记文件（大小写不敏感，防用户手改文件名大小写后漏网）
+pub(crate) fn is_bookkeeping_file(file_name: &str) -> bool {
+    BOOKKEEPING_FILES
+        .iter()
+        .any(|f| f.eq_ignore_ascii_case(file_name))
+}
+
 /// 读取「名簿」类文本文件（每行一个名字），返回小写集合。
 /// 防御性：文件不存在/读取失败 → 空集合；`#` 开头与空行忽略。
 fn read_name_list(list_path: &Path) -> std::collections::HashSet<String> {
@@ -450,7 +464,7 @@ pub(crate) fn collect_first_level_names(dir: &Path) -> std::collections::HashSet
         for entry in entries.flatten() {
             let path = entry.path();
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.starts_with('.') {
+                if name.starts_with('.') || is_bookkeeping_file(name) {
                     continue;
                 }
                 if path.is_dir() {
@@ -473,8 +487,13 @@ pub(crate) fn collect_base_names(dir: &Path) -> std::collections::HashSet<String
             let path = entry.path();
             if path.is_dir() {
                 names.extend(collect_base_names(&path));
-            } else if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                names.insert(stem.to_lowercase());
+            } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if is_bookkeeping_file(name) {
+                    continue;
+                }
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    names.insert(stem.to_lowercase());
+                }
             }
         }
     }
@@ -712,4 +731,75 @@ pub(crate) fn move_dir(src: &Path, dest: &Path) -> Result<(), String> {
     copy_dir_recursive(src, dest)?;
     fs::remove_dir_all(src).map_err(|e| format!("删除原目录失败: {}", e))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod bookkeeping_tests {
+    use super::*;
+
+    /// 建一个唯一的临时目录（不引 tempfile，仓库无该 dev-dependency）
+    fn temp_dir(tag: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pgb1_test_{}_{}", tag, nanos));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn bookkeeping_files_are_recognized() {
+        assert!(is_bookkeeping_file(NOT_SEQUENCE_LIST_FILE));
+        assert!(is_bookkeeping_file(DEPRECATED_LIST_FILE));
+        assert!(!is_bookkeeping_file("main_vfx_a_add.png"));
+        // 只比完整文件名：真名叫「废弃」的素材不能被误伤
+        assert!(!is_bookkeeping_file("废弃.png"));
+    }
+
+    /// 回归：名簿文件不能进任务上传进度的分母。
+    /// 它们永远不会出现在 nextcloud，计进去就是永远到不了 100%。
+    #[test]
+    fn first_level_names_skip_bookkeeping_files() {
+        let dir = temp_dir("first_level");
+        fs::write(dir.join("main_vfx_a.png"), b"x").unwrap();
+        fs::write(dir.join(NOT_SEQUENCE_LIST_FILE), b"# x").unwrap();
+        fs::write(dir.join(DEPRECATED_LIST_FILE), b"# x").unwrap();
+        fs::write(dir.join(".hidden"), b"x").unwrap();
+
+        let names = collect_first_level_names(&dir);
+        fs::remove_dir_all(&dir).ok();
+
+        assert_eq!(names.len(), 1, "只应数出真素材，实际：{:?}", names);
+        assert!(names.contains("main_vfx_a"));
+    }
+
+    #[test]
+    fn base_names_skip_bookkeeping_files() {
+        let dir = temp_dir("base_names");
+        let sub = dir.join("symbol");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(sub.join("sym_a.png"), b"x").unwrap();
+        fs::write(dir.join(DEPRECATED_LIST_FILE), b"# x").unwrap();
+
+        let names = collect_base_names(&dir);
+        fs::remove_dir_all(&dir).ok();
+
+        assert_eq!(names.len(), 1, "实际：{:?}", names);
+        assert!(names.contains("sym_a"));
+    }
+
+    /// 废弃名簿命中判定：帧文件与 `_01` 静帧要先还原成基础名再比
+    #[test]
+    fn hits_name_list_restores_base_name() {
+        let mut list = std::collections::HashSet::new();
+        list.insert("bonus_vfx_a_add".to_string());
+        list.insert("winscreen".to_string());
+
+        assert!(hits_name_list("bonus_vfx_a_add", &list));
+        assert!(hits_name_list("bonus_vfx_a_add_01", &list), "序列帧帧文件应命中");
+        assert!(hits_name_list("BONUS_VFX_A_ADD_0007", &list), "大写 + 多位帧号应命中");
+        assert!(hits_name_list("winscreen_01", &list), "带 _01 后缀的静帧应命中");
+        assert!(!hits_name_list("winscreens", &list), "词形不同不能误伤");
+    }
 }

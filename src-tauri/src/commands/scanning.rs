@@ -5,8 +5,8 @@ use crate::models::{
 use super::helpers::{
     calc_dir_size, count_preview_progress, count_upload_progress,
     find_app_icon, is_sequence_stem, load_or_create_config, matches_base_name,
-    material_type_from_ext, read_deprecated_list, read_not_sequence_list, read_notes_file,
-    regex_strip_version,
+    is_bookkeeping_file, material_type_from_ext, read_deprecated_list, read_not_sequence_list,
+    read_notes_file, regex_strip_version,
     scan_task_names, FRAME_EXTS, VIDEO_EXTS,
 };
 use super::workflow_paths::{
@@ -622,8 +622,8 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
             .unwrap_or("unknown")
             .to_string();
 
-        // 跳过隐藏文件
-        if file_name.starts_with('.') {
+        // 跳过隐藏文件与簿记文件（非序列帧.txt / 废弃.txt 是账本，不是素材）
+        if file_name.starts_with('.') || is_bookkeeping_file(&file_name) {
             continue;
         }
 
@@ -865,7 +865,7 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
                 .unwrap_or("unknown")
                 .to_string();
 
-            if file_name.starts_with('.') {
+            if file_name.starts_with('.') || is_bookkeeping_file(&file_name) {
                 continue;
             }
 

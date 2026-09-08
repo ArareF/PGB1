@@ -227,7 +227,7 @@
 | `commands/conversion.rs` | 1528 | 转换 / 缩放 / 规范化 / nextcloud 复制（含静帧与序列帧 Spine 原件直传；普通/Prototype 共用路径） |
 | `commands/projects.rs` | 707 | 项目管理命令（`mutate_project_config` 原子 helper 统一读改写） |
 | `commands/shortcuts.rs` | 591 | 快捷方式命令（图标提取 / favicon / find_game_exe） |
-| `commands/helpers.rs` | 715 | 公共辅助（扩展名常量 SSOT / matches_base_name / mutate_project_config / move_dir rename-first / 名簿读写 `非序列帧.txt`+`废弃.txt`） |
+| `commands/helpers.rs` | 805 | 公共辅助（扩展名常量 SSOT / matches_base_name / mutate_project_config / move_dir rename-first / 名簿读写 `非序列帧.txt`+`废弃.txt` / `BOOKKEEPING_FILES` 簿记文件排除 SSOT） |
 | `commands/psd.rs` | 203 | PSD/PSB 缩略图提取（图层合并 + 内嵌 JPEG fallback + 磁盘缓存，`psd_cache_file` 与 scan_directory 共用） |
 | `commands/translation.rs` | 346 | 翻译命令入口（SSE 流式 Gemini） |
 | `commands/translation/pdf_reflow.rs` | 450 | PDF 内容流提取 + 流式排版 |

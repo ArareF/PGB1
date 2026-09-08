@@ -1,11 +1,11 @@
 {
   "version": "2.8.20",
   "notes": "修复：任务的「非序列帧.txt」与「废弃.txt」两个记录文件会被当成素材。它们原本会在素材列表里多出一张空卡片、在规范化待办里多出一行，还会把任务上传进度的分母顶高一格——它们永远不会被上传，所以任务进度永远到不了 100%。现在这两个文件在所有扫描中都被跳过（仍然可以手动打开编辑）。其中「非序列帧.txt」的这个毛病从 v2.8.17 就存在，这次一并修掉：已经用过「非序列帧」或「废弃」的任务，升级后进度会自动算回正确值。",
-  "pub_date": "2026-09-08T03:43:50Z",
+  "pub_date": "2026-09-08T05:34:59Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.19/PGB1_2.8.19_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNk1JY3ZHZ1hmSGVZeHhKZlF3QitWS3RFSkR5ZE5hckljMGl4ZDl2V3o4SlZnVXQ3amlRVHdYcVYxRXphTnBJQS9XdFNlbS9RYmNXYVZDV1MrUzZQend3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODM5MDI5CWZpbGU6UEdCMV8yLjguMTlfeDY0LXNldHVwLmV4ZQo3ZTh6L0U2THdDRzlpQXI5OHBrcTh2cytxb25MOVcrd0RzRnhLdWhQKzJuZng0YWVKeGFLTXQxdTRrb0h3VlZRMnRFTXV2eGZlUUhXZDVrWS8vVU9Ddz09Cg=="
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.20/PGB1_2.8.20_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkFLZ1kxbC95RDh3ZUNXbVV4cnZRSEt6RHc3bXI1NWkyWGZoOHoyNldXRXhueVJFQmxoOVE4a2srb2liYkpsb09XZHkzM08rc0VhRUVIK3NZVFU2MVFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODQ1Njk5CWZpbGU6UEdCMV8yLjguMjBfeDY0LXNldHVwLmV4ZQpCeHJUT2pwVytnR3JGQ0JzYWdOMU1MSHZ4Y1dGOGhWb0p2MVB0ZXRZVXVWZ09FL1JURGRsYkRxK21WbFZvbVJDRHNXUjRLTFcyNGxMbmNSVzN6REpDUT09Cg=="
     }
   }
 }

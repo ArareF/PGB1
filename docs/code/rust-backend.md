@@ -216,7 +216,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 
 **决策理由**：把前端 fetch 迁到 Rust `reqwest`，避免 IP 泄漏 + 收敛 CSP `connect-src`。
 
-### commands/files.rs（787 行）
+### commands/files.rs（850 行）
 
 **文件操作命令**：
 - `open_file`（`ShellExecuteW "open"`）
@@ -225,6 +225,8 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 - `read_text_file`
 - `rename_material` / `delete_material`（同步维护 nextcloud `original/` 中的 Spine 文件或序列目录）
 - `rename_sequence_fps`
+- `mark_not_sequence`（追加一行到 `00_original/非序列帧.txt`，单向）
+- `set_material_deprecated(task_path, base_name, deprecated)`（双向切换 `00_original/废弃.txt`；逐行重建，注释/空行原样保留）
 - `set_default_ae_file`（Sprint 3·Y-19 改用 `mutate_project_config`）
 
 **素材归档命令（v2.8.13 新增，对齐任务归档三段式）**：
@@ -318,6 +320,7 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 | `find_game_exe` | `root_dir` | `Option<String>` | Unity/Godot 原型检测 |
 | `open_file` | `path` | `()` | `ShellExecuteW "open"` 系统关联 |
 | `rename_sequence_fps` | `task_path, base_name, old_fps, new_fps` | `()` | 序列帧帧率重命名目录 |
+| `set_material_deprecated` | `task_path, base_name, deprecated` | `()` | 切换「废弃」标记（`00_original/废弃.txt`）——卡片灰显 / 不计进度分母 / 不进待办列表 |
 | `edit_sequence_tps` | `tps_path, gui_path` | `()` | 序列帧「修改」：阻塞打开 TP GUI，关闭后重解析 scale，变了就把 `[an-旧-fps]` 重命名为 `[an-新-fps]`（gui_path 空则退回系统关联打开、不重整理）。定义在 `conversion.rs` |
 | `set_default_ae_file` | `project_path, file_name` | `()` | 默认 AE 工程名 |
 | `copy_preview_to_nextcloud` | `file_path, nextcloud_preview_path` | `()` | 预览视频复制（breakdown 自动路由） |

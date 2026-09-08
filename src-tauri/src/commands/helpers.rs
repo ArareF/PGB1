@@ -69,11 +69,21 @@ pub(crate) const NOT_SEQUENCE_LIST_HEADER: &str =
     "# 此文件列出被手动标记为「非序列帧」的素材基础名，每行一个。\n\
      # 删除对应行并刷新，即可恢复为序列帧识别。\n";
 
-/// 读取 `00_original/非序列帧.txt`，返回被手动排除的基础名集合（小写）。
+/// 手动「废弃」名簿文件名（置于任务 `00_original/` 下，与「非序列帧」同一套机制）
+pub(crate) const DEPRECATED_LIST_FILE: &str = "废弃.txt";
+
+/// 「废弃」名簿的自我说明头（文件不存在时自动写入）
+pub(crate) const DEPRECATED_LIST_HEADER: &str = concat!(
+    "# 此文件列出被标记为「废弃」的素材名，每行一个。\n",
+    "# 废弃素材：卡片灰显、不计入任务进度分母、不出现在规范化/缩放/转换的待办列表。\n",
+    "# 在素材详情侧边栏点「取消废弃」，或直接删除对应行后刷新，即可恢复。\n",
+);
+
+/// 读取「名簿」类文本文件（每行一个名字），返回小写集合。
 /// 防御性：文件不存在/读取失败 → 空集合；`#` 开头与空行忽略。
-pub(crate) fn read_not_sequence_list(original_dir: &Path) -> std::collections::HashSet<String> {
+fn read_name_list(list_path: &Path) -> std::collections::HashSet<String> {
     let mut set = std::collections::HashSet::new();
-    let content = match fs::read_to_string(original_dir.join(NOT_SEQUENCE_LIST_FILE)) {
+    let content = match fs::read_to_string(list_path) {
         Ok(c) => c,
         Err(_) => return set,
     };
@@ -85,6 +95,38 @@ pub(crate) fn read_not_sequence_list(original_dir: &Path) -> std::collections::H
         set.insert(trimmed.to_lowercase());
     }
     set
+}
+
+/// 读取 `00_original/非序列帧.txt`，返回被手动排除的基础名集合（小写）。
+pub(crate) fn read_not_sequence_list(original_dir: &Path) -> std::collections::HashSet<String> {
+    read_name_list(&original_dir.join(NOT_SEQUENCE_LIST_FILE))
+}
+
+/// 读取 `00_original/废弃.txt`，返回被标记废弃的素材名集合（小写）。
+/// Prototype 任务的条目形如 `symbol/foo`（与 MaterialInfo.name 一致）。
+pub(crate) fn read_deprecated_list(original_dir: &Path) -> std::collections::HashSet<String> {
+    read_name_list(&original_dir.join(DEPRECATED_LIST_FILE))
+}
+
+/// 名簿命中判定：目录里的原始名可能是序列帧的某一帧（`x_add_01`）或带 `_01`
+/// 后缀的静帧，而名簿里存的是素材基础名。逐层还原后再比对，与
+/// `scan_materials` 推导 base_name 的规则保持一致。
+pub(crate) fn hits_name_list(raw_name: &str, list: &std::collections::HashSet<String>) -> bool {
+    let lower = raw_name.to_lowercase();
+    if list.contains(&lower) {
+        return true;
+    }
+    if let Some(base) = is_sequence_stem(&lower) {
+        if list.contains(&base) {
+            return true;
+        }
+    }
+    if let Some(base) = lower.strip_suffix("_01") {
+        if list.contains(base) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Windows 文件名非法字符（Win32 API 限制）
@@ -447,13 +489,25 @@ pub(crate) fn count_upload_progress(original_dir: &Path, nc_dir: &Path, is_proto
         return (0, 0);
     }
 
-    let original_names = if is_prototype {
+    let mut original_names = if is_prototype {
         // Prototype: 00_original 下是子分类目录，递归收集所有素材文件名
         collect_base_names(original_dir)
     } else {
         // 普通任务: 第一层即素材
         collect_first_level_names(original_dir)
     };
+
+    // 废弃素材不计入分母——否则整个任务永远到不了 100%。
+    // Prototype 名簿条目带子分类前缀（`symbol/foo`），而这里收集到的是叶子名，
+    // 故取 `/` 后段比对（代价：不同子分类下的同名素材会一起被排除，概率极低）。
+    let deprecated: std::collections::HashSet<String> = read_deprecated_list(original_dir)
+        .iter()
+        .map(|n| n.rsplit('/').next().unwrap_or(n).to_string())
+        .collect();
+    if !deprecated.is_empty() {
+        original_names.retain(|name| !hits_name_list(name, &deprecated));
+    }
+
     let total = original_names.len() as u32;
     if total == 0 || !nc_dir.exists() {
         return (total, 0);

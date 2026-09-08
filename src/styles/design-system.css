@@ -356,6 +356,9 @@
   --card-material-width:      200px;
   --card-material-padding:    var(--spacing-3);
   --card-material-gap:        var(--spacing-2);
+  /* 废弃态：整卡去色 + 降透明（“灰掉”） */
+  --card-deprecated-grayscale: 1;
+  --card-deprecated-opacity:   0.5;
 
   /* 普通卡片 */
   --card-normal-width:        200px;
@@ -466,6 +469,7 @@
   --progress-done:        var(--color-epic);
   --progress-uploaded:    var(--color-success);
   --progress-outdated:    var(--color-orange);
+  --progress-deprecated:  var(--color-neutral-600);
 
   /* 标签状态色 */
   --tag-status-pending-bg:    var(--color-neutral-400);
@@ -480,6 +484,7 @@
   --tag-progress-done-bg:     var(--progress-done);
   --tag-progress-uploaded-bg: var(--progress-uploaded);
   --tag-progress-outdated-bg: var(--progress-outdated);
+  --tag-progress-deprecated-bg: var(--progress-deprecated);
 
   /* Priority 优先度 — 菜单选择器胶囊（半透明背景） */
   --priority-high-bg:       color-mix(in srgb, var(--color-danger) 18%, transparent);
@@ -948,6 +953,69 @@ html {
   background: color-mix(in srgb, var(--color-danger) 15%, transparent);
   border-color: color-mix(in srgb, var(--color-danger) 50%, transparent);
   color: var(--color-danger);
+}
+
+/* ─── 侧边栏折叠操作菜单（当底部按钮过多时收进一个触发器）
+   弹层 Teleport to body，手动 glass（不用 backdrop-filter，对齐 .more-dropdown 的兑子） */
+.sidebar-action-menu {
+  position: fixed;
+  min-width: calc(var(--card-material-width) * 0.6);
+  padding: var(--spacing-2);
+  border-radius: var(--floating-action-radius);
+  z-index: var(--z-dropdown);
+  background: var(--dropdown-menu-bg);
+  border: var(--glass-medium-border);
+  box-shadow: var(--glass-medium-shadow);
+}
+
+.sidebar-action-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  font-family: inherit;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-bg);
+  white-space: nowrap;
+}
+
+.sidebar-action-menu-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-action-menu-item:disabled {
+  opacity: var(--button-disabled-opacity);
+  cursor: not-allowed;
+}
+
+.sidebar-action-menu-item.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+  color: var(--color-danger);
+}
+
+/* 点击外部关闭遮罩 — 全屏透明 */
+.sidebar-action-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-dropdown) - 1);
+}
+
+/* 向上弹出：以左下角为锚点 */
+.sidebar-action-menu-enter-active,
+.sidebar-action-menu-leave-active {
+  transition: var(--transition-dropdown);
+  transform-origin: bottom left;
+}
+.sidebar-action-menu-enter-from,
+.sidebar-action-menu-leave-to {
+  transform: translateY(6px) scale(0.95);
+  opacity: 0;
 }
 
 /* ─── 侧边栏内联操作弹窗（TaskPage + FileDetailSidebar 共用） */
@@ -1519,8 +1587,8 @@ html {
 }
 
 /* =============================================================================
-   紧凑版素材卡片 .mini-card（ConvertPage 控制面板 / ConversionDialog 复用）
-   从两处重复样式提取；非 scoped 不需要 :deep()
+   紧凑版素材卡片 .mini-card（ConvertPage 控制面板）
+   非 scoped 不需要 :deep()
    ============================================================================= */
 .mini-card {
   --card-material-width: 100%;

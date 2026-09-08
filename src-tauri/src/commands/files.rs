@@ -1,7 +1,7 @@
 use super::helpers::{
     matches_base_name, material_type_from_ext, move_dir, mutate_project_config,
     read_not_sequence_list, split_prototype_name, validate_file_name,
-    NOT_SEQUENCE_LIST_FILE, NOT_SEQUENCE_LIST_HEADER,
+    DEPRECATED_LIST_FILE, DEPRECATED_LIST_HEADER, NOT_SEQUENCE_LIST_FILE, NOT_SEQUENCE_LIST_HEADER,
 };
 use super::workflow_paths::{
     nextcloud_task_dir, stage_dir_prefix, vfx_dir,
@@ -323,6 +323,69 @@ pub fn mark_not_sequence(task_path: String, base_name: String) -> Result<(), Str
     content.push('\n');
     fs::write(&list_path, content).map_err(|e| format!("写入非序列帧名簿失败: {}", e))?;
     log::info!("[mark_not_sequence] 标记非序列帧: {} → {}", name, list_path.display());
+    Ok(())
+}
+
+/// 设置素材的「废弃」标记：写入 / 移出 `00_original/废弃.txt`。
+///
+/// 与「非序列帧」同一套名簿机制，但双向可逆（废弃是个状态，不是一锥子买卖）。
+/// 重建时逐行扫：注释行 / 空行原样保留，只动命中行，不破坏用户手写的内容。
+/// `base_name` 传 MaterialInfo.name（Prototype 形如 `symbol/foo`）。
+#[tauri::command]
+pub fn set_material_deprecated(
+    task_path: String,
+    base_name: String,
+    deprecated: bool,
+) -> Result<(), String> {
+    let name = base_name.trim();
+    if name.is_empty() {
+        return Err("素材名不能为空".to_string());
+    }
+    let original_dir = Path::new(&task_path).join(DIR_ORIGINAL);
+    if !original_dir.exists() {
+        return Err(format!("00_original 目录不存在: {}", original_dir.display()));
+    }
+    let list_path = original_dir.join(DEPRECATED_LIST_FILE);
+
+    // 取消废弃但名簿压根不存在 → 已是目标状态，不要凭空造一个只有说明头的文件
+    if !deprecated && !list_path.exists() {
+        return Ok(());
+    }
+
+    let existing = fs::read_to_string(&list_path)
+        .unwrap_or_else(|_| DEPRECATED_LIST_HEADER.to_string());
+    let target = name.to_lowercase();
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut hit = false;
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        let is_entry = !trimmed.is_empty() && !trimmed.starts_with('#');
+        if is_entry && trimmed.to_lowercase() == target {
+            hit = true;
+            // 已在名簿中：标记废弃则原行保留（幂等），取消废弃则丢弃该行
+            if deprecated {
+                lines.push(line.to_string());
+            }
+            continue;
+        }
+        lines.push(line.to_string());
+    }
+    if deprecated && !hit {
+        lines.push(name.to_string());
+    }
+
+    let mut content = lines.join("\n");
+    if !content.is_empty() {
+        content.push('\n');
+    }
+    fs::write(&list_path, content).map_err(|e| format!("写入废弃名簿失败: {}", e))?;
+    log::info!(
+        "[set_material_deprecated] {} 废弃: {} → {}",
+        if deprecated { "标记" } else { "取消" },
+        name,
+        list_path.display()
+    );
     Ok(())
 }
 

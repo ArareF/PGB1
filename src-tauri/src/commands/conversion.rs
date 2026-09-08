@@ -4,7 +4,7 @@ use crate::models::{
     NormalizeRequest, ScaleRequest, StartConversionRequest,
 };
 use crate::conversion::{ConversionState, ConversionSession, handle_file_event, bring_window_to_front};
-use super::helpers::{split_prototype_name, copy_dir_recursive, is_sequence_stem, matches_base_name, read_not_sequence_list, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
+use super::helpers::{split_prototype_name, copy_dir_recursive, is_sequence_stem, matches_base_name, read_deprecated_list, read_not_sequence_list, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
 use std::collections::HashSet;
 use super::workflow_paths::{
     an_dir_name, nextcloud_task_dir, stage_dir_prefix, DIR_DONE, DIR_NC_BREAKDOWN, DIR_NC_ORIGINAL,
@@ -657,6 +657,16 @@ pub fn scan_normalize_items(task_path: String) -> Result<Vec<NormalizeItem>, Str
         }
     } else {
         inventory_dir(&original_dir, &mut items, &not_seq)?;
+    }
+
+    // 废弃素材不进待办列表（名簿条目 Prototype 带子分类前缀，而
+    // NormalizeItem.base_name 是叶子名，故取 `/` 后段比对）
+    let deprecated: HashSet<String> = read_deprecated_list(&original_dir)
+        .iter()
+        .map(|n| n.rsplit('/').next().unwrap_or(n).to_string())
+        .collect();
+    if !deprecated.is_empty() {
+        items.retain(|it| !deprecated.contains(&it.base_name.to_lowercase()));
     }
 
     items.sort_by(|a, b| a.base_name.cmp(&b.base_name));

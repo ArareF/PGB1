@@ -46,6 +46,7 @@ function progressLabel(progress: string): string {
   <button
     ref="cardRef"
     class="material-card"
+    :class="{ 'is-deprecated': material.deprecated }"
     :data-path="material.path"
     @click="$emit('click', material)"
   >
@@ -99,8 +100,11 @@ function progressLabel(progress: string): string {
         <svg v-if="hasNote" class="note-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       </div>
       <div class="card-tags">
-        <span class="progress-tag" :class="`progress-${material.progress}`">
-          {{ progressLabel(material.progress) }}
+        <span
+          class="progress-tag"
+          :class="material.deprecated ? 'progress-deprecated' : `progress-${material.progress}`"
+        >
+          {{ material.deprecated ? t('materialCard.deprecated') : progressLabel(material.progress) }}
         </span>
         <span class="size-tag">{{ formatSize(material.size_bytes) }}</span>
       </div>
@@ -234,6 +238,11 @@ function progressLabel(progress: string): string {
 .progress-scaled   { background: var(--tag-progress-scaled-bg); }
 .progress-done     { background: var(--tag-progress-done-bg); }
 .progress-uploaded { background: var(--tag-progress-uploaded-bg); }
+.progress-deprecated {
+  background: var(--tag-progress-deprecated-bg);
+  color: var(--tag-status-text);
+}
+
 .progress-broken {
   background: var(--color-danger);
   color: var(--text-inverse);
@@ -272,6 +281,14 @@ function progressLabel(progress: string): string {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: var(--color-neutral-0);
+}
+
+/* 废弃态：整卡去色降透明（“灰掉”）。
+   不抢 .card-checkbox 的层级：多选时仍需能看清勾选态，故只作用于预览与信息区 */
+.material-card.is-deprecated .preview-wrapper,
+.material-card.is-deprecated .card-info {
+  filter: grayscale(var(--card-deprecated-grayscale));
+  opacity: var(--card-deprecated-opacity);
 }
 
 /* 多选选中态 */

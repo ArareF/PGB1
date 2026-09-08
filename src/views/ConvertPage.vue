@@ -30,6 +30,7 @@ const taskPath = route.query.taskPath as string
 const pendingImages = computed(() =>
   materials.value.filter(m =>
     m.material_type === 'image' &&
+    !m.deprecated &&
     m.progress !== 'done' &&
     m.progress !== 'uploaded'
   )
@@ -38,6 +39,7 @@ const pendingImages = computed(() =>
 const pendingSequences = computed(() =>
   materials.value.filter(m =>
     m.material_type === 'sequence' &&
+    !m.deprecated &&
     m.progress !== 'done' &&
     m.progress !== 'uploaded'
   )

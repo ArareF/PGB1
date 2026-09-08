@@ -18,6 +18,8 @@ export interface MaterialInfo {
   preview_version: number
   scales: number[]
   fps: number | null
+  /** 是否被标记为「废弃」（记于 00_original/废弃.txt） */
+  deprecated: boolean
 }
 
 export function useMaterials() {

@@ -163,6 +163,8 @@ pub struct MaterialInfo {
     pub scales: Vec<u32>,
     /// 序列帧帧率（从 02_done/[an-XX-YY]/ 目录名解析；转换前为 None）
     pub fps: Option<u32>,
+    /// 是否被标记为「废弃」（记于 00_original/废弃.txt）——卡片灰显、不计进度、不进待办
+    pub deprecated: bool,
 }
 
 /// 素材版本信息（侧边栏"其他版本"用）

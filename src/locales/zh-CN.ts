@@ -6,6 +6,7 @@ export default {
     save: '保存',
     delete: '删除',
     rename: '重命名',
+    actions: '操作',
     refresh: '刷新',
     browse: '浏览...',
     loading: '加载中...',
@@ -116,6 +117,8 @@ export default {
     updateMaterialDesc: '将归档「{name}」的派生版本（缩放/完成）到时光机、清除上传标记，仅保留原件，便于替换后重做。制作参数已记入笔记。',
     confirmUpdate: '确认更新',
     notSequence: '非序列帧',
+    deprecate: '废弃',
+    undeprecate: '取消废弃',
     notSequenceTitle: '标记为非序列帧',
     notSequenceDesc: '将「{name}」从序列帧识别中排除，刷新后它会按静帧显示。如需恢复，请编辑 00_original/非序列帧.txt 删除对应行后再刷新。',
     resetNoteHeader: '🔄 {date} 更新（已清派生版本，保留原件）',
@@ -159,6 +162,7 @@ export default {
     done: '已输出',
     uploaded: '已上传',
     broken: '请检查',
+    deprecated: '废弃',
   },
 
   taskList: {

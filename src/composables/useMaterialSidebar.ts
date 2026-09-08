@@ -43,6 +43,8 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
   /** 弹窗操作错误提示（重命名/删除失败后展示给用户，N-12） */
   const sidebarDialogError = ref<string | null>(null)
   const sidebarDialogBusy = ref(false)
+  /** 废弃切换中（防重入：名簿是读-改-写，并发会丢行） */
+  const deprecateBusy = ref(false)
 
   /** 记录卡片布局变化前的屏幕 Y 坐标，变化后补偿滚动避免视觉跳变 */
   function preserveCardPosition(cardSelector: string, action: () => void) {
@@ -312,6 +314,31 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     }
   }
 
+  /**
+   * 切换当前素材的「废弃」标记（写 00_original/废弃.txt）。
+   * 可逆操作，不弹确认框；刷新后把侧边栏选中同步到新数据（路径不变，不能靠 key 重挂）。
+   */
+  async function toggleDeprecated() {
+    const mat = selectedMaterial.value
+    if (!mat || deprecateBusy.value) return
+    deprecateBusy.value = true
+    try {
+      await invoke('set_material_deprecated', {
+        taskPath: opts.taskFolderPathRef.value,
+        baseName: mat.name,
+        deprecated: !mat.deprecated,
+      })
+      await opts.refresh()
+      // 废弃只改标记不改文件，素材路径不变——selectedMaterial 得手动指向刷新后的对象
+      const updated = opts.materials.value.find(m => m.name === mat.name)
+      if (updated) selectedMaterial.value = updated
+    } catch (e) {
+      console.error('[useMaterialSidebar] 切换废弃标记失败:', e)
+    } finally {
+      deprecateBusy.value = false
+    }
+  }
+
   /** 「修改」序列帧工程（.tps）：阻塞打开 TexturePacker，关闭后按新 scale 重整理并刷新 */
   async function openTpsFile() {
     const mat = selectedMaterial.value
@@ -356,6 +383,7 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     fpsInput,
     sidebarDialogError,
     sidebarDialogBusy,
+    deprecateBusy,
     // Functions
     selectMaterial,
     closeSidebar,
@@ -369,6 +397,7 @@ export function useMaterialSidebar(opts: UseMaterialSidebarOptions) {
     confirmDelete,
     confirmReset,
     confirmMarkNotSequence,
+    toggleDeprecated,
     startEditFps,
     cancelEditFps,
     confirmEditFps,

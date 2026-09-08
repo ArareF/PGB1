@@ -2,7 +2,7 @@
 
 > 全量源代码文件职责目录视图。新会话快速了解代码现状用。
 > 详细信息（Props / 状态 / 防火手记 / 架构决策）见 [`docs/code/*.md`](docs/code/)。
-> 最后更新: 2026-08-27
+> 最后更新: 2026-09-08
 
 ---
 
@@ -10,18 +10,18 @@
 
 | 目录 | 文件数 | 总行数 | 说明 |
 |------|--------|--------|------|
-| `src/components/` | 30 | 9601 | Vue UI 组件 |
-| `src/composables/` | 24 | 3262 | 组合式函数（逻辑复用） |
-| `src/views/` | 19 | 9674 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
-| `src/styles/` | 4 | 1841 | CSS 设计系统 |
+| `src/components/` | 30 | 9349 | Vue UI 组件 |
+| `src/composables/` | 24 | 3293 | 组合式函数（逻辑复用） |
+| `src/views/` | 19 | 9711 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
+| `src/styles/` | 4 | 1909 | CSS 设计系统 |
 | `src/layouts/` | 1 | 321 | 主布局 |
 | `src/types/` | 2 | 57 | TypeScript 类型定义 |
 | `src/utils/` | 3 | 255 | 工具函数 |
 | `src/config/` | 6 | 170 | 配置 SSOT（app/onboarding/fileTypes/pinboard/priority/projectPaths） |
-| `src/i18n/` + `src/locales/` | 3 | 1406 | 国际化（vue-i18n + zh-CN + en） |
+| `src/i18n/` + `src/locales/` | 3 | 1414 | 国际化（vue-i18n + zh-CN + en） |
 | `src/router/` + 入口 | 5 | 204 | 路由 + main/App/vite-env/vite.config |
-| `src-tauri/src/` | 25 | 10448 | Rust 后端 |
-| **合计** | **122** | **37239** | |
+| `src-tauri/src/` | 25 | 10595 | Rust 后端 |
+| **合计** | **122** | **37278** | |
 
 > 行数口径 = 文件总行数（含空行），与历史版本一致。
 
@@ -91,12 +91,13 @@
 |------|------|-----------|
 | `ProjectCard.vue` | 553 | 项目卡片（浅色保留原版菜单，深色精装为分段进度 + 飘带按钮 + 满卡抽屉） |
 | `TaskCard.vue` | 271 | 任务卡片（子任务进度标签 / 优先度 / 笔记） |
-| `MaterialCard.vue` | 283 | 素材卡片（序列帧预览 + fps 角标 / 笔记） |
+| `MaterialCard.vue` | 301 | 素材卡片（序列帧预览 + fps 角标 / 笔记 / 废弃态灰显） |
 | `NormalCard.vue` | 366 | 通用文件卡片（视频截帧 / PSD 缩略图 / PDF；可选 displayName/subLabel/versionCount/formatLabel/selectionPath 覆盖，供素材系列合并卡使用） |
 | `SequencePreview.vue` | 115 | Canvas 序列帧动画播放器 + LRU 缓存 |
 | `ImageViewer.vue` | 127 | 可缩放/拖拽图片查看器（滚轮 + 鼠标拖拽） |
 | `FolderBrowserDialog.vue` | 425 | 文件夹浏览弹窗（路径栈 + 8 方向拖拽调宽） |
 | `SidebarShell.vue` | 371 | 侧边栏外壳（拖拽调宽 + 全屏 FLIP + 进出场动画） |
+| `SidebarActionMenu.vue` | 120 | 侧边栏底部折叠操作菜单（向上弹出，Teleport to body） |
 | `FileDetailSidebar.vue` | 619 | 文件详情侧边栏（图/视/TXT/PSD/PDF + 版本历史 + 重命名删除；`versionLabelOf` 可覆盖版本条目标题） |
 | `VideoPlayer.vue` | 272 | 视频播放器（自定义控制条） |
 | `PdfPreviewSection.vue` | 235 | PDF iframe 预览 + 翻译 UI 集成 |
@@ -109,7 +110,6 @@
 | `EditProjectDialog.vue` | 168 | 项目管理弹窗（mode 复用：重命名 / 截止 / 删除） |
 | `OnboardingDialog.vue` | 481 | 首次引导 4 步向导（表单走 `useOnboardingForm`） |
 | `PageGuideOverlay.vue` | 125 | 通用页面指引遮罩（批注气泡） |
-| `ConversionDialog.vue` | 389 | 格式转换选择弹窗（Phase 5d） |
 | `SubtaskDialog.vue` | 251 | 子任务管理弹窗（从 TaskPage 抽取） |
 | `NoteTooltip.vue` | 148 | 笔记悬停预览气泡（可交互 checkbox） |
 | `NoteRenderer.vue` | 136 | 笔记渲染（markdown 子集 + 命名链接 + checkbox） |
@@ -146,7 +146,7 @@
 | `useOnboardingForm.ts` | 250 | 新手引导 4 步表单状态机 |
 | `useShortcutForm.ts` | 217 | 快捷方式表单（type 切换 + 图标预览） |
 | `usePreviewVideos.ts` | 180 | 预览视频分组 / 截帧 / 上传 |
-| `useMaterialSidebar.ts` | 262 | 素材侧边栏（选中 / 重命名 / 删除 / preserveCardPosition） |
+| `useMaterialSidebar.ts` | 406 | 素材侧边栏（选中 / 重命名 / 删除 / 废弃切换 / preserveCardPosition） |
 | `useArchivedMaterials.ts` | 45 | 素材归档时光机数据源（list / restore / delete） |
 | `useUpdater.ts` | 127 | 自动更新检查 / 下载 / 安装 |
 | `useMediaCache.ts` | 34 | 媒体刷新 SSOT：`clearMediaCaches()` 清模块级缓存 + `mediaVersion` 代次（破 URL 缓存 & 触发组件自失效） |
@@ -161,7 +161,7 @@
 | `ProjectPage.vue` | 528 | 任务列表 + 快捷功能（游戏介绍/项目素材/AE/任务列表）+ 两档排序 |
 | `TaskListPage.vue` | 600 | 任务管理页面（启用 / 模板 双 Tab；时光机已抽为独立页面） |
 | `TimeMachinePage.vue` | 545 | 时光机独立页面（任务归档 / 素材归档 双 Tab） |
-| `TaskPage.vue` | 1558 | 素材浏览主页面（树形/名称双视图 + Phase 5a–5d + 预览视频 + 静帧/序列帧 Spine 直传） |
+| `TaskPage.vue` | 1592 | 素材浏览主页面（树形/名称双视图 + Phase 5a–5d + 预览视频 + 静帧/序列帧 Spine 直传；侧边栏底部操作已收进折叠菜单） |
 | `NormalizePage.vue` | 715 | 规范化执行页面（全量盘点 + 待处理置顶/已规范化折叠 + 命名/自适应画布/加黑底 三操作 + 列对齐预览 + 备份恢复） |
 | `ScalePage.vue` | 406 | 素材缩放执行页面（Phase 5c + 进度反馈） |
 | `ConvertPage.vue` | 737 | 格式转换执行页面（Phase 5d + TP 预设折叠面板） |
@@ -183,7 +183,7 @@
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `styles/design-system.css` | 1590 | **SSOT**：颜色 / 间距 / 排版 / 圆角 / 阴影 / 过渡 / 公共类 |
+| `styles/design-system.css` | 1658 | **SSOT**：颜色 / 间距 / 排版 / 圆角 / 阴影 / 过渡 / 公共类 |
 | `styles/glass.css` | 86 | 毛玻璃工具类（subtle/medium/strong） + backdrop-filter 兄弟冲突规则 |
 | `styles/dialog.css` | 120 | 弹窗公共样式（overlay / content / btn 变体 / 进出场动画） |
 | `styles/reset.css` | 45 | 基础重置 + 字体引用 |
@@ -222,18 +222,18 @@
 |------|------|------|
 | `commands/mod.rs` | 27 | 子模块 `pub use` 重导出 |
 | `commands/workflow_paths.rs` | 72 | **工作流目录命名 SSOT**（00_original/01_scale/02_done/nextcloud 等常量 + 路径构造函数，与前端 `projectPaths.ts` 对齐） |
-| `commands/scanning.rs` | 1363 | 扫描命令（`scan_projects`/`scan_tasks`/`scan_materials` 等 + DirSnapshot 缓存；Prototype 共用判定；区分识别 Spine `original/` 文件/目录） |
+| `commands/scanning.rs` | 1380 | 扫描命令（`scan_projects`/`scan_tasks`/`scan_materials` 等 + DirSnapshot 缓存；Prototype 共用判定；区分识别 Spine `original/` 文件/目录） |
 | `commands/attendance.rs` | 1138 | 考勤命令（打卡 / 日报 / 提醒 / Credential Manager） |
-| `commands/conversion.rs` | 1518 | 转换 / 缩放 / 规范化 / nextcloud 复制（含静帧与序列帧 Spine 原件直传；普通/Prototype 共用路径） |
+| `commands/conversion.rs` | 1528 | 转换 / 缩放 / 规范化 / nextcloud 复制（含静帧与序列帧 Spine 原件直传；普通/Prototype 共用路径） |
 | `commands/projects.rs` | 707 | 项目管理命令（`mutate_project_config` 原子 helper 统一读改写） |
 | `commands/shortcuts.rs` | 591 | 快捷方式命令（图标提取 / favicon / find_game_exe） |
-| `commands/helpers.rs` | 606 | 公共辅助（扩展名常量 SSOT / matches_base_name / mutate_project_config / move_dir rename-first） |
+| `commands/helpers.rs` | 715 | 公共辅助（扩展名常量 SSOT / matches_base_name / mutate_project_config / move_dir rename-first / 名簿读写 `非序列帧.txt`+`废弃.txt`） |
 | `commands/psd.rs` | 203 | PSD/PSB 缩略图提取（图层合并 + 内嵌 JPEG fallback + 磁盘缓存，`psd_cache_file` 与 scan_directory 共用） |
 | `commands/translation.rs` | 346 | 翻译命令入口（SSE 流式 Gemini） |
 | `commands/translation/pdf_reflow.rs` | 450 | PDF 内容流提取 + 流式排版 |
 | `commands/translation/pdf_font.rs` | 212 | CJK 字体处理（微软雅黑 Type0） |
 | `commands/translation/pdf_cmds.rs` | 194 | PDF 命令整合（`build_translated_pdf`） |
-| `commands/files.rs` | 787 | 文件操作（重命名 / 删除 / 回收站）+ 素材归档；同步维护 nextcloud `original/` Spine 文件/目录 |
+| `commands/files.rs` | 850 | 文件操作（重命名 / 删除 / 回收站）+ 素材归档；同步维护 nextcloud `original/` Spine 文件/目录 |
 | `commands/pinboard.rs` | 184 | 贴图板 CRUD（RGBA→PNG） |
 | `commands/holiday.rs` | 148 | 外部 API 代理（IP 检测 / 节假日） |
 | `commands/settings.rs` | 69 | 设置 CRUD |

@@ -5,7 +5,8 @@ use crate::models::{
 use super::helpers::{
     calc_dir_size, count_preview_progress, count_upload_progress,
     find_app_icon, is_sequence_stem, load_or_create_config, matches_base_name,
-    material_type_from_ext, read_not_sequence_list, read_notes_file, regex_strip_version,
+    material_type_from_ext, read_deprecated_list, read_not_sequence_list, read_notes_file,
+    regex_strip_version,
     scan_task_names, FRAME_EXTS, VIDEO_EXTS,
 };
 use super::workflow_paths::{
@@ -593,6 +594,8 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
 
     // 用户手动标记的「非序列帧」基础名集合（00_original/非序列帧.txt，小写）
     let not_seq_set = read_not_sequence_list(&original_dir);
+    // 用户标记的「废弃」素材名集合（00_original/废弃.txt，小写）
+    let deprecated_set = read_deprecated_list(&original_dir);
 
     let mut materials = Vec::new();
 
@@ -655,6 +658,7 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
         // 优先取 02_done 中精灵图三件套大小，回退到 00_original 目录大小
         let size_bytes = done_cache.sum_seq_size(&base_name)
             .unwrap_or_else(|| calc_dir_size(path));
+        let deprecated = deprecated_set.contains(&base_name.to_lowercase());
 
         materials.push(MaterialInfo {
             name: base_name,
@@ -669,6 +673,7 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
             preview_path: first_frame,
             scales,
             fps,
+            deprecated,
         });
     }
 
@@ -700,6 +705,7 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
             let progress = determine_progress_sequence_cached(&base_name, &done_cache, &nc_cache);
             let scales = done_cache.collect_seq_scales(&base_name);
             let fps = done_cache.extract_fps(&base_name);
+            let deprecated = deprecated_set.contains(&base_name.to_lowercase());
             let size_bytes = done_cache.sum_seq_size(&base_name)
                 .unwrap_or_else(|| {
                     files
@@ -721,6 +727,7 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
                 preview_path: first_frame,
                 scales,
                 fps,
+                deprecated,
             });
         } else if let Some(path) = files.into_iter().next() {
             // 单文件（如 _01 的静帧）→ 移入独立文件列表
@@ -780,6 +787,7 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
             Some(path.to_string_lossy().to_string())
         };
         let preview_version = preview_mtime(&preview_path);
+        let deprecated = deprecated_set.contains(&base_name.to_lowercase());
 
         materials.push(MaterialInfo {
             name: base_name,
@@ -794,6 +802,7 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
             preview_path,
             scales,
             fps: None,
+            deprecated,
         });
     }
 
@@ -812,6 +821,8 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
     let scale_dir = task_dir.join(DIR_SCALE);
     let done_dir = task_dir.join(DIR_DONE);
     let nc_task_dir = nextcloud_task_dir(task_dir);
+    // 「废弃」名簿仍放在任务级 00_original/ 下，条目形如 `symbol/foo`
+    let deprecated_set = read_deprecated_list(&original_dir);
 
     let mut materials = Vec::new();
 
@@ -868,6 +879,8 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
                 let progress = determine_progress_sequence_cached(&base_name, &done_cache, &nc_cache);
                 let scales = done_cache.collect_seq_scales(&base_name);
                 let fps = done_cache.extract_fps(&base_name);
+                let deprecated = deprecated_set
+                    .contains(&format!("{}/{}", sub_name, base_name).to_lowercase());
 
                 materials.push(MaterialInfo {
                     name: format!("{}/{}", sub_name, base_name),
@@ -882,6 +895,7 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
                     preview_path: first_frame,
                     scales,
                     fps,
+                    deprecated,
                 });
             } else {
                 // 单个文件
@@ -910,6 +924,8 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
                 } else {
                     Vec::new()
                 };
+                let deprecated = deprecated_set
+                    .contains(&format!("{}/{}", sub_name, base_name).to_lowercase());
 
                 materials.push(MaterialInfo {
                     name: format!("{}/{}", sub_name, base_name),
@@ -924,6 +940,7 @@ fn scan_materials_prototype(task_dir: &Path) -> Result<Vec<MaterialInfo>, String
                     preview_path: Some(path.to_string_lossy().to_string()),
                     scales,
                     fps: None,
+                    deprecated,
                 });
             }
         }

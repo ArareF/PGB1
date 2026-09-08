@@ -61,10 +61,11 @@ const executing = ref(false)
 const error = ref<string | null>(null)
 const scalingProgress = ref<{ current: number; total: number; name: string } | null>(null)
 
-// 只展示静帧，且排除已上传、以及已有任意缩放版本的素材
+// 只展示静帧，且排除废弃、已上传、以及已有任意缩放版本的素材
 const imageMaterials = computed(() =>
   materials.value.filter(m =>
     m.material_type === 'image' &&
+    !m.deprecated &&
     m.progress !== 'uploaded' &&
     m.scales.length === 0
   )

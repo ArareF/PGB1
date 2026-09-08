@@ -6,6 +6,7 @@ export default {
     save: 'Save',
     delete: 'Delete',
     rename: 'Rename',
+    actions: 'Actions',
     refresh: 'Refresh',
     browse: 'Browse...',
     loading: 'Loading...',
@@ -112,6 +113,8 @@ export default {
     updateMaterialDesc: 'Derived versions (scale/done) of "{name}" will be archived to the Time Machine and the upload marker cleared, keeping only the original for re-making. Production params have been saved to the note.',
     confirmUpdate: 'Confirm Update',
     notSequence: 'Not a Sequence',
+    deprecate: 'Deprecate',
+    undeprecate: 'Undeprecate',
     notSequenceTitle: 'Mark as Not a Sequence',
     notSequenceDesc: 'Exclude "{name}" from sequence detection; after refresh it will show as still frames. To restore, edit 00_original/非序列帧.txt, delete the matching line, then refresh.',
     resetNoteHeader: '🔄 Updated {date} (derived versions cleared, original kept)',
@@ -151,6 +154,7 @@ export default {
     done: 'Exported',
     uploaded: 'Uploaded',
     broken: 'Check Required',
+    deprecated: 'Deprecated',
   },
 
   taskList: {

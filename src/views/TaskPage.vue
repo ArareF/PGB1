@@ -29,6 +29,7 @@ import NoteDialog from '../components/NoteDialog.vue'
 import NoteRenderer from '../components/NoteRenderer.vue'
 import PageGuideOverlay from '../components/PageGuideOverlay.vue'
 import SidebarShell from '../components/SidebarShell.vue'
+import SidebarActionMenu, { type SidebarActionItem } from '../components/SidebarActionMenu.vue'
 import { PAGE_GUIDE_ANNOTATIONS } from '../config/onboarding'
 import { taskFolderPath, nextcloudTaskPath, nextcloudPreviewPath } from '../config/projectPaths'
 import { formatSize } from '../utils/format'
@@ -106,6 +107,7 @@ const {
   fpsInput,
   sidebarDialogError,
   sidebarDialogBusy,
+  deprecateBusy,
   selectMaterial,
   closeSidebar,
   onSidebarNoteSave,
@@ -118,6 +120,7 @@ const {
   confirmDelete,
   confirmReset,
   confirmMarkNotSequence,
+  toggleDeprecated,
   startEditFps,
   cancelEditFps,
   confirmEditFps,
@@ -397,6 +400,51 @@ async function markSpineUploaded() {
     console.error('Spine 标记已上传失败:', err)
   } finally {
     markBusy.value = false
+  }
+}
+
+// ─── 侧边栏底部操作（收进折叠菜单）──────────────────
+// 按钮最多时能摊到 6 个，一排放不下也认不过来。可见性条件与原来的 v-if 逐条对齐。
+
+const sidebarActionItems = computed<SidebarActionItem[]>(() => {
+  const mat = selectedMaterial.value
+  if (!mat) return []
+  const isImageOrSeq = mat.material_type === 'image' || mat.material_type === 'sequence'
+  const items: SidebarActionItem[] = []
+
+  if (isImageOrSeq && mat.progress === 'original') {
+    items.push({ id: 'spine', label: t('task.markSpine'), disabled: markBusy.value })
+  }
+  if (mat.material_type === 'sequence' && versions.value.some(v => v.stage === '02_done')) {
+    items.push({ id: 'tps', label: t('task.modify') })
+  }
+  if (mat.material_type === 'sequence') {
+    items.push({ id: 'not-sequence', label: t('task.notSequence') })
+  }
+  if (isImageOrSeq && mat.progress !== 'original' && mat.progress !== 'none') {
+    items.push({ id: 'reset', label: t('task.updateMaterial') })
+  }
+  items.push({
+    id: 'deprecate',
+    label: mat.deprecated ? t('task.undeprecate') : t('task.deprecate'),
+    disabled: deprecateBusy.value,
+  })
+  items.push({ id: 'rename', label: t('common.rename') })
+  items.push({ id: 'delete', label: t('common.delete'), danger: true })
+  return items
+})
+
+function onSidebarAction(id: string) {
+  switch (id) {
+    case 'spine':        markSpineUploaded(); break
+    case 'tps':          openTpsFile(); break
+    case 'not-sequence': openNotSequenceDialog(); break
+    case 'reset':        openResetDialog(); break
+    case 'deprecate':    toggleDeprecated(); break
+    case 'rename':       openRenameDialog(); break
+    case 'delete':       openDeleteDialog(); break
+    default:
+      console.warn('[TaskPage] 未知的侧边栏操作:', id)
   }
 }
 
@@ -1059,7 +1107,11 @@ onUnmounted(() => {
           </div>
           <div class="info-row">
             <span class="info-label">{{ $t('task.progress') }}</span>
-            <span class="info-value">{{ progressLabel(selectedMaterial.progress) }}</span>
+            <span class="info-value">
+              {{ selectedMaterial.deprecated
+                ? $t('materialCard.deprecated')
+                : progressLabel(selectedMaterial.progress) }}
+            </span>
           </div>
         </div>
       </div>
@@ -1111,29 +1163,11 @@ onUnmounted(() => {
     </template>
 
     <template #actions>
-      <button
-        v-if="(selectedMaterial?.material_type === 'image' || selectedMaterial?.material_type === 'sequence') && selectedMaterial?.progress === 'original'"
-        class="sidebar-action-btn"
-        :disabled="markBusy"
-        @click="markSpineUploaded"
-      >{{ $t('task.markSpine') }}</button>
-      <button
-        v-if="selectedMaterial?.material_type === 'sequence' && versions.some(v => v.stage === '02_done')"
-        class="sidebar-action-btn"
-        @click="openTpsFile"
-      >{{ $t('task.modify') }}</button>
-      <button
-        v-if="selectedMaterial?.material_type === 'sequence'"
-        class="sidebar-action-btn"
-        @click="openNotSequenceDialog"
-      >{{ $t('task.notSequence') }}</button>
-      <button
-        v-if="(selectedMaterial?.material_type === 'image' || selectedMaterial?.material_type === 'sequence') && selectedMaterial?.progress !== 'original' && selectedMaterial?.progress !== 'none'"
-        class="sidebar-action-btn"
-        @click="openResetDialog"
-      >{{ $t('task.updateMaterial') }}</button>
-      <button class="sidebar-action-btn" @click="openRenameDialog">{{ $t('common.rename') }}</button>
-      <button class="sidebar-action-btn danger" @click="openDeleteDialog">{{ $t('common.delete') }}</button>
+      <SidebarActionMenu
+        :items="sidebarActionItems"
+        :label="$t('common.actions')"
+        @select="onSidebarAction"
+      />
     </template>
 
     <template #overlay>

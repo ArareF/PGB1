@@ -2,7 +2,7 @@
 
 > 全量源代码文件职责目录视图。新会话快速了解代码现状用。
 > 详细信息（Props / 状态 / 防火手记 / 架构决策）见 [`docs/code/*.md`](docs/code/)。
-> 最后更新: 2026-09-08
+> 最后更新: 2026-09-10
 
 ---
 
@@ -227,7 +227,7 @@
 | `commands/conversion.rs` | 1528 | 转换 / 缩放 / 规范化 / nextcloud 复制（含静帧与序列帧 Spine 原件直传；普通/Prototype 共用路径） |
 | `commands/projects.rs` | 707 | 项目管理命令（`mutate_project_config` 原子 helper 统一读改写） |
 | `commands/shortcuts.rs` | 591 | 快捷方式命令（图标提取 / favicon / find_game_exe） |
-| `commands/helpers.rs` | 805 | 公共辅助（扩展名常量 SSOT / matches_base_name / mutate_project_config / move_dir rename-first / 名簿读写 `非序列帧.txt`+`废弃.txt` / `BOOKKEEPING_FILES` 簿记文件排除 SSOT） |
+| `commands/helpers.rs` | 869 | 公共辅助（扩展名常量 SSOT / matches_base_name / **`is_vfx_stem` + `static_base_name` 静帧基础名 SSOT：vfx 剥 `_NN`、非 vfx 原样** / mutate_project_config / move_dir rename-first / 名簿读写 `非序列帧.txt`+`废弃.txt` / `BOOKKEEPING_FILES` 簿记文件排除 SSOT） |
 | `commands/psd.rs` | 203 | PSD/PSB 缩略图提取（图层合并 + 内嵌 JPEG fallback + 磁盘缓存，`psd_cache_file` 与 scan_directory 共用） |
 | `commands/translation.rs` | 346 | 翻译命令入口（SSE 流式 Gemini） |
 | `commands/translation/pdf_reflow.rs` | 450 | PDF 内容流提取 + 流式排版 |

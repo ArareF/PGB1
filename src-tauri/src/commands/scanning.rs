@@ -7,7 +7,7 @@ use super::helpers::{
     find_app_icon, is_sequence_stem, load_or_create_config, matches_base_name,
     is_bookkeeping_file, material_type_from_ext, read_deprecated_list, read_not_sequence_list,
     read_notes_file, regex_strip_version,
-    scan_task_names, FRAME_EXTS, VIDEO_EXTS,
+    scan_task_names, static_base_name, FRAME_EXTS, VIDEO_EXTS,
 };
 use super::workflow_paths::{
     export_dir, nextcloud_dir, nextcloud_task_dir, stage_dir_prefix,
@@ -748,12 +748,12 @@ pub fn scan_materials(task_path: String) -> Result<Vec<MaterialInfo>, String> {
             .unwrap_or("")
             .to_lowercase();
 
-        // 提取基础名（去掉扩展名，如有 _01 后缀也去掉）
+        // 提取基础名：vfx 静帧剥末尾 _NN，非 vfx 静帧原样保留（SSOT：static_base_name）
         let stem = path
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
-        let base_name = stem.strip_suffix("_01").unwrap_or(stem).to_string();
+        let (base_name, _) = static_base_name(stem);
 
         let material_type = material_type_from_ext(&ext);
 

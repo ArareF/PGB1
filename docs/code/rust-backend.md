@@ -158,6 +158,7 @@
 **公共辅助函数**：
 - **扩展名常量 SSOT**（与前端 `fileTypes.ts` 对齐）：`IMAGE_EXTS` / `VIDEO_EXTS` / `FRAME_EXTS` + `material_type_from_ext`
 - `matches_base_name`
+- **`is_vfx_stem` / `static_base_name`**（2026-09-10）：独立静帧基础名 SSOT。stem 含 `_vfx_` 才剥末尾 `_NN` 纯数字后缀，非 vfx 静帧（`btn_01` / `btn_02`）原样保留。`scan_materials` 卡片名 / `inventory_dir` 规范化 / `collect_matching_files_flat` nextcloud 原件匹配 / `hits_name_list` 名簿命中四处统一走这里，禁止各处自己 `strip_suffix("_01")`
 - `calc_dir_size`
 - `regex_strip_version` / `extract_version_number`
 - `count_upload_progress` / `count_preview_progress`

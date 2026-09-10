@@ -4,7 +4,7 @@ use crate::models::{
     NormalizeRequest, ScaleRequest, StartConversionRequest,
 };
 use crate::conversion::{ConversionState, ConversionSession, handle_file_event, bring_window_to_front};
-use super::helpers::{split_prototype_name, copy_dir_recursive, is_bookkeeping_file, is_sequence_stem, matches_base_name, read_deprecated_list, read_not_sequence_list, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
+use super::helpers::{split_prototype_name, copy_dir_recursive, is_bookkeeping_file, is_sequence_stem, matches_base_name, read_deprecated_list, read_not_sequence_list, static_base_name, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
 use std::collections::HashSet;
 use super::workflow_paths::{
     an_dir_name, nextcloud_task_dir, stage_dir_prefix, DIR_DONE, DIR_NC_BREAKDOWN, DIR_NC_ORIGINAL,
@@ -858,10 +858,10 @@ fn inventory_dir(
         }
     }
 
-    // 独立静帧：逐个处理（带 _NN 后缀者去后缀）
+    // 独立静帧：逐个处理（vfx 静帧带 _NN 后缀者去后缀；非 vfx 原样保留，SSOT：static_base_name）
     for path in statics {
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        let (base, had_suffix) = split_base_suffix(stem);
+        let (base, had_suffix) = static_base_name(stem);
         let ext = path
             .extension()
             .and_then(|e| e.to_str())
@@ -887,17 +887,6 @@ fn inventory_dir(
     }
 
     Ok(())
-}
-
-/// 拆出基础名与"是否带纯数字帧号后缀"。`main_a_01` -> ("main_a", true)；`main_a` -> ("main_a", false)
-fn split_base_suffix(stem: &str) -> (String, bool) {
-    if let Some(pos) = stem.rfind('_') {
-        let suffix = &stem[pos + 1..];
-        if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
-            return (stem[..pos].to_string(), true);
-        }
-    }
-    (stem.to_string(), false)
 }
 
 /// base 按 '_' 切分后，任一段等于 add 或 screen（区分 address/screenshot 等误伤）
@@ -1117,8 +1106,9 @@ fn collect_matching_files_flat(dir: &Path, base_name: &str) -> Vec<String> {
             if !path.is_file() { continue; }
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             let stem = Path::new(name).file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            let clean_stem = stem.strip_suffix("_01").unwrap_or(stem);
-            if clean_stem == base_name {
+            // 原件可能是 `base_01.png`（vfx 静帧），也可能就叫 `base.png`；非 vfx 静帧 base 本身含后缀
+            let (clean_stem, _) = static_base_name(stem);
+            if stem == base_name || clean_stem == base_name {
                 results.push(path.to_string_lossy().to_string());
             }
         }

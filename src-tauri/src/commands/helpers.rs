@@ -61,6 +61,34 @@ pub(crate) fn is_sequence_stem(stem: &str) -> Option<String> {
     }
 }
 
+/// vfx 素材标识 SSOT（业务规则：特效素材文件名含 `_vfx_` token，程序据此归类）
+pub(crate) const VFX_MARKER: &str = "_vfx_";
+
+/// stem 是否为 vfx 素材（忽略大小写）
+pub(crate) fn is_vfx_stem(stem: &str) -> bool {
+    stem.to_lowercase().contains(VFX_MARKER)
+}
+
+/// 独立静帧基础名 SSOT：返回 (基础名, 是否剥了后缀)。
+///
+/// - vfx 静帧（[`is_vfx_stem`]）：剥掉末尾 `_<纯数字>`（`_01` / `_02` / `_0007` 同等对待），
+///   与文档「静帧基础名 = 去掉末尾帧编号」一致。
+/// - 非 vfx 静帧：`_01` / `_02` 是名字本身的一部分（如 `btn_01` / `btn_02` 是两个素材），原样保留。
+///
+/// 卡片显示名、规范化去后缀、nextcloud 原件匹配、名簿命中都必须走这里，禁止各处自己剥。
+pub(crate) fn static_base_name(stem: &str) -> (String, bool) {
+    if !is_vfx_stem(stem) {
+        return (stem.to_string(), false);
+    }
+    if let Some(pos) = stem.rfind('_') {
+        let suffix = &stem[pos + 1..];
+        if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
+            return (stem[..pos].to_string(), true);
+        }
+    }
+    (stem.to_string(), false)
+}
+
 /// 手动「非序列帧」名簿文件名（置于任务 `00_original/` 下，显性可读、可手编辑）
 pub(crate) const NOT_SEQUENCE_LIST_FILE: &str = "非序列帧.txt";
 
@@ -123,8 +151,8 @@ pub(crate) fn read_deprecated_list(original_dir: &Path) -> std::collections::Has
 }
 
 /// 名簿命中判定：目录里的原始名可能是序列帧的某一帧（`x_add_01`）或带 `_01`
-/// 后缀的静帧，而名簿里存的是素材基础名。逐层还原后再比对，与
-/// `scan_materials` 推导 base_name 的规则保持一致。
+/// 后缀的 vfx 静帧，而名簿里存的是素材基础名。逐层还原后再比对，与
+/// `scan_materials` 推导 base_name 的规则（[`static_base_name`]）保持一致。
 pub(crate) fn hits_name_list(raw_name: &str, list: &std::collections::HashSet<String>) -> bool {
     let lower = raw_name.to_lowercase();
     if list.contains(&lower) {
@@ -135,10 +163,9 @@ pub(crate) fn hits_name_list(raw_name: &str, list: &std::collections::HashSet<St
             return true;
         }
     }
-    if let Some(base) = lower.strip_suffix("_01") {
-        if list.contains(base) {
-            return true;
-        }
+    let (base, stripped) = static_base_name(&lower);
+    if stripped && list.contains(&base) {
+        return true;
     }
     false
 }
@@ -789,17 +816,54 @@ mod bookkeeping_tests {
         assert!(names.contains("sym_a"));
     }
 
-    /// 废弃名簿命中判定：帧文件与 `_01` 静帧要先还原成基础名再比
+    /// 废弃名簿命中判定：帧文件与 vfx `_01` 静帧要先还原成基础名再比
     #[test]
     fn hits_name_list_restores_base_name() {
         let mut list = std::collections::HashSet::new();
         list.insert("bonus_vfx_a_add".to_string());
-        list.insert("winscreen".to_string());
+        list.insert("main_vfx_a_add_seed".to_string());
+        list.insert("winscreen_01".to_string());
 
         assert!(hits_name_list("bonus_vfx_a_add", &list));
         assert!(hits_name_list("bonus_vfx_a_add_01", &list), "序列帧帧文件应命中");
         assert!(hits_name_list("BONUS_VFX_A_ADD_0007", &list), "大写 + 多位帧号应命中");
-        assert!(hits_name_list("winscreen_01", &list), "带 _01 后缀的静帧应命中");
-        assert!(!hits_name_list("winscreens", &list), "词形不同不能误伤");
+        assert!(hits_name_list("main_vfx_a_add_seed_01", &list), "vfx 静帧去后缀后应命中");
+        assert!(hits_name_list("winscreen_01", &list), "非 vfx 静帧按完整名命中");
+        assert!(!hits_name_list("winscreen", &list), "非 vfx 静帧不得被剥后缀后误命中");
+        assert!(!hits_name_list("winscreens_01", &list), "词形不同不能误伤");
+    }
+}
+
+#[cfg(test)]
+mod static_naming_tests {
+    use super::*;
+
+    #[test]
+    fn vfx_marker_is_case_insensitive() {
+        assert!(is_vfx_stem("main_vfx_a_add_seed_01"));
+        assert!(is_vfx_stem("MAIN_VFX_A"));
+        assert!(!is_vfx_stem("btn_01"));
+        // 必须是完整 `_vfx_` token，`vfx` 作为词的一部分不算
+        assert!(!is_vfx_stem("vfxbtn_01"));
+        assert!(!is_vfx_stem("main_vfx"));
+    }
+
+    /// vfx 静帧：剥任意位数的末尾纯数字后缀（不只 `_01`）
+    #[test]
+    fn vfx_static_strips_numeric_suffix() {
+        assert_eq!(static_base_name("main_vfx_a_add_seed_01"), ("main_vfx_a_add_seed".to_string(), true));
+        assert_eq!(static_base_name("main_vfx_a_add_seed_02"), ("main_vfx_a_add_seed".to_string(), true));
+        assert_eq!(static_base_name("main_vfx_a_add_seed_0007"), ("main_vfx_a_add_seed".to_string(), true));
+        assert_eq!(static_base_name("main_vfx_a_add_seed"), ("main_vfx_a_add_seed".to_string(), false));
+        // 末尾不是纯数字 → 不剥
+        assert_eq!(static_base_name("main_vfx_a_add_v2a"), ("main_vfx_a_add_v2a".to_string(), false));
+    }
+
+    /// 非 vfx 静帧：`_01` / `_02` 是名字的一部分，原样保留
+    #[test]
+    fn non_vfx_static_keeps_full_name() {
+        assert_eq!(static_base_name("btn_01"), ("btn_01".to_string(), false));
+        assert_eq!(static_base_name("btn_02"), ("btn_02".to_string(), false));
+        assert_eq!(static_base_name("winscreen"), ("winscreen".to_string(), false));
     }
 }

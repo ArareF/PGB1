@@ -572,7 +572,8 @@ pub fn execute_scaling(app_handle: AppHandle, requests: Vec<ScaleRequest>) -> Re
         let new_width = (width as f64 * (req.scale_percent as f64 / 100.0)).round() as u32;
         let new_height = (height as f64 * (req.scale_percent as f64 / 100.0)).round() as u32;
 
-        let resized = img.resize(
+        // resize_exact：按算好的宽高精确输出。resize 是「等比塞进包围盒」语义，会取较小比例，导致窄长图另一边被拖低
+        let resized = img.resize_exact(
             new_width,
             new_height,
             image::imageops::FilterType::Lanczos3,

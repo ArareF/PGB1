@@ -9,7 +9,7 @@
 
 - **产品**：PGB1 — 2D游戏特效师文件整理工具
 - **技术栈**：Tauri 2.x（Rust + HTML/CSS/JS），目标 Windows
-- **状态**：✅ **已发布 v2.8.21**（功能完整，持续迭代维护中）
+- **状态**：✅ **已发布 v2.8.22**（功能完整，持续迭代维护中）
 - **角色**：产品总监（决策）+ Tech Lead / Agent（实现）
 
 ---
@@ -154,6 +154,9 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | `docs/新设计风格.md` | Sharp Grid 深色工业锐角规范；§14 质感精装层定稿，§15 全应用深色方案（2026-07-28）。⚠️ **仅设计稿，master 上未实装** —— v2.8.18 有意剥离 UI 改动；实装代码 362cd3f 曾合入 master，已被显式 revert，完整版本保留在 `claude/media-cache-invalidation` 分支。要恢复：revert 那个 revert 提交，或从该分支重新 cherry-pick 362cd3f |
 | `docs/新设计风格示意.html` | Sharp Grid 可交互网页示意稿（三级钻取 + 设计规范页，浏览器直接打开） |
 | `docs/新设计风格-精装样板.html` | §14 质感精装层 canonical 参考：主页项目卡 + 组件样板，含 `原版⇄精装` 对比开关 + 点阵光照控制台（可调参） |
+| `docs/UI重做-VEE样板间.html` | **UI 推倒重来的设计 SSOT**：VEE 动作 × Sharp Grid 配色的完整可交互样板间（11 个主窗口页面 + 详情侧栏 + 9 弹窗 + 3 独立窗口 + 组件清单 + Token 规范），浏览器直接打开；照着它改代码 |
+| `docs/Vee风格/` | VEE 官网动效拆解（`VEEUI动效拆解.md`）+ 可运行复刻 demo |
+| `docs/plans/2026-09-01-UI重做-交接.md` | UI 重做交接单：定稿的动作/颜色/形状规则、踩坑清单、四期分期、待拍板项 |
 | `docs/code/` | CODE_INDEX 二级详情（components/composables/views/rust-backend/styles-system） |
 | `docs/plans/` | 实施方案草案（进行中的方案放这里）。当前：`2026-08-24-normalize-completed-collapse.md` + `2026-08-24-spine-direct-upload{,-design}.md` |
 | `docs/archive/plans/` | 已归档的历史方案（42 份：Phase 1~7 + 功能特性 + 2026-04 代码优化 + v2.8.13/15/17 已发版方案） |
@@ -181,7 +184,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | **打包格式** | NSIS only（`"targets": "nsis"`） | WiX 3 不支持中文 productName，会直接报错 |
 | **关闭行为** | 最小化到系统托盘，不退出 | lib.rs CloseRequested 拦截 + hide() |
 | **UI 缩放** | 固定值，默认 100%，无自动模式 | 自动模式（按窗口宽度缩放）效果差，已移除 |
-| **软件名称** | PG素材管理系统，V2.8.21，开发者 Fuchikami | `src/config/app.ts` 为 SSOT |
+| **软件名称** | PG素材管理系统，V2.8.22，开发者 Fuchikami | `src/config/app.ts` 为 SSOT |
 | **CSP media-src** | 必须单独声明，含 asset:／blob:／data: | `<video>` 不继承 img-src，缺失打包后视频全灭 |
 | 技术栈 | Tauri 2.x（不用 Electron） | Electron 不支持拖拽文件到外部浏览器 |
 | UI 风格 | 毛玻璃（Glassmorphism），明暗双主题 | — |
@@ -233,6 +236,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 | 版本 | 日期 | 主要变更 |
 |------|------|---------|
+| v2.8.22 | 2026-09-10 | 修复：非 vfx 素材名字里的 `_01` / `_02` 后缀被当帧号剥掉 —— `btn_01.png` 卡片名显示成 `btn`，规范化页还把 `btn_01`/`btn_02` 都建议改成同一个 `btn.png`（撞名）。新增 `is_vfx_stem()` + `static_base_name()` 作为静帧基础名 SSOT：stem 含 `_vfx_` 才剥末尾 `_NN`（顺带把「只剥 `_01`」统一成「剥任意纯数字」），非 vfx 静帧原样保留；4 处调用点收口 |
 | v2.8.21 | 2026-09-10 | 修复：缩放出来的图比目标尺寸小。`execute_scaling` 误用 `image::resize`（「等比塞进包围盒」语义，取两方向中较小的比例），宽高分别取整后必有一方偏小，整张图被按那一方的比例压掉 —— 52×1075 选 70% 实得 36×744（应为 36×753），窄长图偏差最明显。改用 `resize_exact` 按算好的宽高精确输出 |
 | v2.8.20 | 2026-09-08 | 修复：`00_original/` 下的名簿文件（`非序列帧.txt` / `废弃.txt`）被当成素材 —— 多出空卡片 + 混进规范化待办 + **顶高任务进度分母（永远到不了 100%）**。新增 `BOOKKEEPING_FILES` SSOT，4 处枚举点统一跳过 + 4 个回归测试。「非序列帧.txt」的同款毛病自 v2.8.17 存在，一并修复 |
 | v2.8.19 | 2026-09-08 | 素材「废弃」状态（侧边栏可逆切换，记于任务级 `00_original/废弃.txt`）—— 卡片灰显 + **不计入任务进度分母** + 不进规范化/缩放/转换待办列表；素材详情侧边栏底部按钮（最多 7 个）收进「操作」折叠菜单；清掉零引用死代码 `ConversionDialog.vue` |

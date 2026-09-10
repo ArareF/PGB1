@@ -1,11 +1,11 @@
 {
   "version": "2.8.22",
   "notes": "修复：不带 vfx 标识的素材，名字末尾的 _01、_02 被当成序列帧编号吞掉了。此前一张叫 btn_01.png 的图，卡片上只显示 btn；规范化页面更麻烦，它会把 btn_01 和 btn_02 都建议改名成同一个 btn.png，两个素材撞在一起。现在只有文件名里含 _vfx_ 的特效素材才会去掉末尾编号，其余素材一律保留完整名称。顺带修正：特效素材以前只去掉 _01，导致同一组里 _01 和 _02 显示得不一致，现在任意位数的末尾编号都会去掉。请注意，如果您的特效静帧没有带 _vfx_ 标识、又习惯以 _01 结尾，它们的卡片名从此会显示出 _01 后缀，这是本次修正的预期行为。序列帧的识别规则没有变化。",
-  "pub_date": "2026-09-10T03:07:01Z",
+  "pub_date": "2026-09-10T04:04:42Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.21/PGB1_2.8.21_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkdZRWhIOVlKT0tUbW1CaDhtaEs3U0h6ZXRJRVY3Z0docmp1TXdJbDJXc1QyU2xodHdaZmFweVlNLzdhZjZQZ3pqTnp5NkFSaVVqRHJhNG1yaTJhYkFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MDA5NjIxCWZpbGU6UEdCMV8yLjguMjFfeDY0LXNldHVwLmV4ZQppOEZMUnM1ZE1vRGI2Y1ZKTmlqRTQ4K2I2VGZyQzRIRzVDWE5EZjlDNDg3QmthajB3NStSQ0ZRamhzS1oxVURiTUdtYVdUS1hMdUtwbEtPb2doZXREQT09Cg=="
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.22/PGB1_2.8.22_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkVBMHhqQ1BQRTNIWmJNNVU1WFdqZzllUXhPME9DZjQyVDlsSC9sM21hTWlWQlEzZi9sT0szY2c5YTF3eHl2dW1XdUV0U0JvM1R4ZGdHaVNid1lFQkFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MDEzMDgyCWZpbGU6UEdCMV8yLjguMjJfeDY0LXNldHVwLmV4ZQpQOEVuUDB3WTBwQjhRc05ocjk1MXpna0JLUXhHNmVQZlpEVU1LNHlQamRxc1ROR0tNQ0lqYktiNlAxVmdaeXkrN1RISjhXUHhVUlNCdWcyaUVPYlpDQT09Cg=="
     }
   }
 }

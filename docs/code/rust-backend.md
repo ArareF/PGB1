@@ -76,7 +76,7 @@
 
 `pub use` 重导出所有子模块的命令，统一对外接口（含 `psd` / `workflow_paths` 子模块）。
 
-### commands/workflow_paths.rs（72 行，2026-06-10 新增）
+### commands/workflow_paths.rs（87 行，2026-06-10 新增）
 
 **工作流目录命名 SSOT**（与前端 `src/config/projectPaths.ts` 对齐）：
 - 目录名常量：`DIR_ORIGINAL` / `DIR_SCALE` / `DIR_DONE` / `DIR_PREVIEW` / `DIR_NEXTCLOUD` / `DIR_NC_PREVIEW` / `DIR_NC_BREAKDOWN` / `DIR_NC_ORIGINAL` / `DIR_EXPORT` / `DIR_AE` / `DIR_PSD` 等
@@ -320,9 +320,9 @@ PDF 构建底层（字体/排版/命令整合）拆到 `translation/` 子模块�
 | `read_text_file` | `path` | `String` | TXT 预览 |
 | `find_game_exe` | `root_dir` | `Option<String>` | Unity/Godot 原型检测 |
 | `open_file` | `path` | `()` | `ShellExecuteW "open"` 系统关联 |
-| `rename_sequence_fps` | `task_path, base_name, old_fps, new_fps` | `()` | 序列帧帧率重命名目录 |
+| `rename_sequence_fps` | `task_path, base_name, old_fps, new_fps` | `()` | 序列帧改帧率：把**该素材**的 webp/plist/tps 从 `[an-S-旧]` 搬进 `[an-S-新]`（每个 scale 档各搬一次，走 `relocate_material_files`）。⚠️ 绝不能重命名整个目录 —— 目录里还住着别的序列帧，v2.8.22 前的整目录 rename 把邻居全改成了新帧率 |
 | `set_material_deprecated` | `task_path, base_name, deprecated` | `()` | 切换「废弃」标记（`00_original/废弃.txt`）——卡片灰显 / 不计进度分母 / 不进待办列表 |
-| `edit_sequence_tps` | `tps_path, gui_path` | `()` | 序列帧「修改」：阻塞打开 TP GUI，关闭后重解析 scale，变了就把 `[an-旧-fps]` 重命名为 `[an-新-fps]`（gui_path 空则退回系统关联打开、不重整理）。定义在 `conversion.rs` |
+| `edit_sequence_tps` | `tps_path, gui_path` | `()` | 序列帧「修改」：阻塞打开 TP GUI，关闭后重解析 scale，变了就把**该素材**的三件套搬进 `[an-新-fps]`（`reorganize_edited_sequence` → `relocate_material_files`，邻居不动；gui_path 空则退回系统关联打开、不重整理）。定义在 `conversion.rs` |
 | `set_default_ae_file` | `project_path, file_name` | `()` | 默认 AE 工程名 |
 | `copy_preview_to_nextcloud` | `file_path, nextcloud_preview_path` | `()` | 预览视频复制（breakdown 自动路由） |
 | `extract_psd_thumbnail` | `app_handle, path, max_size` | `Option<String>` | PSD 图层合并 + PSB 内嵌 JPEG，磁盘缓存 |

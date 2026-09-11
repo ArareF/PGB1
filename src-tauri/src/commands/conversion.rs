@@ -4,11 +4,11 @@ use crate::models::{
     NormalizeRequest, ScaleRequest, StartConversionRequest,
 };
 use crate::conversion::{ConversionState, ConversionSession, handle_file_event, bring_window_to_front};
-use super::helpers::{split_prototype_name, copy_dir_recursive, is_bookkeeping_file, is_sequence_stem, matches_base_name, read_deprecated_list, read_not_sequence_list, static_base_name, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
+use super::helpers::{split_prototype_name, copy_dir_recursive, is_bookkeeping_file, is_sequence_stem, matches_base_name, read_deprecated_list, read_not_sequence_list, relocate_material_files, static_base_name, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
 use std::collections::HashSet;
 use super::workflow_paths::{
-    an_dir_name, nextcloud_task_dir, stage_dir_prefix, DIR_DONE, DIR_NC_BREAKDOWN, DIR_NC_ORIGINAL,
-    DIR_ORIGINAL, DIR_SCALE, STAGE_PREFIX_ANIM, STAGE_PREFIX_IMG,
+    an_dir_name, nextcloud_task_dir, parse_an_dir_name, DIR_DONE, DIR_NC_BREAKDOWN,
+    DIR_NC_ORIGINAL, DIR_ORIGINAL, DIR_SCALE, STAGE_PREFIX_ANIM, STAGE_PREFIX_IMG,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -414,7 +414,8 @@ fn fix_tps_sprite_depth(tps_path: &Path) -> Result<bool, String> {
 /// 背景：.tps 的输出路径（textureFileName 空 → 由 data 名派生；plist 为相对文件名）都相对
 /// .tps 自身所在目录。用户在 GUI 里改 scale 重新发布，webp/plist 会写回 [an-<旧scale>-<fps>]/，
 /// 而目录名里的 scale 不会更新，导致扫描（按目录名解析 scale）仍归为旧尺寸。故 GUI 关闭后
-/// 重解析 .tps 的 scale，若变化就把成品目录整体重命名到 [an-<新scale>-<fps>]。
+/// 重解析 .tps 的 scale，若变化就把**该素材**的三件套搬到 [an-<新scale>-<fps>]
+/// （见 [`reorganize_edited_sequence`]；绝不能重命名整个目录，目录里还住着别的序列帧）。
 ///
 /// 打开前先自愈 sprite 源路径深度（兼顾历史错位一级的坏 .tps）。
 /// gui_path 为空则退回系统关联打开——无法等待，也就不做重整理，至少保证能打开。
@@ -443,17 +444,7 @@ pub async fn edit_sequence_tps(tps_path: String, gui_path: String) -> Result<(),
         .and_then(|n| n.to_str())
         .unwrap_or("")
         .to_string();
-    let an_prefix = stage_dir_prefix(STAGE_PREFIX_ANIM); // "[an-"
-    let fps = if old_dir_name.starts_with(&an_prefix) && old_dir_name.ends_with(']') {
-        old_dir_name
-            .trim_start_matches('[')
-            .trim_end_matches(']')
-            .split('-')
-            .nth(2)
-            .and_then(|s| s.parse::<u32>().ok())
-    } else {
-        None
-    };
+    let fps = parse_an_dir_name(&old_dir_name).map(|(_, fps)| fps);
 
     // 阻塞打开 GUI 并等待关闭（沿用 execute_sequence_conversion 的模式，跑在异步线程不冻结 UI）
     let mut child = std::process::Command::new(&gui_path)
@@ -468,32 +459,108 @@ pub async fn edit_sequence_tps(tps_path: String, gui_path: String) -> Result<(),
         None => return Ok(()),
     };
 
-    // 重解析最终 scale；目录名不变（尺寸没改）则无需整理
+    reorganize_edited_sequence(tps, fps)
+}
+
+/// TP GUI 关闭后的重整理：重解析 .tps 的 scale，若与所在目录 `[an-<scale>-<fps>]` 不符，
+/// 就把该素材（以 .tps 文件名为基础名）的三件套搬到 `[an-<新scale>-<fps>]`。
+/// 同目录里其他序列帧原地不动；目标目录已存在则合并，撞名文件则整体不动并报错。
+fn reorganize_edited_sequence(tps: &Path, fps: u32) -> Result<(), String> {
+    let stage_dir = tps
+        .parent()
+        .ok_or_else(|| format!("无法定位工程文件所在目录: {}", tps.display()))?;
+    let old_dir_name = stage_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    let base_name = tps
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| format!("无法解析工程文件基础名: {}", tps.display()))?
+        .to_string();
+
+    // 目录名不变（尺寸没改）则无需整理
     let new_scale = parse_tps_scale(tps)?;
     let new_dir_name = an_dir_name(new_scale, fps);
     if new_dir_name == old_dir_name {
         return Ok(());
     }
 
-    // 把成品目录整体重命名到新 scale 目录；目标已存在则报错（避免覆盖既有同尺寸成果）
     let done_dir = stage_dir
         .parent()
         .ok_or_else(|| "无法定位 02_done 目录".to_string())?;
-    let new_dir = done_dir.join(&new_dir_name);
-    if new_dir.exists() {
-        return Err(format!(
-            "已存在同尺寸成品目录「{}」，请先处理后再改尺寸",
-            new_dir_name
-        ));
-    }
-    fs::rename(stage_dir, &new_dir)
-        .map_err(|e| format!("重命名成品目录 {} -> {} 失败: {}", old_dir_name, new_dir_name, e))?;
+    let moved = relocate_material_files(stage_dir, &done_dir.join(&new_dir_name), &base_name)?;
     log::info!(
-        "[edit_sequence_tps] 尺寸变化，成品目录重命名: {} -> {}",
-        old_dir_name, new_dir_name
+        "[edit_sequence_tps] {} 尺寸变化：{} 个文件 {} -> {}",
+        base_name, moved, old_dir_name, new_dir_name
     );
-
     Ok(())
+}
+
+#[cfg(test)]
+mod edit_sequence_tps_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_done_dir(name: &str) -> PathBuf {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("pgb1_tps_{}_{}_{}", name, std::process::id(), nonce)).join(DIR_DONE);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// 最小可被 parse_tps_scale 解析的 .tps
+    fn tps_with_scale(scale: f64) -> String {
+        format!("<key>globalSpriteSettings</key><struct><key>scale</key><double>{}</double></struct>", scale)
+    }
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut v: Vec<String> = fs::read_dir(dir)
+            .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect())
+            .unwrap_or_default();
+        v.sort();
+        v
+    }
+
+    /// 回归：TP 里把一个序列帧从 30% 改成 40%，同目录的邻居不能跟着被标成 40%
+    #[test]
+    fn scale_change_moves_only_edited_sequence() {
+        let done = temp_done_dir("neighbors");
+        let src = done.join(an_dir_name(30, 20));
+        fs::create_dir_all(&src).unwrap();
+        let tps = src.join("mult_vfx_f_normal.tps");
+        fs::write(&tps, tps_with_scale(0.4)).unwrap();
+        for f in ["mult_vfx_f_normal.webp", "mult_vfx_f_normal.plist", "wh_vfx_a_normal.tps", "wh_vfx_a_normal.webp"] {
+            fs::write(src.join(f), b"x").unwrap();
+        }
+
+        reorganize_edited_sequence(&tps, 20).unwrap();
+
+        let got_dest = names(&done.join(an_dir_name(40, 20)));
+        let got_src = names(&src);
+        fs::remove_dir_all(done.parent().unwrap()).ok();
+        assert_eq!(got_dest, vec!["mult_vfx_f_normal.plist", "mult_vfx_f_normal.tps", "mult_vfx_f_normal.webp"]);
+        assert_eq!(got_src, vec!["wh_vfx_a_normal.tps", "wh_vfx_a_normal.webp"], "邻居序列帧不能被一起挪走");
+    }
+
+    /// 尺寸没改：什么都不动
+    #[test]
+    fn unchanged_scale_is_noop() {
+        let done = temp_done_dir("noop");
+        let src = done.join(an_dir_name(30, 20));
+        fs::create_dir_all(&src).unwrap();
+        let tps = src.join("a_vfx_x_add.tps");
+        fs::write(&tps, tps_with_scale(0.3)).unwrap();
+
+        reorganize_edited_sequence(&tps, 20).unwrap();
+
+        let got = names(&src);
+        let extra_dirs = names(&done);
+        fs::remove_dir_all(done.parent().unwrap()).ok();
+        assert_eq!(got, vec!["a_vfx_x_add.tps"]);
+        assert_eq!(extra_dirs, vec![an_dir_name(30, 20)]);
+    }
 }
 
 /// 停止转换会话

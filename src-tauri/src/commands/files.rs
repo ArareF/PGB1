@@ -1,10 +1,10 @@
 use super::helpers::{
     matches_base_name, material_type_from_ext, move_dir, mutate_project_config,
-    read_not_sequence_list, split_prototype_name, validate_file_name,
+    read_not_sequence_list, relocate_material_files, split_prototype_name, validate_file_name,
     DEPRECATED_LIST_FILE, DEPRECATED_LIST_HEADER, NOT_SEQUENCE_LIST_FILE, NOT_SEQUENCE_LIST_HEADER,
 };
 use super::workflow_paths::{
-    nextcloud_task_dir, stage_dir_prefix, vfx_dir,
+    an_dir_name, nextcloud_task_dir, parse_an_dir_name, stage_dir_prefix, vfx_dir,
     DIR_DONE, DIR_EXPORT, DIR_NC_ORIGINAL, DIR_NEXTCLOUD, DIR_ORIGINAL, DIR_SCALE,
     STAGE_PREFIX_ANIM,
 };
@@ -792,29 +792,133 @@ pub fn find_game_exe(root_dir: String) -> Result<Option<String>, String> {
     Ok(walk(root).map(|p| p.to_string_lossy().to_string()))
 }
 
-/// 修改序列帧的帧率
+/// 修改序列帧的帧率：把该素材的三件套（webp/plist/tps）从 `[an-<scale>-<old>]`
+/// 搬进 `[an-<scale>-<new>]`（每个 scale 档各搬一次）。
+///
+/// fps 是 02_done 子目录名上的属性，同目录里还住着其他序列帧，
+/// 所以**只能搬文件，绝不能重命名整个目录**（否则邻居全被改成新帧率）。
+/// `.tps` 在两个同级 `[an-*]` 目录之间平移，里面 `../../00_original/...` 的相对路径深度不变，无需修正。
 #[tauri::command]
 pub fn rename_sequence_fps(task_path: String, base_name: String, old_fps: u32, new_fps: u32) -> Result<(), String> {
     if old_fps == new_fps { return Ok(()); }
     let done_dir = Path::new(&task_path).join(DIR_DONE);
     if !done_dir.exists() { return Ok(()); }
-    let old_suffix = format!("-{}]", old_fps);
-    let an_prefix = stage_dir_prefix(STAGE_PREFIX_ANIM);
     let entries = fs::read_dir(&done_dir).map_err(|e| format!("读取 {} 失败: {}", DIR_DONE, e))?;
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_dir() { continue; }
         let dir_name = match path.file_name().and_then(|n| n.to_str()) { Some(n) => n.to_string(), None => continue };
-        if !dir_name.starts_with(&an_prefix) || !dir_name.ends_with(old_suffix.as_str()) { continue; }
-        let has_match = fs::read_dir(&path).map(|rd| rd.flatten().any(|e| e.file_name().to_str().map(|n| matches_base_name(n, base_name.as_str())).unwrap_or(false))).unwrap_or(false);
-        if !has_match { continue; }
-        let prefix = &dir_name[..dir_name.len() - old_suffix.len()];
-        let new_dir_name = format!("{}-{}]", prefix, new_fps);
-        let new_path = done_dir.join(&new_dir_name);
-        if new_path.exists() { return Err(format!("目标目录已存在: {}", new_dir_name)); }
-        fs::rename(&path, &new_path).map_err(|e| format!("重命名 {} -> {} 失败: {}", dir_name, new_dir_name, e))?;
+        let scale = match parse_an_dir_name(&dir_name) {
+            Some((scale, fps)) if fps == old_fps => scale,
+            _ => continue,
+        };
+        let dest = done_dir.join(an_dir_name(scale, new_fps));
+        let moved = relocate_material_files(&path, &dest, &base_name)?;
+        if moved > 0 {
+            log::info!("[rename_sequence_fps] {} 帧率 {} -> {}：{} 个文件 {} -> {}",
+                base_name, old_fps, new_fps, moved, dir_name, dest.file_name().and_then(|n| n.to_str()).unwrap_or_default());
+        }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod sequence_fps_tests {
+    use super::*;
+
+    /// 建一个唯一的临时任务目录（不引 tempfile，仓库无该 dev-dependency）
+    fn temp_task(tag: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pgb1_fps_{}_{}", tag, nanos));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn touch(dir: &Path, name: &str) {
+        fs::create_dir_all(dir).unwrap();
+        fs::write(dir.join(name), b"x").unwrap();
+    }
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut v: Vec<String> = match fs::read_dir(dir) {
+            Ok(rd) => rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect(),
+            Err(_) => Vec::new(),
+        };
+        v.sort();
+        v
+    }
+
+    /// 回归：改一个序列帧的帧率，同目录的邻居必须原地不动。
+    /// 事故现场：整个 [an-30-50] 被重命名成 [an-30-30]，十几个序列帧全被标成 30fps。
+    #[test]
+    fn changing_fps_moves_only_that_sequence() {
+        let task = temp_task("neighbors");
+        let src = task.join(DIR_DONE).join(an_dir_name(30, 50));
+        for f in ["mult_vfx_f_normal.webp", "mult_vfx_f_normal.plist", "mult_vfx_f_normal.tps",
+                  "mult_vfx_a_normal.webp", "mult_vfx_a_normal.plist", "mult_vfx_a_normal.tps"] {
+            touch(&src, f);
+        }
+
+        rename_sequence_fps(task.to_string_lossy().to_string(), "mult_vfx_f_normal".into(), 50, 30).unwrap();
+
+        let dest = task.join(DIR_DONE).join(an_dir_name(30, 30));
+        let got_dest = names(&dest);
+        let got_src = names(&src);
+        fs::remove_dir_all(&task).ok();
+        assert_eq!(got_dest, vec!["mult_vfx_f_normal.plist", "mult_vfx_f_normal.tps", "mult_vfx_f_normal.webp"]);
+        assert_eq!(got_src, vec!["mult_vfx_a_normal.plist", "mult_vfx_a_normal.tps", "mult_vfx_a_normal.webp"],
+            "邻居序列帧不能被一起挪走");
+    }
+
+    /// 多个 scale 档各自搬各自的；搬空的源目录顺手删掉；目标目录已存在则合并进去
+    #[test]
+    fn handles_multiple_scales_and_cleans_empty_source() {
+        let task = temp_task("scales");
+        let done = task.join(DIR_DONE);
+        touch(&done.join(an_dir_name(30, 50)), "a_vfx_x_add.webp");
+        touch(&done.join(an_dir_name(50, 50)), "a_vfx_x_add.webp");
+        touch(&done.join(an_dir_name(50, 24)), "other_vfx_y_add.webp");
+
+        rename_sequence_fps(task.to_string_lossy().to_string(), "a_vfx_x_add".into(), 50, 24).unwrap();
+
+        let r30 = names(&done.join(an_dir_name(30, 24)));
+        let r50 = names(&done.join(an_dir_name(50, 24)));
+        let src30_gone = !done.join(an_dir_name(30, 50)).exists();
+        let src50_gone = !done.join(an_dir_name(50, 50)).exists();
+        fs::remove_dir_all(&task).ok();
+        assert_eq!(r30, vec!["a_vfx_x_add.webp"]);
+        assert_eq!(r50, vec!["a_vfx_x_add.webp", "other_vfx_y_add.webp"], "已有的目标目录应合并而非报错");
+        assert!(src30_gone && src50_gone, "搬空的源目录应被删除");
+    }
+
+    /// 目标目录已有同名文件：整体不动并报错，不能搬一半
+    #[test]
+    fn refuses_to_overwrite_existing_target_file() {
+        let task = temp_task("conflict");
+        let done = task.join(DIR_DONE);
+        touch(&done.join(an_dir_name(30, 50)), "a_vfx_x_add.webp");
+        touch(&done.join(an_dir_name(30, 50)), "a_vfx_x_add.plist");
+        touch(&done.join(an_dir_name(30, 24)), "a_vfx_x_add.webp");
+
+        let res = rename_sequence_fps(task.to_string_lossy().to_string(), "a_vfx_x_add".into(), 50, 24);
+
+        let src = names(&done.join(an_dir_name(30, 50)));
+        fs::remove_dir_all(&task).ok();
+        assert!(res.is_err());
+        assert_eq!(src, vec!["a_vfx_x_add.plist", "a_vfx_x_add.webp"], "冲突时源文件必须原封不动");
+    }
+
+    #[test]
+    fn parse_an_dir_name_roundtrip() {
+        assert_eq!(parse_an_dir_name(&an_dir_name(30, 50)), Some((30, 50)));
+        assert_eq!(parse_an_dir_name("[img-50]"), None);
+        assert_eq!(parse_an_dir_name("[an-30]"), None);
+        assert_eq!(parse_an_dir_name("[an-30-50-1]"), None);
+        assert_eq!(parse_an_dir_name("an-30-50"), None);
+    }
 }
 
 /// 重命名单个文件

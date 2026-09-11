@@ -748,6 +748,45 @@ pub(crate) fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> 
 
 /// 移动目录：同卷优先走 `fs::rename`（瞬时且原子，大目录归档/恢复不再逐文件复制），
 /// 跨卷或 rename 失败时回退「复制 + 删除原目录」
+/// 把 `src_dir` 里属于 `base_name` 的文件（按 [`matches_base_name`] 判定）搬到 `dest_dir`，
+/// 返回搬动的文件数；同目录里其他素材的文件一律不碰。
+///
+/// - 先做冲突预检：`dest_dir` 已有同名文件则整体不动、直接报错（避免搬一半）
+/// - `dest_dir` 不存在则创建；搬空后的 `src_dir` 顺手删掉（删不掉只记日志，不算失败）
+pub(crate) fn relocate_material_files(src_dir: &Path, dest_dir: &Path, base_name: &str) -> Result<usize, String> {
+    let entries = fs::read_dir(src_dir)
+        .map_err(|e| format!("读取 {} 失败: {}", src_dir.display(), e))?;
+    let files: Vec<(String, std::path::PathBuf)> = entries
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .filter_map(|e| {
+            let name = e.file_name().to_str()?.to_string();
+            matches_base_name(&name, base_name).then(|| (name, e.path()))
+        })
+        .collect();
+    if files.is_empty() {
+        return Ok(0);
+    }
+    if let Some((name, _)) = files.iter().find(|(n, _)| dest_dir.join(n).exists()) {
+        return Err(format!(
+            "目标目录 {} 已存在同名文件「{}」，未做任何改动",
+            dest_dir.file_name().and_then(|n| n.to_str()).unwrap_or_default(),
+            name
+        ));
+    }
+    fs::create_dir_all(dest_dir).map_err(|e| format!("创建 {} 失败: {}", dest_dir.display(), e))?;
+    for (name, path) in &files {
+        fs::rename(path, dest_dir.join(name)).map_err(|e| format!("移动 {} 失败: {}", name, e))?;
+    }
+    let src_now_empty = fs::read_dir(src_dir).map(|mut rd| rd.next().is_none()).unwrap_or(false);
+    if src_now_empty {
+        if let Err(e) = fs::remove_dir(src_dir) {
+            log::warn!("[relocate_material_files] 删除空目录 {} 失败: {}", src_dir.display(), e);
+        }
+    }
+    Ok(files.len())
+}
+
 pub(crate) fn move_dir(src: &Path, dest: &Path) -> Result<(), String> {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建目标父目录失败: {}", e))?;

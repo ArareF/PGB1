@@ -70,3 +70,18 @@ pub(crate) fn img_dir_name(scale: u32) -> String {
 pub(crate) fn an_dir_name(scale: u32, fps: u32) -> String {
     format!("[{}-{}-{}]", STAGE_PREFIX_ANIM, scale, fps)
 }
+
+/// `an_dir_name` 的逆向：把 `[an-<scale>-<fps>]` 解析成 `(scale, fps)`，格式不符返回 None
+pub(crate) fn parse_an_dir_name(dir_name: &str) -> Option<(u32, u32)> {
+    let inner = dir_name.strip_prefix('[')?.strip_suffix(']')?;
+    let mut parts = inner.split('-');
+    if parts.next()? != STAGE_PREFIX_ANIM {
+        return None;
+    }
+    let scale = parts.next()?.parse::<u32>().ok()?;
+    let fps = parts.next()?.parse::<u32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((scale, fps))
+}

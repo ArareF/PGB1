@@ -1,11 +1,11 @@
 {
   "version": "2.8.23",
   "notes": "修复：在序列帧详情里点「修改」并在 TexturePacker 中改尺寸，或者在侧边栏修改帧率后，同一档位的其他序列帧会被一起标成新的尺寸或帧率。原因是尺寸和帧率记录在成品目录名上，而同档位的所有序列帧都放在同一个目录里，此前的实现是把整个目录改名，于是一改全改。现在只会把您正在修改的那一个序列帧的三个成品文件搬到新目录，其他序列帧原地不动。如果目标目录里已经有同名文件，操作会中止并提示，不会覆盖。请注意：之前被误改过的序列帧不会自动恢复，需要在侧边栏逐个改回正确的尺寸或帧率，现在每次修改只会影响当前这一个。",
-  "pub_date": "2026-09-10T04:04:42Z",
+  "pub_date": "2026-09-11T05:30:09Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.22/PGB1_2.8.22_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkVBMHhqQ1BQRTNIWmJNNVU1WFdqZzllUXhPME9DZjQyVDlsSC9sM21hTWlWQlEzZi9sT0szY2c5YTF3eHl2dW1XdUV0U0JvM1R4ZGdHaVNid1lFQkFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MDEzMDgyCWZpbGU6UEdCMV8yLjguMjJfeDY0LXNldHVwLmV4ZQpQOEVuUDB3WTBwQjhRc05ocjk1MXpna0JLUXhHNmVQZlpEVU1LNHlQamRxc1ROR0tNQ0lqYktiNlAxVmdaeXkrN1RISjhXUHhVUlNCdWcyaUVPYlpDQT09Cg=="
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.23/PGB1_2.8.23_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNktGdlpyZzBiM1MwRlNJR29kMUcvVHhDZlBmMWFJUC8vdHNtekRvRE54WGVFWlh2Sjh2TVNibUJyYzdWdFBqVHJqUzRwdTJjQnBRMEk5RzhHWlZJQ3dzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MTA0NjA5CWZpbGU6UEdCMV8yLjguMjNfeDY0LXNldHVwLmV4ZQpjZm1xYkwvTCtMN3hrcXdGN3lVTXJLSTN6TUpHcE1ON1hzMnVlaEhnNUI5OVVjc3Z6anVKZkZSR1g5bFpHZ1dKVjNmLzZWOG56MnNXdzViWkhHcDFCUT09Cg=="
     }
   }
 }

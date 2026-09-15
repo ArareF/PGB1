@@ -9,7 +9,7 @@
 
 - **产品**：PGB1 — 2D游戏特效师文件整理工具
 - **技术栈**：Tauri 2.x（Rust + HTML/CSS/JS），目标 Windows
-- **状态**：✅ **已发布 v2.8.23**（功能完整，持续迭代维护中）
+- **状态**：✅ **已发布 v2.8.24**（功能完整，持续迭代维护中）
 - **角色**：产品总监（决策）+ Tech Lead / Agent（实现）
 
 ---
@@ -158,7 +158,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | `docs/Vee风格/` | VEE 官网动效拆解（`VEEUI动效拆解.md`）+ 可运行复刻 demo |
 | `docs/plans/2026-09-01-UI重做-交接.md` | UI 重做交接单：定稿的动作/颜色/形状规则、踩坑清单、四期分期、待拍板项 |
 | `docs/code/` | CODE_INDEX 二级详情（components/composables/views/rust-backend/styles-system） |
-| `docs/plans/` | 实施方案草案（进行中的方案放这里）。当前：`2026-08-24-normalize-completed-collapse.md` + `2026-08-24-spine-direct-upload{,-design}.md` |
+| `docs/plans/` | 实施方案草案（进行中的方案放这里）。当前：`2026-08-24-normalize-completed-collapse.md` + `2026-08-24-spine-direct-upload{,-design}.md` + `2026-09-15-预览视频对比播放-design.md`（已随 v2.8.24 发布） |
 | `docs/archive/plans/` | 已归档的历史方案（42 份：Phase 1~7 + 功能特性 + 2026-04 代码优化 + v2.8.13/15/17 已发版方案） |
 | `docs/archive/调研工作台/` | 历史代码审查报告（2026-04，含 `old/` 旧版） |
 | `docs/archive/MIGRATION_CHECKLIST.md` | 旧架构迁移检查清单（历史） |
@@ -184,7 +184,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | **打包格式** | NSIS only（`"targets": "nsis"`） | WiX 3 不支持中文 productName，会直接报错 |
 | **关闭行为** | 最小化到系统托盘，不退出 | lib.rs CloseRequested 拦截 + hide() |
 | **UI 缩放** | 固定值，默认 100%，无自动模式 | 自动模式（按窗口宽度缩放）效果差，已移除 |
-| **软件名称** | PG素材管理系统，V2.8.23，开发者 Fuchikami | `src/config/app.ts` 为 SSOT |
+| **软件名称** | PG素材管理系统，V2.8.24，开发者 Fuchikami | `src/config/app.ts` 为 SSOT |
 | **CSP media-src** | 必须单独声明，含 asset:／blob:／data: | `<video>` 不继承 img-src，缺失打包后视频全灭 |
 | 技术栈 | Tauri 2.x（不用 Electron） | Electron 不支持拖拽文件到外部浏览器 |
 | UI 风格 | 毛玻璃（Glassmorphism），明暗双主题 | — |
@@ -236,6 +236,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 | 版本 | 日期 | 主要变更 |
 |------|------|---------|
+| v2.8.24 | 2026-09-15 | 新增：预览视频对比播放（任务页 03_preview 版本组）—— 「打开对比」开关（B 默认上一版）+ 版本菜单 + 并排⇄滑动（拖分割线）+ 「对齐」折叠偏移微调（±1s / ±1帧 / 归零，Shift+←/→ 逐帧），A 主时钟 B 静音跟随，越界定格边界帧，进入对比自动页内全屏。新增 `config/video.ts` + `composables/useVideoCompare.ts`；滑动布局用 overflow 裁剪槽位（clip-path 在 WebView2 播不了）。侧栏视频默认循环播放。设计稿 `docs/plans/2026-09-15-预览视频对比播放-design.md` |
 | v2.8.23 | 2026-09-11 | 修复：序列帧「修改」（TP GUI 改尺寸）和侧边栏改帧率会把同目录其他序列帧一起改掉 —— `edit_sequence_tps` / `rename_sequence_fps` 原来整目录 rename `[an-S-F]`，但同档位全部序列帧都住在这一个目录里。改为只搬该素材的 webp/plist/tps 三件套（新增 `relocate_material_files` + `parse_an_dir_name`），邻居不动；6 个回归测试 |
 | v2.8.22 | 2026-09-10 | 修复：非 vfx 素材名字里的 `_01` / `_02` 后缀被当帧号剥掉 —— `btn_01.png` 卡片名显示成 `btn`，规范化页还把 `btn_01`/`btn_02` 都建议改成同一个 `btn.png`（撞名）。新增 `is_vfx_stem()` + `static_base_name()` 作为静帧基础名 SSOT：stem 含 `_vfx_` 才剥末尾 `_NN`（顺带把「只剥 `_01`」统一成「剥任意纯数字」），非 vfx 静帧原样保留；4 处调用点收口 |
 | v2.8.21 | 2026-09-10 | 修复：缩放出来的图比目标尺寸小。`execute_scaling` 误用 `image::resize`（「等比塞进包围盒」语义，取两方向中较小的比例），宽高分别取整后必有一方偏小，整张图被按那一方的比例压掉 —— 52×1075 选 70% 实得 36×744（应为 36×753），窄长图偏差最明显。改用 `resize_exact` 按算好的宽高精确输出 |
@@ -256,4 +257,4 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 ---
 
-**最后更新**：2026-09-08
+**最后更新**：2026-09-15

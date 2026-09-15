@@ -2,7 +2,7 @@
 
 > 全量源代码文件职责目录视图。新会话快速了解代码现状用。
 > 详细信息（Props / 状态 / 防火手记 / 架构决策）见 [`docs/code/*.md`](docs/code/)。
-> 最后更新: 2026-09-10
+> 最后更新: 2026-09-15
 
 ---
 
@@ -10,18 +10,18 @@
 
 | 目录 | 文件数 | 总行数 | 说明 |
 |------|--------|--------|------|
-| `src/components/` | 30 | 9349 | Vue UI 组件 |
-| `src/composables/` | 24 | 3293 | 组合式函数（逻辑复用） |
-| `src/views/` | 19 | 9711 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
+| `src/components/` | 30 | 9708 | Vue UI 组件 |
+| `src/composables/` | 25 | 3514 | 组合式函数（逻辑复用） |
+| `src/views/` | 19 | 9712 | 页面（含 `settings/` 子目录 5 个 Tab 子组件） |
 | `src/styles/` | 4 | 1909 | CSS 设计系统 |
 | `src/layouts/` | 1 | 321 | 主布局 |
 | `src/types/` | 2 | 57 | TypeScript 类型定义 |
 | `src/utils/` | 3 | 255 | 工具函数 |
-| `src/config/` | 6 | 170 | 配置 SSOT（app/onboarding/fileTypes/pinboard/priority/projectPaths） |
-| `src/i18n/` + `src/locales/` | 3 | 1414 | 国际化（vue-i18n + zh-CN + en） |
+| `src/config/` | 7 | 192 | 配置 SSOT（app/onboarding/fileTypes/pinboard/priority/projectPaths/video） |
+| `src/i18n/` + `src/locales/` | 3 | 1452 | 国际化（vue-i18n + zh-CN + en） |
 | `src/router/` + 入口 | 5 | 204 | 路由 + main/App/vite-env/vite.config |
 | `src-tauri/src/` | 25 | 10595 | Rust 后端 |
-| **合计** | **122** | **37278** | |
+| **合计** | **124** | **37919** | |
 
 > 行数口径 = 文件总行数（含空行），与历史版本一致。
 
@@ -72,6 +72,7 @@
 | `src/config/pinboard.ts` | 28 | 贴图板画笔预设 SSOT（颜色 + 工具尺寸范围） |
 | `src/config/priority.ts` | 11 | 优先度排序权重 SSOT：`priorityRank()`（HomePage/ProjectPage 共用） |
 | `src/config/projectPaths.ts` | 32 | 项目目录结构 SSOT（与 Rust `workflow_paths.rs` 对齐）：taskFolderPath 等构造函数 |
+| `src/config/video.ts` | 22 | 视频播放器常量 SSOT：逐帧步长 / 对比偏移步长 / 同步漂移容差 / 巡检间隔 |
 | `src/router/index.ts` | 79 | 14 条路由定义 |
 | `src/vite-env.d.ts` | 7 | Vite 类型声明 |
 
@@ -98,8 +99,8 @@
 | `FolderBrowserDialog.vue` | 425 | 文件夹浏览弹窗（路径栈 + 8 方向拖拽调宽） |
 | `SidebarShell.vue` | 371 | 侧边栏外壳（拖拽调宽 + 全屏 FLIP + 进出场动画） |
 | `SidebarActionMenu.vue` | 120 | 侧边栏底部折叠操作菜单（向上弹出，Teleport to body） |
-| `FileDetailSidebar.vue` | 619 | 文件详情侧边栏（图/视/TXT/PSD/PDF + 版本历史 + 重命名删除；`versionLabelOf` 可覆盖版本条目标题） |
-| `VideoPlayer.vue` | 272 | 视频播放器（自定义控制条） |
+| `FileDetailSidebar.vue` | 649 | 文件详情侧边栏（图/视/TXT/PSD/PDF + 版本历史 + 重命名删除；`versionLabelOf` 可覆盖版本条目标题；`videoCompare` 把版本列表打包成对比候选交给播放器） |
+| `VideoPlayer.vue` | 601 | 视频播放器（自定义控制条 + 默认循环 + 版本对比：开关 / 版本菜单（默认上一版）/ 并排⇄滑动循环按钮 / 「对齐」折叠偏移微调，同步引擎在 `useVideoCompare`） |
 | `PdfPreviewSection.vue` | 235 | PDF iframe 预览 + 翻译 UI 集成 |
 | `TitleBar.vue` | 422 | 顶部标题栏（返回 + 动态按钮 + 嵌入 StatusBar） |
 | `StatusBar.vue` | 577 | 状态栏（时钟 / 日期 / 打卡胶囊 / 倒计时 / 番茄钟） |
@@ -122,7 +123,7 @@
 
 ---
 
-## 4. Composables（23）
+## 4. Composables（24）
 
 | 文件 | 行数 | 一句话职责 |
 |------|------|-----------|
@@ -150,6 +151,7 @@
 | `useArchivedMaterials.ts` | 45 | 素材归档时光机数据源（list / restore / delete） |
 | `useUpdater.ts` | 127 | 自动更新检查 / 下载 / 安装 |
 | `useMediaCache.ts` | 34 | 媒体刷新 SSOT：`clearMediaCaches()` 清模块级缓存 + `mediaVersion` 代次（破 URL 缓存 & 触发组件自失效） |
+| `useVideoCompare.ts` | 221 | 视频对比播放：开关 / B 解析（用户所选 ?? 上一版）/ 偏移 / A→B 同步引擎（A 主时钟，B 定时巡检软对齐 + 事件硬对齐，越界定格边界帧，play 被拒不重试） |
 
 ---
 

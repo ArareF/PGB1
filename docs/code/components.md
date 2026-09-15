@@ -114,11 +114,22 @@ Canvas 序列帧动画播放器，`mount` 后自动循环播放，LRU 缓存。`
 
 **笔记**：可选 `note` prop + `save-note` emit，有值时 `sidebar-body` 内显示 NoteEditor section。
 
-### VideoPlayer.vue（272 行）
+**`videoCompare?: boolean`**：把 `versions` 里的视频文件打包成 `compareCandidates`（标签沿用版本列表的下标编号，`versionLabel()` 是两处共用的 SSOT）传给 VideoPlayer；收到 `request-fullscreen` 且未全屏时 `toggleFullscreen()`。只有 TaskPage 预览视频侧栏开启。
 
-**Props**：`src: string`, `isFullscreen: boolean`
+### VideoPlayer.vue（601 行）
 
-从 FileDetailSidebar 提取。自定义播放控制条（播放/暂停 + 进度条 + 时间显示），`object-fit: contain` + `flex: 1` 全屏适配。
+**Props**：`src: string`, `isFullscreen: boolean`, `compareCandidates?: VideoCompareCandidate[]`（同组版本，旧→新；不传或少于 2 个不渲染对比工具栏）
+
+**Emits**：`toggle-fullscreen`、`request-fullscreen`（进入对比时请求页内全屏，侧栏决定是否响应）
+
+从 FileDetailSidebar 提取。自定义播放控制条（播放/暂停 + 进度条 + 时间显示），`object-fit: contain` + `flex: 1` 全屏适配。**默认循环播放**（A 带 `loop`；B 故意不带——A 循环回开头会触发 `seeked`，B 靠硬对齐一起回去，B 自己循环会脱钩）。
+
+**对比播放**（2026-09-15，仅任务页预览视频侧栏开启）：控制条下多一行工具栏 —— `打开对比 / 关闭对比` 开关 → 版本菜单（复用 `SidebarActionMenu`，触发按钮显示当前 B 的标签、默认上一版、菜单里当前项打 ✓；触发按钮在 `.video-compare-bar` 下重排尺寸配色）→ 布局循环按钮（显示当前布局名，点一下切到另一个）→ `对齐` 折叠按钮（点开才展示 `−1s −1帧 [+0.00s] +1帧 +1s 归零`；收起且偏移非零时按钮文案带偏移量 `对齐 +1.03s`；关闭对比时自动收起）。`Shift+←/→` 调偏移 ±1 帧。状态与同步逻辑全在 `useVideoCompare`，组件只管 DOM：
+- `.video-stage` 行向 flex 画框：单路 A 独占；并排 A/B 各 `flex: 1 1 0` + stretch（B 外面的 `.video-b-slot` 是 `display: contents`）；滑动时槽位变成分割线右侧的 `overflow: hidden` 裁剪窗（`left: var(--wipe-x)`），B 在窗内右对齐、`width: calc(100% / (1 − var(--wipe-r)))` 撑回画框全宽，contain 几何与 A 完全重合。分割线 mousedown + window mousemove 拖动（同进度条模式），比例上限 0.995 防除零
+- **不要给 `<video>` 上 `clip-path`**：第一版这么做，产品总监反馈滑动模式播不了（并排正常）。视频是独立合成层，clip-path 走遮罩路径，WebView2 里两个视频层叠加 + 遮罩会出问题；overflow 裁剪是最朴素的 ClipNode
+- 全屏 CSS 铺满的对象是 `.video-stage`（在 FileDetailSidebar 全局样式里），不再是 `<video>`
+- `.video-compare-bar` 与 `.video-controls` 是同层兄弟，**不能再有 backdrop-filter**（兄弟冲突规则）
+- 为什么 B 选择器住在播放器内而不是点版本历史：页内全屏会把 `.sidebar-section` 整个隐藏，并排只有全屏才看得清
 
 ### PdfPreviewSection.vue（235 行）
 

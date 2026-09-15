@@ -225,6 +225,22 @@
 
 ## TaskPage 抽出的两个 Composable（Sprint 3·Y-2b）
 
+### useVideoCompare.ts（221 行）
+
+**签名**：`useVideoCompare({ src, candidates, videoA, videoB })`，四个都是 Ref；`candidates` 旧→新，undefined / 少于 2 个即 `available=false`。
+
+**导出**：`enabled / layout('side'|'wipe') / offsetSec`；派生 `available / currentLabel / pickCandidates / target / isComparing`；操作 `toggle / pick / toggleLayout / nudgeOffset / resetOffset`；A/B 事件 `onPlayA / onPlayingA / onPauseA / onSeekedA / onLoadedMetadataB / onErrorB`（直接绑到 `<video>` 上）。
+
+**同步引擎**：A 是主时钟，`B 时间 = A 时间 + offsetSec`。`alignB(hard)`：越界（<0 或 >B.duration）→ B 暂停定格边界帧；`hard` 或漂移超 `VIDEO_SYNC_DRIFT_TOLERANCE_SEC` 才 seek；A 在播且 B 暂停则 `B.play()`。播放中用 `setInterval(VIDEO_SYNC_CHECK_INTERVAL_MS)` 巡检软对齐 —— **不用 rAF**：WebView 不合成（窗口被遮 / 截图态）时 rAF 整个停摆，Vue Transition 也靠它，但同步不能跟着停。`play` / `playing` / `pause` / `seeked` / 偏移变化 / B `loadedmetadata` 都硬对齐；`playing` 那一下是补起播延迟（A `preload=metadata` 比 B `preload=auto` 起跑慢，B 会先领先一截）。
+
+**play() 被拒保护**：`b.play()` 被浏览器拒绝（典型：页面隐藏时 Chromium 主动暂停静音视频「video-only background media was paused to save power」）后 `playRejected=true`，巡检不再重试（否则每 100ms seek+play 一次，B 原地抽搐），用户下一次显式动作（硬对齐）才再试；只 warn 一次不刷屏。
+
+**B 的解析**：`target = enabled ? (用户在菜单里选的 ?? 默认) : null`，默认 = 上一版，A 已是最旧版时取下一版（`available` 保证组里至少还有一个）。
+
+**状态规则**：A 换版本 → 对比保持打开、B 重新解析，用户选的 B 撞上新 A 退回默认；配对（A 或 B 路径）变化 → 偏移归零；候选消失 → 关闭；B 加载失败 → `console.error` + 关闭。关闭再打开不清用户的选择。
+
+**行为测试**：无前端测试框架，用 esbuild 把 composable 打成 node 脚本 + 假 `<video>` 对象跑了 28 条断言（越界定格 / 容差内不纠偏 / 超容差纠偏 / 暂停停巡检 / 状态规则全套），脚本在会话 scratchpad，未入库。
+
 ### usePreviewVideos.ts（180 行）
 
 **签名**：`usePreviewVideos({ taskFolderPathRef, nextcloudPreviewPathRef, onAfterUpload? })`

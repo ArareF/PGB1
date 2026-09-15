@@ -428,6 +428,25 @@ export default {
     translatePdfRetry: 'Retry',
   },
 
+  videoCompare: {
+    open: 'Compare',
+    close: 'Stop comparing',
+    pickHint: 'Choose the version to compare (defaults to the previous one)',
+    layoutSide: 'Side by side',
+    layoutWipe: 'Wipe',
+    layoutHint: 'Toggle side by side / wipe',
+    align: 'Align',
+    minusSecond: '−1s',
+    minusFrame: '−1 frame',
+    plusFrame: '+1 frame',
+    plusSecond: '+1s',
+    resetOffset: 'Reset',
+    offsetHint: 'B time = A time + offset (Shift+←/→ nudges 1 frame)',
+    badgeA: 'A · {label}',
+    badgeB: 'B · {label}',
+    wipeHint: 'Drag the divider',
+  },
+
   shortcut: {
     addTitle: 'Add Shortcut',
     typeApp: 'App',

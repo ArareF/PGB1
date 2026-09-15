@@ -448,6 +448,25 @@ export default {
     translatePdfRetry: '重试',
   },
 
+  videoCompare: {
+    open: '打开对比',
+    close: '关闭对比',
+    pickHint: '选择对比的版本（默认上一版）',
+    layoutSide: '并排',
+    layoutWipe: '滑动',
+    layoutHint: '切换并排 / 滑动',
+    align: '对齐',
+    minusSecond: '−1s',
+    minusFrame: '−1帧',
+    plusFrame: '+1帧',
+    plusSecond: '+1s',
+    resetOffset: '归零',
+    offsetHint: 'B 的时间 = A 的时间 + 偏移（Shift+←/→ 微调 1 帧）',
+    badgeA: 'A · {label}',
+    badgeB: 'B · {label}',
+    wipeHint: '拖动分割线',
+  },
+
   shortcut: {
     addTitle: '添加快捷方式',
     typeApp: '应用',

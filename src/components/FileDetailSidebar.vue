@@ -13,6 +13,7 @@ import SidebarShell from './SidebarShell.vue'
 import NoteEditor from './NoteEditor.vue'
 import ImageViewer from './ImageViewer.vue'
 import VideoPlayer from './VideoPlayer.vue'
+import type { VideoCompareCandidate } from '../composables/useVideoCompare'
 import PdfPreviewSection from './PdfPreviewSection.vue'
 
 const props = withDefaults(defineProps<{
@@ -26,6 +27,8 @@ const props = withDefaults(defineProps<{
   versionLabelOf?: (file: FileEntry, index: number) => string
   /** 是否显示重命名/删除按钮（游戏介绍/项目素材页使用；预览视频侧边栏不显示） */
   allowActions?: boolean
+  /** 视频对比播放：把 versions 里的视频作为候选交给播放器（仅任务页预览视频侧栏开启） */
+  videoCompare?: boolean
   /** 笔记文本（有值时显示编辑区） */
   note?: string
   /** Teleport 目标选择器（默认 #content-row） */
@@ -75,6 +78,23 @@ const fileType = computed(() => {
   if (PSD_EXTS.has(ext))   return 'psd'
   if (PDF_EXTS.has(ext))   return 'pdf'
   return 'other'
+})
+
+/** 版本条目标题：外部给了 versionLabelOf 用外部的，否则按「最新版本 / 版本 N」编号（版本列表与对比角标共用） */
+function versionLabel(v: FileEntry, i: number): string {
+  if (props.versionLabelOf) return props.versionLabelOf(v, i)
+  return i === (props.versions?.length ?? 0) - 1
+    ? t('fileDetail.latestVersion')
+    : t('fileDetail.versionN', { n: i + 1 })
+}
+
+/** 对比候选：versions 里的视频文件（标签编号沿用版本列表的下标，跳过非视频也不错位） */
+const compareCandidates = computed<VideoCompareCandidate[] | undefined>(() => {
+  if (!props.videoCompare || !props.versions) return undefined
+  return props.versions
+    .map((v, i) => ({ v, i }))
+    .filter(({ v }) => VIDEO_EXTS.has(v.extension.toLowerCase()))
+    .map(({ v, i }) => ({ path: v.path, label: versionLabel(v, i) }))
 })
 
 // ─── TXT 内容 ────────────────────────────────────────
@@ -251,7 +271,9 @@ function confirmDelete() {
         v-else-if="fileType === 'video'"
         :src="file!.path"
         :is-fullscreen="isFullscreen"
+        :compare-candidates="compareCandidates"
         @toggle-fullscreen="toggleFullscreen"
+        @request-fullscreen="!isFullscreen && toggleFullscreen()"
       />
 
       <!-- TXT 文本预览 -->
@@ -345,11 +367,7 @@ function confirmDelete() {
             @click="emit('select-version', v)"
           >
             <div class="version-card-left">
-              <span class="version-name">
-                {{ versionLabelOf
-                  ? versionLabelOf(v, i)
-                  : (i === versions.length - 1 ? $t('fileDetail.latestVersion') : $t('fileDetail.versionN', { n: i + 1 })) }}
-              </span>
+              <span class="version-name">{{ versionLabel(v, i) }}</span>
               <span class="version-meta">{{ formatSize(v.size_bytes) }}</span>
             </div>
             <div class="version-card-right">
@@ -563,7 +581,7 @@ function confirmDelete() {
   object-fit: contain;
 }
 
-/* 视频全屏：wrap 铺满，video flex: 1 + contain 显示完整画面 */
+/* 视频全屏：wrap 铺满，画框 flex: 1 撑满剩余高度，里面的 video 靠 stretch + contain 显示完整画面 */
 .sidebar-shell.is-fullscreen .preview-video-wrap {
   flex: 1;
   min-height: 0;
@@ -572,11 +590,10 @@ function confirmDelete() {
   overflow: hidden;
 }
 
-.sidebar-shell.is-fullscreen .preview-video {
+.sidebar-shell.is-fullscreen .video-stage {
   flex: 1;
   min-height: 0;
   height: 0; /* 让 flex: 1 生效 */
-  object-fit: contain;
 }
 
 /* PDF iframe 全屏 min-height 解除 */

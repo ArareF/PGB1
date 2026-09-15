@@ -1227,6 +1227,7 @@ onUnmounted(() => {
   <FileDetailSidebar
     :file="selectedPreviewVideoAsFileEntry"
     :versions="selectedPreviewGroupVersionsAsFileEntries"
+    video-compare
     v-model:widthPercent="fileDetailWidthPercent"
     @close="selectedPreviewVideo = null; selectedPreviewGroup = null"
     @select-version="(f) => { const v = selectedPreviewGroup?.versions.find(v => v.path === f.path); if (v) selectedPreviewVideo = v }"

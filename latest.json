@@ -1,11 +1,11 @@
 {
   "version": "2.8.24",
   "notes": "新增：预览视频对比播放。在任务页点开预览视频的详情，播放器下方多了一个「打开对比」按钮（同一组有两个以上版本时出现）。打开后默认拿上一版和当前版本对比，也可以从旁边的版本菜单里换成别的版本；「并排 / 滑动」按钮切换两种看法——并排是左右各放一路，滑动是两路叠在一起、拖中间的分割线看差异。两边时长对不上时点「对齐」展开偏移微调（±1 秒、±1 帧、归零，也可以用 Shift+←/→ 逐帧调），偏移量是对比版本相对当前版本的时间差。播放、暂停、拖进度条、逐帧都只操作当前版本，另一路自动跟随，声音只出当前版本。另外，详情侧栏里的视频现在默认循环播放。",
-  "pub_date": "2026-09-11T05:30:09Z",
+  "pub_date": "2026-09-15T07:40:09Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.23/PGB1_2.8.23_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNktGdlpyZzBiM1MwRlNJR29kMUcvVHhDZlBmMWFJUC8vdHNtekRvRE54WGVFWlh2Sjh2TVNibUJyYzdWdFBqVHJqUzRwdTJjQnBRMEk5RzhHWlZJQ3dzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MTA0NjA5CWZpbGU6UEdCMV8yLjguMjNfeDY0LXNldHVwLmV4ZQpjZm1xYkwvTCtMN3hrcXdGN3lVTXJLSTN6TUpHcE1ON1hzMnVlaEhnNUI5OVVjc3Z6anVKZkZSR1g5bFpHZ1dKVjNmLzZWOG56MnNXdzViWkhHcDFCUT09Cg=="
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.24/PGB1_2.8.24_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkFqNndlOTJodFc0ZTFiU3dvSWg4S3Q1ZW1OWnYxdVFWTUtzRUVVRno3YVVGd3V1VG1CQmZCKzA3eEU3N01vbXF6eVY1ako4eWlaQ2pHSnZOTURTbkFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NDU4MDA5CWZpbGU6UEdCMV8yLjguMjRfeDY0LXNldHVwLmV4ZQpBL2tDMkM3Sk1HRUZuVUhiallPTW5VTjExbWkzcGI0VXg0UjB2NUt2dkNxVVNobnJKd3hGUUp6REdzOUJybVlaUFRZVVRkWFdhZFY4QVBYMnFaRjhDZz09Cg=="
     }
   }
 }

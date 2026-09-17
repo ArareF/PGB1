@@ -69,17 +69,10 @@ pub(crate) fn is_vfx_stem(stem: &str) -> bool {
     stem.to_lowercase().contains(VFX_MARKER)
 }
 
-/// 独立静帧基础名 SSOT：返回 (基础名, 是否剥了后缀)。
-///
-/// - vfx 静帧（[`is_vfx_stem`]）：剥掉末尾 `_<纯数字>`（`_01` / `_02` / `_0007` 同等对待），
-///   与文档「静帧基础名 = 去掉末尾帧编号」一致。
-/// - 非 vfx 静帧：`_01` / `_02` 是名字本身的一部分（如 `btn_01` / `btn_02` 是两个素材），原样保留。
-///
-/// 卡片显示名、规范化去后缀、nextcloud 原件匹配、名簿命中都必须走这里，禁止各处自己剥。
-pub(crate) fn static_base_name(stem: &str) -> (String, bool) {
-    if !is_vfx_stem(stem) {
-        return (stem.to_string(), false);
-    }
+/// 无条件剥掉 stem 末尾的 `_<纯数字>` 后缀：返回 (剥后的名字, 是否真的剥了)。
+/// 不看 vfx 与否 —— 规范化页用它算「用户手动勾选去后缀后文件会叫什么」。
+/// 业务默认要不要剥，走 [`static_base_name`]。
+pub(crate) fn strip_numeric_suffix(stem: &str) -> (String, bool) {
     if let Some(pos) = stem.rfind('_') {
         let suffix = &stem[pos + 1..];
         if !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()) {
@@ -87,6 +80,20 @@ pub(crate) fn static_base_name(stem: &str) -> (String, bool) {
         }
     }
     (stem.to_string(), false)
+}
+
+/// 独立静帧基础名 SSOT：返回 (基础名, 是否剥了后缀)。
+///
+/// - vfx 静帧（[`is_vfx_stem`]）：剥掉末尾 `_<纯数字>`（`_01` / `_02` / `_0007` 同等对待），
+///   与文档「静帧基础名 = 去掉末尾帧编号」一致。
+/// - 非 vfx 静帧：`_01` / `_02` 是名字本身的一部分（如 `btn_01` / `btn_02` 是两个素材），原样保留。
+///
+/// 卡片显示名、规范化默认去后缀、nextcloud 原件匹配、名簿命中都必须走这里，禁止各处自己剥。
+pub(crate) fn static_base_name(stem: &str) -> (String, bool) {
+    if !is_vfx_stem(stem) {
+        return (stem.to_string(), false);
+    }
+    strip_numeric_suffix(stem)
 }
 
 /// 手动「非序列帧」名簿文件名（置于任务 `00_original/` 下，显性可读、可手编辑）
@@ -904,5 +911,16 @@ mod static_naming_tests {
         assert_eq!(static_base_name("btn_01"), ("btn_01".to_string(), false));
         assert_eq!(static_base_name("btn_02"), ("btn_02".to_string(), false));
         assert_eq!(static_base_name("winscreen"), ("winscreen".to_string(), false));
+    }
+
+    /// 无条件剥后缀：不看 vfx，供规范化页算「手动勾选后的目标名」
+    #[test]
+    fn strip_numeric_suffix_ignores_vfx_marker() {
+        assert_eq!(strip_numeric_suffix("btn_01"), ("btn".to_string(), true));
+        assert_eq!(strip_numeric_suffix("main_vfx_a_01"), ("main_vfx_a".to_string(), true));
+        assert_eq!(strip_numeric_suffix("btn"), ("btn".to_string(), false));
+        assert_eq!(strip_numeric_suffix("btn_v2"), ("btn_v2".to_string(), false));
+        // 只剥最后一段
+        assert_eq!(strip_numeric_suffix("a_01_02"), ("a_01".to_string(), true));
     }
 }

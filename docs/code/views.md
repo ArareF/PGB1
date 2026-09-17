@@ -138,11 +138,11 @@
 **数据流**：`scan_normalize_items`（全量盘点 `00_original`，序列帧合并为一项、已命名素材也列出）→ `selections[]` 与 `items[]` 平行 → `execute_normalize_v2`（按内容操作→命名操作顺序执行，发 `normalize-progress`）。
 
 **三操作 + 资格判定**：
-- 命名规范化：`needs_rename` 才可选（否则灰显「已规范」）
+- 命名规范化：`rename_target !== null` 才可选（否则灰显「已命名」）；**默认勾不勾看 `needs_rename`**。两者拆开是为了非 vfx 的 `btn_01.png`：默认不勾（在折叠区），展开后可手动勾去后缀。执行时勾了命名就把 `rename_target` 当 `target_name` 传后端，备份 key 随之跟到改名后的名字
 - 自适应画布：仅 `static && is_png`
 - 添加黑底：仅 `static && is_png && is_add_or_screen`（base 按 `_` 切分含 add/screen）
 
-**全局开关**：命名规范化(ON)/自适应画布(OFF)/添加黑底(OFF)/执行前备份(ON)；`watch` 全局开关→批量重置有资格行（批量设置语义，手动覆盖会被下次全局切换重置）。
+**全局开关**：命名规范化(ON)/自适应画布(OFF)/添加黑底(OFF)/执行前备份(ON)；`watch` 全局开关→批量重置有资格行（批量设置语义，手动覆盖会被下次全局切换重置）。命名开关例外：只批量控制 `needs_rename` 的行，非 vfx 手动勾的去后缀不受它影响。
 
 **折叠分组防火手记**：`partitionNormalizeItems()` 只负责稳定分组并携带原始 `index`；模板必须用该索引访问与 `items[]` 平行的 `selections[]`，不得直接使用分组后的循环序号，否则勾选会写入错误素材。
 

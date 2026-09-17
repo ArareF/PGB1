@@ -2,7 +2,7 @@
 
 > 全量源代码文件职责目录视图。新会话快速了解代码现状用。
 > 详细信息（Props / 状态 / 防火手记 / 架构决策）见 [`docs/code/*.md`](docs/code/)。
-> 最后更新: 2026-09-15
+> 最后更新: 2026-09-16
 
 ---
 
@@ -164,7 +164,7 @@
 | `TaskListPage.vue` | 600 | 任务管理页面（启用 / 模板 双 Tab；时光机已抽为独立页面） |
 | `TimeMachinePage.vue` | 545 | 时光机独立页面（任务归档 / 素材归档 双 Tab） |
 | `TaskPage.vue` | 1592 | 素材浏览主页面（树形/名称双视图 + Phase 5a–5d + 预览视频 + 静帧/序列帧 Spine 直传；侧边栏底部操作已收进折叠菜单） |
-| `NormalizePage.vue` | 715 | 规范化执行页面（全量盘点 + 待处理置顶/已规范化折叠 + 命名/自适应画布/加黑底 三操作 + 列对齐预览 + 备份恢复） |
+| `NormalizePage.vue` | 723 | 规范化执行页面（全量盘点 + 待处理置顶/已规范化折叠 + 命名/自适应画布/加黑底 三操作 + 列对齐预览 + 备份恢复；命名列「能勾」看 `rename_target`、「默认勾」看 `needs_rename`，非 vfx `_NN` 静帧默认不勾但可手动去后缀） |
 | `ScalePage.vue` | 406 | 素材缩放执行页面（Phase 5c + 进度反馈） |
 | `ConvertPage.vue` | 737 | 格式转换执行页面（Phase 5d + TP 预设折叠面板） |
 | `GameIntroPage.vue` | 448 | 00_Game 浏览 + 游戏原型启动按钮 |
@@ -226,10 +226,10 @@
 | `commands/workflow_paths.rs` | 87 | **工作流目录命名 SSOT**（00_original/01_scale/02_done/nextcloud 等常量 + 路径构造函数 + `parse_an_dir_name` 逆向解析，与前端 `projectPaths.ts` 对齐） |
 | `commands/scanning.rs` | 1380 | 扫描命令（`scan_projects`/`scan_tasks`/`scan_materials` 等 + DirSnapshot 缓存；Prototype 共用判定；区分识别 Spine `original/` 文件/目录） |
 | `commands/attendance.rs` | 1138 | 考勤命令（打卡 / 日报 / 提醒 / Credential Manager） |
-| `commands/conversion.rs` | 1586 | 转换 / 缩放 / 规范化 / nextcloud 复制（含静帧与序列帧 Spine 原件直传；普通/Prototype 共用路径；`edit_sequence_tps` 改尺寸后只搬本素材三件套） |
+| `commands/conversion.rs` | 1646 | 转换 / 缩放 / 规范化 / nextcloud 复制（含静帧与序列帧 Spine 原件直传；普通/Prototype 共用路径；`edit_sequence_tps` 改尺寸后只搬本素材三件套） |
 | `commands/projects.rs` | 707 | 项目管理命令（`mutate_project_config` 原子 helper 统一读改写） |
 | `commands/shortcuts.rs` | 591 | 快捷方式命令（图标提取 / favicon / find_game_exe） |
-| `commands/helpers.rs` | 908 | 公共辅助（扩展名常量 SSOT / matches_base_name / `relocate_material_files` 单素材搬家（冲突预检 + 搬空删源目录） / **`is_vfx_stem` + `static_base_name` 静帧基础名 SSOT：vfx 剥 `_NN`、非 vfx 原样** / mutate_project_config / move_dir rename-first / 名簿读写 `非序列帧.txt`+`废弃.txt` / `BOOKKEEPING_FILES` 簿记文件排除 SSOT） |
+| `commands/helpers.rs` | 926 | 公共辅助（扩展名常量 SSOT / matches_base_name / `relocate_material_files` 单素材搬家（冲突预检 + 搬空删源目录） / **`is_vfx_stem` + `static_base_name` 静帧基础名 SSOT：vfx 剥 `_NN`、非 vfx 原样；`strip_numeric_suffix` 无条件剥，供规范化页算手动去后缀目标** / mutate_project_config / move_dir rename-first / 名簿读写 `非序列帧.txt`+`废弃.txt` / `BOOKKEEPING_FILES` 簿记文件排除 SSOT） |
 | `commands/psd.rs` | 203 | PSD/PSB 缩略图提取（图层合并 + 内嵌 JPEG fallback + 磁盘缓存，`psd_cache_file` 与 scan_directory 共用） |
 | `commands/translation.rs` | 346 | 翻译命令入口（SSE 流式 Gemini） |
 | `commands/translation/pdf_reflow.rs` | 450 | PDF 内容流提取 + 流式排版 |

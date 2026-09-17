@@ -13,7 +13,10 @@ interface NormalizeItem {
   material_type: 'static' | 'sequence'
   ext: string
   frame_count: number
+  /** 命名是否默认勾选（vfx 静帧去后缀 / 散落序列帧入夹）；同时决定「待处理 / 已规范化」分区 */
   needs_rename: boolean
+  /** 勾选命名后文件会叫什么；null = 命名列不可勾。非 vfx 的 `btn_01.png` 默认不勾但这里给 `btn.png` */
+  rename_target: string | null
   is_png: boolean
   is_add_or_screen: boolean
   thumbnail_path: string
@@ -55,7 +58,8 @@ const gBlackBg = ref(false)
 const gBackup = ref(true)   // 执行前备份默认开
 
 // ── 每行资格判定 ──
-function canRename(it: NormalizeItem) { return it.needs_rename }
+// 能不能勾 ≠ 默认勾不勾：非 vfx 的 `btn_01.png` 可勾（rename_target 有值）但默认不勾（needs_rename=false）
+function canRename(it: NormalizeItem) { return it.rename_target !== null }
 function canTrim(it: NormalizeItem) { return it.material_type === 'static' && it.is_png }
 function canBlackBg(it: NormalizeItem) { return it.material_type === 'static' && it.is_png && it.is_add_or_screen }
 
@@ -72,7 +76,8 @@ function displayName(it: NormalizeItem): string {
 /** 按当前全局开关初始化某行的勾选（仅对有资格的操作生效）*/
 function defaultSelection(it: NormalizeItem): Selection {
   return {
-    rename: canRename(it) && gRename.value,
+    // 命名只对默认该改名的行跟全局开关；非 vfx 带后缀的行默认不勾，只能逐行手动
+    rename: it.needs_rename && gRename.value,
     trim: canTrim(it) && gTrim.value,
     blackBg: canBlackBg(it) && gBlackBg.value,
   }
@@ -95,7 +100,8 @@ async function loadItems() {
 }
 
 // 全局开关切换 → 批量重置有资格行的对应操作（手动覆盖会被下一次全局切换重置，符合"批量设置"语义）
-watch(gRename, (v) => { items.value.forEach((it, i) => { if (canRename(it)) selections.value[i].rename = v }) })
+// 命名的全局开关只批量控制默认该改名的行（needs_rename）；非 vfx 手动勾的不受全局开关影响
+watch(gRename, (v) => { items.value.forEach((it, i) => { if (it.needs_rename) selections.value[i].rename = v }) })
 watch(gTrim, (v) => { items.value.forEach((it, i) => { if (canTrim(it)) selections.value[i].trim = v }) })
 watch(gBlackBg, (v) => { items.value.forEach((it, i) => { if (canBlackBg(it)) selections.value[i].blackBg = v }) })
 
@@ -143,7 +149,9 @@ async function handleExecute() {
     const requests = pendingRequests.value.map(({ it, sel }) => ({
       paths: it.paths,
       material_type: it.material_type,
-      target_name: it.target_name,
+      // 勾了命名就把改名目标当 target_name 传：后端既用它做 rename 目标也用它做备份 key，
+      // 备份 key 随之跟到改名后的名字，二次处理找得到纯净原件（非 vfx 手动去后缀场景）
+      target_name: sel.rename && it.rename_target !== null ? it.rename_target : it.target_name,
       do_rename: sel.rename,
       do_trim: sel.trim,
       do_black_bg: sel.blackBg,
@@ -222,8 +230,8 @@ async function handleRestore(it: NormalizeItem) {
           <!-- 操作预览（竖线分隔，显示会进行的操作）-->
           <div class="preview col-preview">
             <template v-if="selections[i].rename">
-              <span v-if="it.material_type === 'sequence'" class="pv-line">→ {{ it.target_name }}/ · {{ $t('normalize.moveFrames', { count: it.frame_count }) }}</span>
-              <span v-else class="pv-line">→ {{ it.target_name }}</span>
+              <span v-if="it.material_type === 'sequence'" class="pv-line">→ {{ it.rename_target }}/ · {{ $t('normalize.moveFrames', { count: it.frame_count }) }}</span>
+              <span v-else class="pv-line">→ {{ it.rename_target }}</span>
             </template>
             <span v-if="selections[i].trim" class="pv-chip">{{ $t('normalize.optTrim') }}</span>
             <span v-if="selections[i].blackBg" class="pv-chip">{{ $t('normalize.optBlackBg') }}</span>

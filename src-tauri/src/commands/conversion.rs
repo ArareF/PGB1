@@ -4,7 +4,7 @@ use crate::models::{
     NormalizeRequest, ScaleRequest, StartConversionRequest,
 };
 use crate::conversion::{ConversionState, ConversionSession, handle_file_event, bring_window_to_front};
-use super::helpers::{split_prototype_name, copy_dir_recursive, is_bookkeeping_file, is_sequence_stem, matches_base_name, read_deprecated_list, read_not_sequence_list, relocate_material_files, static_base_name, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
+use super::helpers::{split_prototype_name, copy_dir_recursive, is_bookkeeping_file, is_sequence_stem, matches_base_name, read_deprecated_list, read_not_sequence_list, relocate_material_files, static_base_name, strip_numeric_suffix, PROTOTYPE_SUBCATEGORIES, regex_strip_version};
 use std::collections::HashSet;
 use super::workflow_paths::{
     an_dir_name, nextcloud_task_dir, parse_an_dir_name, DIR_DONE, DIR_NC_BREAKDOWN,
@@ -875,6 +875,7 @@ fn inventory_dir(
                 ext,
                 frame_count: frames.len() as u32,
                 needs_rename: false,
+                rename_target: None, // 已在文件夹里，没有可做的命名操作
                 is_png: false,        // 两项新操作仅静帧，序列帧一律不可选
                 is_add_or_screen: false,
                 thumbnail_path: frames[0].to_string_lossy().to_string(),
@@ -913,6 +914,7 @@ fn inventory_dir(
                 ext,
                 frame_count: files.len() as u32,
                 needs_rename: true,
+                rename_target: Some(base.clone()), // 移入同名文件夹
                 is_png: false,
                 is_add_or_screen: false,
                 thumbnail_path: files[0].to_string_lossy().to_string(),
@@ -925,10 +927,14 @@ fn inventory_dir(
         }
     }
 
-    // 独立静帧：逐个处理（vfx 静帧带 _NN 后缀者去后缀；非 vfx 原样保留，SSOT：static_base_name）
+    // 独立静帧：逐个处理。
+    // - 默认要不要去后缀走 static_base_name（vfx 才剥）→ needs_rename + target_name（备份 key）
+    // - 能不能手动去后缀走 strip_numeric_suffix（不分 vfx）→ rename_target
+    // 非 vfx 的 `btn_01.png`：默认不改名，但用户可手动勾选改成 `btn.png`
     for path in statics {
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        let (base, had_suffix) = static_base_name(stem);
+        let (base, default_rename) = static_base_name(stem);
+        let (stripped, has_suffix) = strip_numeric_suffix(stem);
         let ext = path
             .extension()
             .and_then(|e| e.to_str())
@@ -936,14 +942,18 @@ fn inventory_dir(
             .to_lowercase();
         let is_png = ext == "png";
         let target_name = format!("{}.{}", base, ext);
-        // 备份按规范后名做 key（跨"去后缀改名"稳定，二次处理不会覆盖纯净原件）
+        let rename_target = if has_suffix { Some(format!("{}.{}", stripped, ext)) } else { None };
+        // 备份按默认规范后名做 key（vfx 跨"去后缀改名"稳定；非 vfx 用当前名，
+        // 与同目录可能共存的 `btn.png` 互不撞车）。用户手动勾选改名时，前端会把
+        // rename_target 当 target_name 传给 execute，备份 key 随之跟到改名后的名字
         let has_backup = dir.join(NORMALIZE_BACKUP_DIR).join(&target_name).exists();
         items.push(NormalizeItem {
             base_name: base.clone(),
             material_type: "static".to_string(),
             ext: ext.clone(),
             frame_count: 1,
-            needs_rename: had_suffix, // 带 _NN 后缀才需去后缀
+            needs_rename: default_rename,
+            rename_target,
             is_png,
             is_add_or_screen: is_png && base_is_add_or_screen(&base),
             thumbnail_path: path.to_string_lossy().to_string(),
@@ -1583,4 +1593,54 @@ pub fn copy_preview_to_nextcloud(
     fs::copy(src, &dest).map_err(|e| format!("复制文件失败: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod inventory_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("pgb1_inv_{}_{}_{}", tag, std::process::id(), nonce));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn find<'a>(items: &'a [NormalizeItem], file: &str) -> &'a NormalizeItem {
+        items
+            .iter()
+            .find(|it| it.paths[0].ends_with(file))
+            .unwrap_or_else(|| panic!("盘点结果里没有 {}，实际：{:?}", file, items.iter().map(|i| &i.paths[0]).collect::<Vec<_>>()))
+    }
+
+    /// 回归（2026-09-16 产品裁决）：非 vfx 静帧带 `_NN` 后缀 → 默认不改名，但保留手动去后缀的权利。
+    /// vfx 静帧维持默认去后缀；无后缀静帧命名列不可勾。
+    #[test]
+    fn non_vfx_static_keeps_manual_rename_right() {
+        let dir = temp_dir("non_vfx");
+        fs::write(dir.join("btn_01.png"), b"x").unwrap();
+        fs::write(dir.join("btn.png"), b"x").unwrap();
+        fs::write(dir.join("main_vfx_a_add_seed_01.png"), b"x").unwrap();
+
+        let mut items = Vec::new();
+        inventory_dir(&dir, &mut items, &HashSet::new()).unwrap();
+        fs::remove_dir_all(&dir).ok();
+
+        let non_vfx = find(&items, "btn_01.png");
+        assert!(!non_vfx.needs_rename, "非 vfx 静帧默认不勾命名");
+        assert_eq!(non_vfx.rename_target.as_deref(), Some("btn.png"), "但手动勾选后应去后缀");
+        assert_eq!(non_vfx.target_name, "btn_01.png", "备份 key 用当前名，不与同目录 btn.png 撞车");
+        assert_eq!(non_vfx.base_name, "btn_01");
+
+        let plain = find(&items, "btn.png");
+        assert!(!plain.needs_rename);
+        assert_eq!(plain.rename_target, None, "无后缀静帧命名列不可勾");
+        assert_eq!(plain.target_name, "btn.png");
+
+        let vfx = find(&items, "main_vfx_a_add_seed_01.png");
+        assert!(vfx.needs_rename, "vfx 静帧维持默认去后缀");
+        assert_eq!(vfx.rename_target.as_deref(), Some("main_vfx_a_add_seed.png"));
+        assert_eq!(vfx.target_name, "main_vfx_a_add_seed.png", "vfx 备份 key 跨改名稳定");
+    }
 }

@@ -380,8 +380,13 @@ pub struct NormalizeItem {
     pub ext: String,
     /// 帧数（静帧恒为 1）
     pub frame_count: u32,
-    /// 命名是否仍需规范化（去后缀 / 移入文件夹）
+    /// 命名是否**默认**勾选规范化（vfx 静帧去后缀 / 散落序列帧移入文件夹）。
+    /// 只管默认值与「待处理 / 已规范化」分区，不管能不能勾 —— 能不能勾看 `rename_target`
     pub needs_rename: bool,
+    /// 勾选「命名」后文件会叫什么（静帧含扩展名 / 序列帧为文件夹名）。
+    /// 有可剥的 `_NN` 后缀或可移入文件夹就有值，不分 vfx；None = 命名列不可勾。
+    /// 非 vfx 静帧 `btn_01.png` 默认不改名（`needs_rename=false`），但这里给 `btn.png` 保留手动去后缀的权利
+    pub rename_target: Option<String>,
     /// 是否 PNG（决定能否做自适应画布 / 加黑底）
     pub is_png: bool,
     /// base_name 按 '_' 切分后任一段等于 add 或 screen

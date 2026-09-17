@@ -1,11 +1,11 @@
 {
   "version": "2.8.25",
   "notes": "修复：规范化页面里，不带 vfx 标识、名字以 _01 这类数字结尾的素材，「命名」那一格现在可以勾选了。上个版本把这类素材（比如 btn_01.png）当成已经规范化的，它们会收进底部的「已规范化」折叠区，命名格是灰字点不动，想手动去掉后缀也没办法。现在的做法是：默认仍然不改名、仍然在折叠区，但展开后命名格变成一个可以勾的框，勾上就会把 btn_01.png 改成 btn.png，操作预览列会先显示改名后的样子。带 vfx 标识的特效素材行为不变，仍默认勾选去后缀。顶部的「命名规范化」全局开关只批量控制特效素材，这类普通素材只能逐行手动勾，避免全局开关一打开就把它们全部改了名。任务页卡片名、上传进度判定、废弃名簿这些外围逻辑与上个版本完全一致，没有变化。",
-  "pub_date": "2026-09-15T07:40:09Z",
+  "pub_date": "2026-09-17T07:00:49Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.24/PGB1_2.8.24_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkFqNndlOTJodFc0ZTFiU3dvSWg4S3Q1ZW1OWnYxdVFWTUtzRUVVRno3YVVGd3V1VG1CQmZCKzA3eEU3N01vbXF6eVY1ako4eWlaQ2pHSnZOTURTbkFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NDU4MDA5CWZpbGU6UEdCMV8yLjguMjRfeDY0LXNldHVwLmV4ZQpBL2tDMkM3Sk1HRUZuVUhiallPTW5VTjExbWkzcGI0VXg0UjB2NUt2dkNxVVNobnJKd3hGUUp6REdzOUJybVlaUFRZVVRkWFdhZFY4QVBYMnFaRjhDZz09Cg=="
+      "url": "https://github.com/ArareF/PGB1/releases/download/v2.8.25/PGB1_2.8.25_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVROVBlMDJ3S29xNkRVRDhxOStEc1VmRko4SW5YN0kzU3NDWm05dEtYamQzTWZBV1ZCSFBzWGJHZWRIbzFTTHlBbS8xRCt0ZzZWMzVaR1JYRW9WM0k2dWVHdDFyTFB2dUF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NjI4NDQ5CWZpbGU6UEdCMV8yLjguMjVfeDY0LXNldHVwLmV4ZQpNOHNTVi9KUHBSazNBdGw2RHF5M2E3KzFLT1RRVWhLYmdVYVlFMFh4bk0yWnlHV3FWamsraVBHa3VZdVU0T3ZRU0xBL09hT2ZMS0gzWFhBbzlCYWpDZz09Cg=="
     }
   }
 }

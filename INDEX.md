@@ -9,7 +9,7 @@
 
 - **产品**：PGB1 — 2D游戏特效师文件整理工具
 - **技术栈**：Tauri 2.x（Rust + HTML/CSS/JS），目标 Windows
-- **状态**：✅ **已发布 v2.8.24**（功能完整，持续迭代维护中）
+- **状态**：✅ **已发布 v2.8.25**（功能完整，持续迭代维护中）
 - **角色**：产品总监（决策）+ Tech Lead / Agent（实现）
 
 ---
@@ -184,7 +184,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 | **打包格式** | NSIS only（`"targets": "nsis"`） | WiX 3 不支持中文 productName，会直接报错 |
 | **关闭行为** | 最小化到系统托盘，不退出 | lib.rs CloseRequested 拦截 + hide() |
 | **UI 缩放** | 固定值，默认 100%，无自动模式 | 自动模式（按窗口宽度缩放）效果差，已移除 |
-| **软件名称** | PG素材管理系统，V2.8.24，开发者 Fuchikami | `src/config/app.ts` 为 SSOT |
+| **软件名称** | PG素材管理系统，V2.8.25，开发者 Fuchikami | `src/config/app.ts` 为 SSOT |
 | **CSP media-src** | 必须单独声明，含 asset:／blob:／data: | `<video>` 不继承 img-src，缺失打包后视频全灭 |
 | 技术栈 | Tauri 2.x（不用 Electron） | Electron 不支持拖拽文件到外部浏览器 |
 | UI 风格 | 毛玻璃（Glassmorphism），明暗双主题 | — |
@@ -236,6 +236,7 @@ Prototype 功能分类的特殊处理（比普通分类多一层子分类）。
 
 | 版本 | 日期 | 主要变更 |
 |------|------|---------|
+| v2.8.25 | 2026-09-17 | 修复：规范化页非 vfx 静帧带 `_NN` 后缀的，命名列从「不可勾」改为「可勾但默认不勾」。v2.8.22 把 `btn_01.png` 判成已规范化后它落进折叠区且命名列是死文字，想手动去后缀也不行。产品裁决：外围（卡片名 / 进度匹配 / 名簿）维持 v2.8.22，只在规范化页保留手动去后缀的权利。`NormalizeItem` 拆出 `rename_target`（能不能勾，`strip_numeric_suffix()` 不分 vfx），`needs_rename` 退回只管默认勾不勾 + 分区；备份 key 随改名目标走。全局「命名」开关只批量控制 vfx 行 |
 | v2.8.24 | 2026-09-15 | 新增：预览视频对比播放（任务页 03_preview 版本组）—— 「打开对比」开关（B 默认上一版）+ 版本菜单 + 并排⇄滑动（拖分割线）+ 「对齐」折叠偏移微调（±1s / ±1帧 / 归零，Shift+←/→ 逐帧），A 主时钟 B 静音跟随，越界定格边界帧，进入对比自动页内全屏。新增 `config/video.ts` + `composables/useVideoCompare.ts`；滑动布局用 overflow 裁剪槽位（clip-path 在 WebView2 播不了）。侧栏视频默认循环播放。设计稿 `docs/plans/2026-09-15-预览视频对比播放-design.md` |
 | v2.8.23 | 2026-09-11 | 修复：序列帧「修改」（TP GUI 改尺寸）和侧边栏改帧率会把同目录其他序列帧一起改掉 —— `edit_sequence_tps` / `rename_sequence_fps` 原来整目录 rename `[an-S-F]`，但同档位全部序列帧都住在这一个目录里。改为只搬该素材的 webp/plist/tps 三件套（新增 `relocate_material_files` + `parse_an_dir_name`），邻居不动；6 个回归测试 |
 | v2.8.22 | 2026-09-10 | 修复：非 vfx 素材名字里的 `_01` / `_02` 后缀被当帧号剥掉 —— `btn_01.png` 卡片名显示成 `btn`，规范化页还把 `btn_01`/`btn_02` 都建议改成同一个 `btn.png`（撞名）。新增 `is_vfx_stem()` + `static_base_name()` 作为静帧基础名 SSOT：stem 含 `_vfx_` 才剥末尾 `_NN`（顺带把「只剥 `_01`」统一成「剥任意纯数字」），非 vfx 静帧原样保留；4 处调用点收口 |
